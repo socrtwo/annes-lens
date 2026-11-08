@@ -52,7 +52,9 @@ export function decodeLjpeg(u8: Uint8Array): LjpegFrame {
     } else if (m === 0xda) {
       const ns = u8[seg];
       scanTables = [];
-      for (let i = 0; i < ns; i++) { const id = u8[seg + 1 + i * 2], ci = compIds.indexOf(id); scanTables[ci >= 0 ? ci : i] = u8[seg + 2 + i * 2] >> 4; }
+      // Components by id, or by position when the scan's ids do not match the frame's (Leaf backs number them 1-based in the scan).
+      const ids = Array.from({ length: ns }, (_, i) => u8[seg + 1 + i * 2]), byId = ids.every((id) => compIds.includes(id)) && new Set(ids).size === ns;
+      for (let i = 0; i < ns; i++) scanTables[byId ? compIds.indexOf(ids[i]) : i] = u8[seg + 2 + i * 2] >> 4;
       predictor = u8[seg + 1 + ns * 2]; pt = u8[seg + 3 + ns * 2] & 0x0f;
       if (ns !== comps) throw new Error('Lossless JPEG with several scans is not supported');
       break;

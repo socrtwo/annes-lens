@@ -25,9 +25,9 @@ export const NOT_FOR_DIAGNOSIS = 'For viewing only: Anne\'s Lens is not a medica
 
 /** The SOP Instance UID of a file ('' when it has none), for matching references. */
 export function dicomSopInstanceUid(u8: Uint8Array): string { try { return str(parseFile(u8), 8, 0x18) || ''; } catch { return ''; } }
-const GSPS = '1.2.840.10008.5.1.4.1.1.11.1', CSPS = '1.2.840.10008.5.1.4.1.1.11.2', PCSPS = '1.2.840.10008.5.1.4.1.1.11.3';
-/** Whether a file is a (grayscale, color or pseudo-color) softcopy presentation state: display instructions for another file's picture. */
-export function isPresentationState(u8: Uint8Array): boolean { try { const d = parseFile(u8); const sop = str(d, 8, 0x16); return (sop === GSPS || sop === CSPS || sop === PCSPS) && !d.el.has(PIXEL); } catch { return false; } }
+const GSPS = '1.2.840.10008.5.1.4.1.1.11.1', CSPS = '1.2.840.10008.5.1.4.1.1.11.2', PCSPS = '1.2.840.10008.5.1.4.1.1.11.3', BSPS = '1.2.840.10008.5.1.4.1.1.11.4';
+/** Whether a file is a (grayscale, color, pseudo-color or blending) softcopy presentation state: display instructions for another file's picture. */
+export function isPresentationState(u8: Uint8Array): boolean { try { const d = parseFile(u8); const sop = str(d, 8, 0x16); return (sop === GSPS || sop === CSPS || sop === PCSPS || sop === BSPS) && !d.el.has(PIXEL); } catch { return false; } }
 
 export interface GraphicObject { type: string; points: [number, number][]; filled: boolean; units: string }
 export interface TextObject { text: string; anchor?: [number, number]; anchorVisible: boolean; box?: [number, number, number, number]; units: string; anchorUnits: string }
@@ -41,6 +41,8 @@ export interface PresentationState {
   layers: { name: string; gray: number; graphics: GraphicObject[]; texts: TextObject[] }[];
   /** A pseudo-color state's palette (PS3.3 C.11.6), applied to the presentation values. */
   palette?: Palette;
+  /** A blending state's superimposed layer (PS3.3 C.11.14): another picture, windowed, through its palette, over the underlying one at this opacity. */
+  blend?: { references: string[]; window?: { wc: number; ww: number; fn: string }; voiLut?: Lut | null; palette?: Palette; opacity: number };
 }
 /** Reads a softcopy presentation state file (PS3.3 A.33): what it says to do with the picture it references. */
 export function readPresentationState(u8: Uint8Array, name = ''): PresentationState {
@@ -48,11 +50,22 @@ export function readPresentationState(u8: Uint8Array, name = ''): PresentationSt
   const refs: string[] = [];
   for (const series of d.el.get(T(8, 0x1115))?.items || []) for (const im of series.get(T(8, 0x1140))?.items || []) { const uid = strIn(d, im, 8, 0x1155); if (uid) refs.push(uid); }
   const ps: PresentationState = { name, label: str(d, 0x70, 0x80), description: str(d, 0x70, 0x81), references: refs, inverse: (str(d, 0x2050, 0x20) || '').toUpperCase() === 'INVERSE', shutters: [], rotation: u16v(d, 0x70, 0x42) || 0, flip: (str(d, 0x70, 0x41) || '').toUpperCase() === 'Y', layers: [] };
-  const voi = d.el.get(T(0x28, 0x3110))?.items?.[0];
-  if (voi) {
-    const wc = numsIn(d, voi, 0x28, 0x1050)[0], ww = numsIn(d, voi, 0x28, 0x1051)[0];
-    if (Number.isFinite(wc) && Number.isFinite(ww) && ww >= 1) ps.window = { wc, ww, fn: (strIn(d, voi, 0x28, 0x1056) || 'LINEAR').toUpperCase() };
-    const lut = voi.get(T(0x28, 0x3010))?.items?.[0]; if (lut) ps.voiLut = readLut(d, lut, true);
+  const windowOf = (el: Elements): { window?: PresentationState['window']; voiLut?: Lut | null } => {
+    const voi = el.get(T(0x28, 0x3110))?.items?.[0], out: { window?: PresentationState['window']; voiLut?: Lut | null } = {};
+    if (voi) {
+      const wc = numsIn(d, voi, 0x28, 0x1050)[0], ww = numsIn(d, voi, 0x28, 0x1051)[0];
+      if (Number.isFinite(wc) && Number.isFinite(ww) && ww >= 1) out.window = { wc, ww, fn: (strIn(d, voi, 0x28, 0x1056) || 'LINEAR').toUpperCase() };
+      const lut = voi.get(T(0x28, 0x3010))?.items?.[0]; if (lut) out.voiLut = readLut(d, lut, true);
+    }
+    return out;
+  };
+  Object.assign(ps, windowOf(d.el));
+  if (str(d, 8, 0x16) === BSPS) {
+    // Blending (PS3.3 C.11.14): two items, the underlying picture (this state's references) and the superimposed one with its palette and opacity.
+    const items = d.el.get(T(0x70, 0x402))?.items || [], refsOf = (el: Elements) => { const out: string[] = []; for (const series of el.get(T(8, 0x1115))?.items || []) for (const im of series.get(T(8, 0x1140))?.items || []) { const uid = strIn(d, im, 8, 0x1155); if (uid) out.push(uid); } return out; };
+    const under = items.find((it) => (strIn(d, it, 0x70, 0x405) || '').toUpperCase() === 'UNDERLYING') || items[0], over = items.find((it) => (strIn(d, it, 0x70, 0x405) || '').toUpperCase() === 'SUPERIMPOSED') || items[1];
+    if (under) { ps.references = refsOf(under); Object.assign(ps, windowOf(under)); }
+    if (over) { const op = binIn(d, over, 0x70, 0x403)[0] ?? numsIn(d, over, 0x70, 0x403)[0]; ps.blend = { references: refsOf(over), ...windowOf(over), palette: readPaletteIn(d, over, u8, []) || undefined, opacity: Number.isFinite(op) ? Math.max(0, Math.min(1, op)) : 0.5 }; }
   }
   const slope = nums(d, 0x28, 0x1053)[0], icpt = nums(d, 0x28, 0x1052)[0];
   if (Number.isFinite(slope) && Number.isFinite(icpt)) ps.rescale = { slope, intercept: icpt };
@@ -133,7 +146,7 @@ const PIXEL = T(0x7fe0, 0x0010), FLOAT_PIXEL = T(0x7fe0, 0x0008), DOUBLE_PIXEL =
 interface Element { vr: string; off: number; len: number; be: boolean; frags?: { off: number; len: number }[]; bot?: number[]; items?: Elements[] }
 type Elements = Map<number, Element>;
 /** Sequences whose items are kept (the lookup tables). */
-const KEEP_ITEMS = new Set([T(0x28, 0x3000), T(0x28, 0x3010), T(0x28, 0x3110), T(0x2050, 0x0010), T(0x70, 0x5a), T(0x70, 0x60), T(0x70, 0x01), T(0x70, 0x08), T(0x70, 0x09), T(0x08, 0x1115), T(0x08, 0x1140)]);
+const KEEP_ITEMS = new Set([T(0x28, 0x3000), T(0x28, 0x3010), T(0x28, 0x3110), T(0x2050, 0x0010), T(0x70, 0x5a), T(0x70, 0x60), T(0x70, 0x01), T(0x70, 0x08), T(0x70, 0x09), T(0x70, 0x402), T(0x08, 0x1115), T(0x08, 0x1140)]);
 
 /** The items of a sequence from `start` to `end` (or to the sequence delimiter when `end` is Infinity). */
 function walkItems(u8: Uint8Array, start: number, end: number, explicit: boolean, be: boolean, collect: boolean, depth: number): { end: number; items: Elements[] } {
@@ -392,7 +405,7 @@ function readOverlays(d: Parsed): Overlay[] {
 
 /** `dec` is pdf.js's image-decoders module (JpegImage, JpxImage); needed only for JPEG and JPEG 2000 pixel data. */
 export interface DicomWindow { wc: number; ww: number; fn?: string }
-export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFrames?: number; maxPixels?: number; presentation?: PresentationState; drawText?: TextRasterizer; /** Draw the overlay planes (default true). */ overlays?: boolean; /** Window / Level: a window of the user's instead of the file's (and its VOI LUT), or 'full' for the frame's whole range. */ window?: DicomWindow | 'full' } = {}): Promise<DecodeResult> {
+export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFrames?: number; maxPixels?: number; presentation?: PresentationState; drawText?: TextRasterizer; /** Draw the overlay planes (default true). */ overlays?: boolean; /** Window / Level: a window of the user's instead of the file's (and its VOI LUT), or 'full' for the frame's whole range. */ window?: DicomWindow | 'full'; /** A blending state's superimposed picture, decoded (gray) with the state's window for it. */ superimposed?: ReturnType<typeof makeRaster> } = {}): Promise<DecodeResult> {
   const ps = o.presentation;
   const d = parseFile(input), warnings: string[] = [], info: Record<string, string> = {};
   const { u8, ts, be } = d;
@@ -589,7 +602,7 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
     if (drawn) notes.push(`${drawn} overlay plane${drawn > 1 ? 's' : ''} drawn in white`);
     else if (o.overlays === false && overlays.length) notes.push(`${overlays.length} overlay plane${overlays.length > 1 ? 's' : ''} not drawn (View ▸ DICOM Overlay Planes)`);
     let page: { raster: ReturnType<typeof makeRaster>; dpiSwap: boolean } = { raster: r, dpiSwap: false };
-    if (ps) { page = applyPresentation(r, ps, o.drawText, notes, warnings, f === 0 ? info : {}); }
+    if (ps) { page = applyPresentation(r, ps, o.drawText, notes, warnings, f === 0 ? info : {}, o.superimposed); }
     if (pi.frames > 1) notes.unshift(`frame ${f + 1} of ${pi.frames}`);
     notes.push(`${pi.bitsStored}-bit ${pi.spp === 1 ? 'monochrome' : `${pi.spp}-sample`} ${TS[ts] || 'DICOM'} pixel data`);
     if (depthNote) notes.push(depthNote);
@@ -605,14 +618,17 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
 /** Decoder output (interleaved samples) into the frame's layout, applying BitsStored masking and the sign when asked. */
 export interface Palette { rgb: Uint8Array[]; first: number; n: number }
 /** The palette of a PALETTE COLOR picture or a pseudo-color presentation state: 8-bit RGB entries from 8- or 16-bit data, plain or segmented. */
-function readPalette(d: Parsed, u8: Uint8Array, warnings: string[]): Palette | null {
+function readPalette(d: Parsed, u8: Uint8Array, warnings: string[]): Palette | null { return readPaletteIn(d, d.el, u8, warnings); }
+/** The same from a sequence item's elements (a blending state's superimposed layer). */
+function readPaletteIn(d: Parsed, elements: Elements, u8: Uint8Array, warnings: string[]): Palette | null {
   let palette: Uint8Array[] | null = null, paletteFirst = 0, paletteN = 0;
-  const desc = u16s(d, 0x28, 0x1101);
-  if (desc.length >= 3 && d.el.has(T(0x28, 0x1221))) { // segmented (PS3.3 C.7.9.2): discrete, linear and indirect segments expanded
+  const descEl = elements.get(T(0x28, 0x1101)), desc: number[] = [];
+  if (descEl) { const dv = new DataView(u8.buffer, u8.byteOffset + descEl.off, descEl.len); for (let i = 0; i + 1 < descEl.len; i += 2) desc.push(dv.getUint16(i, !descEl.be)); }
+  if (desc.length >= 3 && elements.has(T(0x28, 0x1221))) { // segmented (PS3.3 C.7.9.2): discrete, linear and indirect segments expanded
     paletteN = desc[0] || 65536; paletteFirst = desc[1] > 32767 ? desc[1] - 65536 : desc[1];
     const max = desc[2] === 8 ? 255 : 65535;
     palette = [0x1221, 0x1222, 0x1223].map((e) => {
-      const el = d.el.get(T(0x28, e)), out = new Uint8Array(paletteN);
+      const el = elements.get(T(0x28, e)), out = new Uint8Array(paletteN);
       if (!el) return out;
       // The segments are a stream of 16-bit words, or of bytes when the entries are 8 bits wide; an indirect segment's offset counts bytes.
       const bytes8 = desc[2] === 8, dv = new DataView(u8.buffer, u8.byteOffset + el.off, el.len), nw = bytes8 ? el.len : el.len >> 1;
@@ -641,7 +657,7 @@ function readPalette(d: Parsed, u8: Uint8Array, warnings: string[]): Palette | n
   } else if (desc.length >= 3) {
     paletteN = desc[0] || 65536; paletteFirst = desc[1] > 32767 ? desc[1] - 65536 : desc[1];
     palette = [0x1201, 0x1202, 0x1203].map((e) => {
-      const el = d.el.get(T(0x28, e)), out = new Uint8Array(paletteN);
+      const el = elements.get(T(0x28, e)), out = new Uint8Array(paletteN);
       if (!el) return out;
       const wide = desc[2] === 16 && el.len >= paletteN * 2;
       const dv = new DataView(u8.buffer, u8.byteOffset + el.off, el.len);
@@ -673,7 +689,7 @@ function deinterleave422(src: Float32Array, rows: number, cols: number): Float32
 const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
 
 /** Shutters, annotations, the displayed area and the spatial transformation of a presentation state applied to a frame's raster. */
-function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationState, drawText: TextRasterizer | undefined, notes: string[], warnings: string[], info: Record<string, string>): { raster: ReturnType<typeof makeRaster>; dpiSwap: boolean } {
+function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationState, drawText: TextRasterizer | undefined, notes: string[], warnings: string[], info: Record<string, string>, superimposed?: ReturnType<typeof makeRaster>): { raster: ReturnType<typeof makeRaster>; dpiSwap: boolean } {
   const w = r.width, h = r.height, d = r.data;
   const what: string[] = [];
   if (ps.window) what.push(`window center ${ps.window.wc}, width ${ps.window.ww}`);
@@ -686,6 +702,22 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
     const { rgb, first, n: pn } = ps.palette, scale = (pn - 1) / 255;
     for (let i = 0; i < w * h; i++) { const o = i * 4, k = Math.min(pn - 1, Math.max(0, Math.round(d[o] * scale) - first)); d[o] = rgb[0][k]; d[o + 1] = rgb[1][k]; d[o + 2] = rgb[2][k]; }
     what.push(`pseudo-color palette (${pn} entries)`);
+  }
+  if (ps.blend) { // blending: the superimposed picture (windowed gray), through its palette, over the underlying one at the state's opacity
+    const b = ps.blend, s = superimposed;
+    if (s && s.width > 0 && s.height > 0) {
+      const a = b.opacity, pal = b.palette, scale = pal ? (pal.n - 1) / 255 : 0, sd = s.data;
+      for (let y = 0; y < h; y++) {
+        const sy = Math.min(s.height - 1, Math.floor((y * s.height) / h));
+        for (let x = 0; x < w; x++) {
+          const sx = Math.min(s.width - 1, Math.floor((x * s.width) / w)), so = (sy * s.width + sx) * 4, g = sd[so], o = (y * w + x) * 4;
+          let cr = g, cg = g, cb = g;
+          if (pal) { const k = Math.min(pal.n - 1, Math.max(0, Math.round(g * scale) - pal.first)); cr = pal.rgb[0][k]; cg = pal.rgb[1][k]; cb = pal.rgb[2][k]; }
+          d[o] = Math.round(d[o] * (1 - a) + cr * a); d[o + 1] = Math.round(d[o + 1] * (1 - a) + cg * a); d[o + 2] = Math.round(d[o + 2] * (1 - a) + cb * a);
+        }
+      }
+      what.push(`the superimposed picture${pal ? ` through its palette (${pal.n} entries)` : ''} at opacity ${fmt(a)}${s.width !== w || s.height !== h ? `, scaled from ${s.width} × ${s.height}` : ''}`);
+    } else warnings.push(`The blending state's superimposed picture${b.references.length ? ` (SOP instance ${b.references[0]})` : ''} is not in this folder; the underlying picture is shown alone`);
   }
   // Shutters: everything outside the shape takes the shutter's gray (pixel columns and rows are 1-based in the file).
   for (const sh of ps.shutters) {

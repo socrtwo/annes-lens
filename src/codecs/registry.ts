@@ -28,7 +28,7 @@ import { decodeHdr, isHdr } from './hdr';
 import { decodeExr, isExr, exrNeedsHtj2k } from './exr';
 import { isEmf, isWmf } from './metafile';
 import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, RAW_EXTENSIONS } from './rawpreview';
-import { isDng } from '../raw/dng';
+import { rawSupport } from '../raw/families';
 import { isPdf } from './pdf';
 import { isDjvu } from './djvu';
 import { isSunRaster, isSgi, isUtahRle, decodeSun, decodeSgi, decodeUtahRle } from './workstation';
@@ -97,7 +97,7 @@ export const FORMATS: FormatInfo[] = [
   { id: 'pcd', label: 'Kodak Photo CD', mime: 'image/x-photo-cd', extensions: ['pcd'], decoder: 'own', save: false, notes: 'the Base image (768 × 512) with Kodak\'s Photo YCC conversion; 4Base and 16Base not decoded' },
   { id: 'exr', label: 'OpenEXR', mime: 'image/x-exr', extensions: ['exr'], decoder: 'own', save: false, notes: 'scanline, tiled and multi-part; none, RLE, ZIPS, ZIP, PIZ, PXR24, B44, B44A, DWAA, DWAB, ZSTD, HTJ2K (half channels); half, float and uint channels; tone-mapped for display' },
   { id: 'hdr', label: 'Radiance HDR', mime: 'image/vnd.radiance', extensions: ['hdr', 'pic', 'rgbe'], decoder: 'own', save: false, notes: 'RGBE, tone-mapped for display' },
-  { id: 'raw', label: 'Camera RAW', mime: 'image/x-raw', extensions: RAW_EXTENSIONS, decoder: 'platform+own', save: false, notes: 'the largest embedded JPEG preview, with the file\'s EXIF; DNG files also develop (Develop RAW); other families need the RAW module' },
+  { id: 'raw', label: 'Camera RAW', mime: 'image/x-raw', extensions: RAW_EXTENSIONS, decoder: 'platform+own', save: false, notes: 'the largest embedded JPEG preview, with the file\'s EXIF; Develop RAW reads the sensor data of DNG, NEF, NRW, PEF, ERF, ORF, ARW, SR2, SRW, CR2, MOS, DCR, MRW, RAF (Bayer) and RW2/RWL (12-bit) files' },
   { id: 'pict', label: 'QuickDraw picture (PICT)', mime: 'image/x-pict', extensions: ['pct', 'pict'], decoder: 'own', save: false, notes: 'versions 1 and 2: bitmaps and pixel maps (1–32 bits, every packing), QuickTime JPEG, shapes with patterns, regions, lines and text; drawn at the bitmap\'s resolution' },
   { id: 'sun', label: 'Sun raster', mime: 'image/x-sun-raster', extensions: ['ras', 'sun', 'im1', 'im8', 'im24', 'im32', 'rs'], decoder: 'own', save: false, notes: '1, 8, 24 and 32 bits; standard, RLE and RGB types; color maps' },
   { id: 'sgi', label: 'SGI image', mime: 'image/sgi', extensions: ['sgi', 'rgb', 'rgba', 'bw', 'int', 'inta'], decoder: 'own', save: false, notes: 'verbatim and RLE; 8 and 16 bits; gray, RGB, with alpha' },
@@ -208,7 +208,7 @@ export const decodeOptions = {
   autoRotate: true,
   /** Draw the overlay planes of DICOM files (View ▸ DICOM Overlay Planes). */
   dicomOverlays: true,
-  /** RAW files open as their embedded preview; when off, DNG files are developed (Use Embedded Preview by Default). */
+  /** RAW files open as their embedded preview; when off, files Develop RAW can read are developed (Use Embedded Preview by Default). */
   rawPreferPreview: true,
   /** Per-file display settings the tools set (Window / Level, FITS Stretch), by entry; the file is decoded again when they change. */
   perEntry: new WeakMap<Entry, { dicomWindow?: import('./dicom').DicomWindow | 'full'; fitsStretch?: import('./fits').FitsStretch }>(),
@@ -270,18 +270,21 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
   else if (fmt.id === 'dicom') {
     const [{ decodeDicom, dicomTransferSyntax, isJ2kTransferSyntax, isPresentationState, readPresentationState, dicomSopInstanceUid }, { imageDecoders }] = await Promise.all([import('./dicom'), import('./jpx')]);
     const dec = await imageDecoders().catch(() => null);
-    let bytes = u8, presentation;
+    let bytes = u8, presentation, superimposed: import('./raster').Raster | undefined;
     if (isPresentationState(u8)) { // display instructions for a picture in another file of the same folder
       presentation = readPresentationState(u8, entry.name);
       const sibs = (decodeOptions.siblings?.(entry) || []).filter((s) => s !== entry && s.name !== entry.name && (/\.(dcm|dicom)$/i.test(s.name) || !/\./.test(s.name)) && (s.size ?? 0) <= 512e6).slice(0, 500);
       let found: Uint8Array | null = null;
       for (const s of sibs) { const b = new Uint8Array(await s.read()); if (presentation.references.includes(dicomSopInstanceUid(b))) { found = b; presentation.name = s.name === entry.name ? entry.name : `${entry.name} on ${s.name}`; break; } }
+      if (found && presentation.blend) { // the blending state's second picture, decoded with the window the state gives it
+        for (const s of sibs) { if (s === entry) continue; const b = new Uint8Array(await s.read()); if (presentation.blend.references.includes(dicomSopInstanceUid(b))) { try { superimposed = (await decodeDicom(b, dec, { maxFrames: 1, window: presentation.blend.window })).pages[0]?.frames[0]?.raster; } catch { /* reported below */ } break; } }
+      }
       if (!found) throw new Error(`${entry.name} is a presentation state${presentation.label ? ` (${presentation.label})` : ''}: display settings for a picture in another DICOM file, which is not in this folder (${presentation.references.length ? `SOP instance ${presentation.references[0]}` : 'no image is referenced'}). Open it from the folder that holds the picture.`);
       bytes = found;
     }
     let fallback = '';
     if (isJ2kTransferSyntax(dicomTransferSyntax(bytes))) { try { await (await import('./openjpeg16')).loadOpenJpeg(); } catch (e) { fallback = (e as Error).message; } }
-    decoded = fromOwn(await decodeDicom(bytes, dec, { presentation, drawText: presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays, window: decodeOptions.perEntry.get(entry)?.dicomWindow }), 'dicom');
+    decoded = fromOwn(await decodeDicom(bytes, dec, { presentation, superimposed, drawText: presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays, window: decodeOptions.perEntry.get(entry)?.dicomWindow }), 'dicom');
     if (fallback) decoded.warnings.push(fallback);
   }
   else if (fmt.id === 'fits') { const { decodeFits } = await import('./fits'); decoded = fromOwn(decodeFits(u8, entry.name, decodeOptions.perEntry.get(entry)?.fitsStretch), 'fits'); }
@@ -466,19 +469,20 @@ async function decodeRawPreview(u8: Uint8Array, name: string) {
   const previews = findEmbeddedJpegs(u8);
   const info: Record<string, string> = { 'RAW family': `${id.family} (${id.make})`, previews: previews.length ? previews.map((p) => `${p.width}×${p.height}`).join(', ') : 'none' };
   const warnings: string[] = [];
-  // DNG: developed here when there is no preview or previews are not preferred.
-  if ((!previews.length || !decodeOptions.rawPreferPreview) && isDng(u8)) {
+  // Developed here when there is no preview or previews are not preferred (DNG and the families src/raw/families.ts reads).
+  const support = rawSupport(u8, name);
+  if ((!previews.length || !decodeOptions.rawPreferPreview) && support.ok) {
     try {
-      const { develop } = await import('../raw/develop');
-      const d = develop(u8, {});
-      const r = fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the DNG's raw data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); Develop RAW changes the settings`] }], info: { ...info, 'white balance': `${d.temp} K, tint ${d.tint}` }, warnings: [] }, 'dng develop');
+      const { develop } = await import('../raw/develop'); const { readRaw } = await import('../raw/families');
+      const d = develop(readRaw(u8, name), {});
+      const r = fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the ${support.family} file's sensor data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); Develop RAW changes the settings`] }], info: { ...info, 'white balance': `${d.temp} K, tint ${d.tint}` }, warnings: [] }, 'dng develop');
       return r;
-    } catch (e: any) { if (!previews.length) throw new Error(`DNG: ${e?.message || e}`); warnings.push(`Develop: ${e?.message || e}`); }
+    } catch (e: any) { if (!previews.length) throw new Error(`${support.family}: ${e?.message || e}`); warnings.push(`Develop: ${e?.message || e}`); }
   }
   if (!previews.length) {
     const t = await tiffThumbnail(u8); // older TIFF-based RAW files: an uncompressed RGB thumbnail instead of a JPEG
-    if (t) { const pg = pageFromDecoded(t.page); pg.notes = [`embedded ${pg.width}×${pg.height} uncompressed thumbnail of a ${id.family} file (no JPEG preview; developing ${id.family} files needs the RAW module)`]; return { pages: [pg], info: { ...info, previews: `${pg.width}×${pg.height} uncompressed thumbnail` }, warnings, decoder: 'raw preview' }; }
-    throw new Error(`${id.family} file from ${id.make}: no embedded preview, and developing ${id.family} files needs the RAW module (DNG files develop without it)`);
+    if (t) { const pg = pageFromDecoded(t.page); pg.notes = [`embedded ${pg.width}×${pg.height} uncompressed thumbnail of a ${id.family} file (no JPEG preview; ${support.why || 'developing failed'})`]; return { pages: [pg], info: { ...info, previews: `${pg.width}×${pg.height} uncompressed thumbnail` }, warnings, decoder: 'raw preview' }; }
+    throw new Error(`${id.family} file from ${id.make}: no embedded preview, and ${support.why || 'it could not be developed'}`);
   }
   for (const pv of previews) {
     try {
@@ -488,12 +492,12 @@ async function decodeRawPreview(u8: Uint8Array, name: string) {
       return { pages: r.pages, info: { ...info, ...r.info }, warnings: [...warnings, ...r.warnings], decoder: 'raw preview' };
     } catch (e: any) { warnings.push(`Preview ${pv.width}×${pv.height}: ${e?.message || e}`); }
   }
-  if (isDng(u8) && decodeOptions.rawPreferPreview) {
-    // No usable preview: develop the DNG instead.
+  if (support.ok && decodeOptions.rawPreferPreview) {
+    // No usable preview: develop the sensor data instead.
     try {
-      const { develop } = await import('../raw/develop');
-      const d = develop(u8, {});
-      return fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the DNG's raw data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); its previews could not be decoded`] }], info, warnings }, 'dng develop');
+      const { develop } = await import('../raw/develop'); const { readRaw } = await import('../raw/families');
+      const d = develop(readRaw(u8, name), {});
+      return fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the ${support.family} file's sensor data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); its previews could not be decoded`] }], info, warnings }, 'dng develop');
     } catch (e: any) { warnings.push(`Develop: ${e?.message || e}`); }
   }
   throw new Error(warnings[0] || 'The embedded previews could not be decoded');

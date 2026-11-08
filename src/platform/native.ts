@@ -116,6 +116,11 @@ interface DesktopBridge extends QuillNativePlugin {
   remoteStart(opts: { port?: number }): Promise<{ urls: string[]; port: number }>;
   remoteStop(): Promise<{ ok: boolean }>;
   remoteState(state: Record<string, unknown>): Promise<{ ok: boolean }>;
+  /** Network sharing (shared views and albums, electron/netshare.cjs): a room behind a token; its state; an album's listing; stop. Additions arrive as 'shareAdded' events. */
+  shareStart(opts: { kind: 'view' | 'album' }): Promise<{ token: string; urls: string[]; port: number }>;
+  shareState(opts: { token: string; state: Record<string, unknown> }): Promise<{ ok: boolean }>;
+  shareAlbum(opts: { token: string; name: string; items: { id: string; name: string; size?: number; mtime?: number; uri: string | null; thumb: string | null }[]; contribute: boolean; contribDir: string }): Promise<{ ok: boolean; servable: number; contribute: boolean }>;
+  shareStop(opts: { token: string }): Promise<{ ok: boolean }>;
   /** Keeps a chosen folder readable after a restart (catalog, favorites, watch folders, backups). */
   rememberFolder(opts: { uri: string }): Promise<{ ok: boolean }>;
   /** The folder above one the app may list. */

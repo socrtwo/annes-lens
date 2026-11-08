@@ -626,7 +626,9 @@
       "browse.people",
       "browse.albums",
       "browse.smartAlbum",
-      "browse.addToAlbum"
+      "browse.addToAlbum",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum"
      ]
     },
     {
@@ -919,7 +921,10 @@
       "view.compare",
       "view.compareSplit",
       "view.diffOverlay",
-      "view.syncWindows"
+      "view.syncWindows",
+      "view.shareView",
+      "view.followView",
+      "view.netRelay"
      ]
     },
     {
@@ -4984,6 +4989,34 @@
    "tab": "Browse",
    "group": "Views"
   },
+  "browse.shareAlbum": {
+   "label": "Share Album…",
+   "id": "browse.shareAlbum",
+   "shortcuts": [],
+   "origins": [
+    "GP",
+    "APH",
+    "NEW"
+   ],
+   "notes": "toggle: guests see the album's pictures, download them and may add some (desktop server on this network; thumbnails through the relay)",
+   "notInTabs": false,
+   "tab": "Browse",
+   "group": "Views"
+  },
+  "browse.openSharedAlbum": {
+   "label": "Open Shared Album…",
+   "id": "browse.openSharedAlbum",
+   "shortcuts": [],
+   "origins": [
+    "GP",
+    "APH",
+    "NEW"
+   ],
+   "notes": "an album another Anne's Lens shares, as a folder here",
+   "notInTabs": false,
+   "tab": "Browse",
+   "group": "Views"
+  },
   "browse.rate": {
    "label": "Rating",
    "id": "browse.rate",
@@ -7106,6 +7139,45 @@
    "tab": "View",
    "group": "Compare"
   },
+  "view.shareView": {
+   "label": "Share View on the Network",
+   "id": "view.shareView",
+   "shortcuts": [],
+   "origins": [
+    "NM",
+    "NEW"
+   ],
+   "notes": "toggle: other devices follow this window's picture, zoom and pan live (desktop server on this network, or the relay)",
+   "notInTabs": false,
+   "tab": "View",
+   "group": "Compare"
+  },
+  "view.followView": {
+   "label": "Follow a Shared View…",
+   "id": "view.followView",
+   "shortcuts": [],
+   "origins": [
+    "NM",
+    "NEW"
+   ],
+   "notes": "toggle: a window here follows a view shared from another Anne's Lens",
+   "notInTabs": false,
+   "tab": "View",
+   "group": "Compare"
+  },
+  "view.netRelay": {
+   "label": "Network Relay…",
+   "id": "view.netRelay",
+   "shortcuts": [],
+   "origins": [
+    "SUITE",
+    "NEW"
+   ],
+   "notes": "the self-hosted relay (scripts/relay.mjs) for sharing beyond the local network; not in tabs",
+   "notInTabs": true,
+   "tab": "View",
+   "group": "Compare"
+  },
   "view.media": {
    "label": "Media Player",
    "id": "view.media",
@@ -9078,6 +9150,8 @@
       "view.statusBar",
       "---",
       "view.syncWindows",
+      "view.shareView",
+      "view.followView",
       "view.frameless",
       "view.alwaysOnTop"
      ]
@@ -9964,6 +10038,8 @@
       "show.start",
       "browse.favorite",
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "browse.people"
      ]
     },
@@ -10075,6 +10151,8 @@
      "name": "File",
      "items": [
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "browse.folderManager",
       "file.open",
       "file.importCamera",
@@ -10454,7 +10532,9 @@
      "items": [
       "view.minimize",
       "view.alwaysOnTop",
-      "view.syncWindows"
+      "view.syncWindows",
+      "view.shareView",
+      "view.followView"
      ]
     },
     {
@@ -10565,6 +10645,8 @@
      "name": "Browse",
      "items": [
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "meta.keywords",
       "browse.colorLabel",
       "browse.timeline",
@@ -10910,6 +10992,8 @@
       "file.sysProperties",
       "---",
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "browse.folderManager",
       "browse.newFolder",
       "adjust.revertOriginal",
@@ -11052,6 +11136,8 @@
       "view.navigator",
       "browse.map",
       "view.syncWindows",
+      "view.shareView",
+      "view.followView",
       "view.frameless",
       "---",
       "browse.browser",
@@ -11068,6 +11154,8 @@
       "view.compare",
       "browse.favorite",
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "---",
       "browse.thumbnails",
       "meta.keywords",
@@ -11443,6 +11531,8 @@
      "name": "Browse",
      "items": [
       "browse.albums",
+      "browse.shareAlbum",
+      "browse.openSharedAlbum",
       "meta.keywords",
       "browse.colorLabel",
       "browse.timeline",
@@ -12050,7 +12140,9 @@
         "browse.people",
         "browse.albums",
         "browse.smartAlbum",
-        "browse.addToAlbum"
+        "browse.addToAlbum",
+        "browse.shareAlbum",
+        "browse.openSharedAlbum"
        ]
       },
       {
@@ -12316,7 +12408,10 @@
         "view.compare",
         "view.compareSplit",
         "view.diffOverlay",
-        "view.syncWindows"
+        "view.syncWindows",
+        "view.shareView",
+        "view.followView",
+        "view.netRelay"
        ]
       },
       {

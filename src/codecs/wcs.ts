@@ -30,8 +30,8 @@ export interface Wcs {
 }
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const ZENITHAL = new Set(['TAN', 'TPV', 'SIN', 'ARC', 'STG', 'ZEA', 'AZP', 'SZP', 'ZPN', 'AIR']), CYLINDRICAL = new Set(['CAR', 'MER', 'CEA', 'CYP']), PSEUDO = new Set(['AIT', 'SFL', 'GLS', 'PAR', 'MOL', 'BON', 'PCO']), CONIC = new Set(['COP', 'COE', 'COD', 'COO']), QUADCUBE = new Set(['TSC', 'QSC']);
-export const WCS_PROJECTIONS = [...ZENITHAL, ...CYLINDRICAL, ...PSEUDO, ...CONIC, ...QUADCUBE];
+const ZENITHAL = new Set(['TAN', 'TPV', 'SIN', 'ARC', 'STG', 'ZEA', 'AZP', 'SZP', 'ZPN', 'AIR']), CYLINDRICAL = new Set(['CAR', 'MER', 'CEA', 'CYP']), PSEUDO = new Set(['AIT', 'SFL', 'GLS', 'PAR', 'MOL', 'BON', 'PCO']), CONIC = new Set(['COP', 'COE', 'COD', 'COO']), QUADCUBE = new Set(['TSC', 'QSC', 'CSC']), HEALPIX = new Set(['HPX', 'XPH']);
+export const WCS_PROJECTIONS = [...ZENITHAL, ...CYLINDRICAL, ...PSEUDO, ...CONIC, ...QUADCUBE, ...HEALPIX];
 
 /** Reads the WCS of a two-axis image from its header cards; null when there is none the reader understands. */
 export function parseWcs(cards: Map<string, string>, width: number, height: number): Wcs | null {
@@ -68,7 +68,8 @@ export function parseWcs(cards: Map<string, string>, width: number, height: numb
     w.frame = lonName === 'RA' ? 'equatorial' : lonName === 'GLON' ? 'galactic' : lonName === 'ELON' ? 'ecliptic' : lonName === 'HLON' ? 'helioecliptic' : lonName === 'SLON' ? 'supergalactic' : 'other';
     if (proj === 'TPV') { w.tpv = { x: [], y: [] }; for (let i = 0; i < 40; i++) { w.tpv.x[i] = num(`PV1_${i}`, i === 1 ? 1 : 0); w.tpv.y[i] = num(`PV2_${i}`, i === 1 ? 1 : 0); } }
     else for (let i = 0; i <= 20; i++) w.pv[i] = num(`PV2_${i}`, i === 1 && (proj === 'CEA' || proj === 'CYP') ? 1 : i === 2 && proj === 'CYP' ? 1 : i === 1 && proj === 'AIR' ? 90 : i === 3 && proj === 'SZP' ? 90 : 0);
-    w.theta0 = ZENITHAL.has(proj) ? 90 : CONIC.has(proj) ? w.pv[1] : 0;
+    w.theta0 = ZENITHAL.has(proj) || proj === 'XPH' ? 90 : CONIC.has(proj) ? w.pv[1] : 0;
+    if (proj === 'HPX') { if (!has('PV2_1')) w.pv[1] = 4; if (!has('PV2_2')) w.pv[2] = 3; }
     w.lonpole = has('LONPOLE') ? num('LONPOLE', 0) : w.crval[1] >= w.theta0 ? 0 : 180;
     if (cards.has('EQUINOX')) w.equinox = cards.get('EQUINOX')!.trim();
     if (cards.has('RADESYS')) w.radesys = cards.get('RADESYS')!.trim();
@@ -334,6 +335,39 @@ function inverseProjection(w: Wcs, ix: number, iy: number): [number, number] | n
     const d = cubeDirection(p, ix / 45, iy / 45); if (!d) return null;
     const [l, m, n] = d;
     phi = l === 0 && m === 0 ? 0 : argd(l, m); theta = clampAsin(n);
+  } else if (p === 'HPX') { // HEALPix (Calabretta & Roukema 2007): H facets around, K rows; wcslib's inverse
+    const H = pv[1] || 4, K = pv[2] || 3, mOdd = Math.round(H) % 2, nOdd = Math.round(K) % 2;
+    if (H <= 0 || K <= 0) return null;
+    const w3 = (90 * K) / H, w4 = (K + 1) / 2, w5 = (90 * (K - 1)) / H, w6 = 180 / H, w7 = H / 360;
+    let tx = -180 + (2 * Math.floor((ix + 180) * w7) + 1) * w6; tx = ix - tx; // the offset within the facet
+    const absy = Math.abs(iy);
+    if (absy <= w5) { phi = ix; theta = clampAsin(iy / w3); }
+    else if (absy <= w6 * w4) {
+      const offset = nOdd || iy > 0 ? 0 : 1, sigma = w4 - absy / w6;
+      let sl: number, t: number;
+      if (sigma === 0) { sl = 1e9; t = 90; } else { t = 1 - (sigma * sigma) / K; if (t < -1) return null; sl = 1 / sigma; t = clampAsin(t); }
+      if (iy < 0) t = -t;
+      if (offset) { const hh = Math.floor(ix / w6) + mOdd; tx += hh % 2 ? -w6 : w6; }
+      let r = sl * tx; if (Math.abs(r) >= w6 + 1e-12) return null; if (r !== 0) r -= tx;
+      phi = ix + r; theta = t;
+    } else return null;
+  } else if (p === 'XPH') { // HEALPix polar, the "butterfly": wcslib's inverse
+    const xr = ix / Math.SQRT2, yr = iy / Math.SQRT2;
+    let xi1: number, eta1: number;
+    if (xr <= 0 && yr > 0) { xi1 = -xr - yr; eta1 = xr - yr; phi = -180; }
+    else if (xr < 0 && yr <= 0) { xi1 = xr - yr; eta1 = xr + yr; phi = -90; }
+    else if (xr >= 0 && yr < 0) { xi1 = xr + yr; eta1 = -xr + yr; phi = 0; }
+    else { xi1 = -xr + yr; eta1 = -xr - yr; phi = 90; }
+    const xi = xi1 + 45, eta = eta1 + 90, abseta = Math.abs(eta);
+    if (abseta > 90) return null;
+    if (abseta <= 45) { phi += xi; theta = clampAsin(eta / 67.5); if (Math.abs(xi1) > 45 + 1e-12) return null; }
+    else {
+      const sigma = (90 - abseta) / 45;
+      if (xr === 0) phi = yr <= 0 ? 0 : 180; else if (yr === 0) phi = xr < 0 ? -90 : 90; else phi += 45 + xi1 / sigma;
+      theta = sigma < 1e-4 ? 90 - sigma * Math.sqrt(2 / 3) * R2D : clampAsin(1 - (sigma * sigma) / 3);
+      if (eta < 0) theta = -theta;
+      if (eta < -45 && eta + 90 + 1e-12 < Math.abs(xi1)) return null;
+    }
   } else return null;
   if (!Number.isFinite(phi) || !Number.isFinite(theta) || Math.abs(phi) > 180 + 1e-11 || Math.abs(theta) > 90 + 1e-11) return null; // wcslib's native bounds check
   return [phi, theta];
@@ -359,6 +393,25 @@ function cubeDirection(p: string, xf0: number, yf0: number): [number, number, nu
       case 0: return [-q * yf, q * xf, q];
       case 5: return [q * yf, q * xf, -q];
       default: return [q, q * xf, q * yf];
+    }
+  }
+  if (p === 'CSC') { // COBE's quadrilateralized spherical cube: the inverse polynomial fit (Chan & O'Neill), as wcslib evaluates it (single precision)
+    const P = [-0.27292696, -0.07629969, -0.22797056, 0.54852384, -0.62930065, 0.25795794, 0.02584375, -0.02819452, -0.01471565, 0.48051509, -1.74114454, 1.71547508, -0.53022337, 0.27058160, -0.56800938, 0.30803317, 0.98938102, -0.83180469, -0.60441560, 1.50880086, -0.93678576, 0.08693841, 0.93412077, -1.41601920, 0.33887446, -0.63915306, 0.52032238, 0.14381585].map(Math.fround);
+    const [p00, p10, p20, p30, p40, p50, p60, p01, p11, p21, p31, p41, p51, p02, p12, p22, p32, p42, p03, p13, p23, p33, p04, p14, p24, p05, p15, p06] = P;
+    const f = Math.fround, xf32 = f(xf), yf32 = f(yf), xx = f(xf32 * xf32), yy = f(yf32 * yf32);
+    const series = (a: number, b: number): number => { // the polynomial in a (the "own" square) with coefficients in b
+      const z0 = f(p00 + f(a * f(p10 + f(a * f(p20 + f(a * f(p30 + f(a * f(p40 + f(a * f(p50 + f(a * p60)))))))))))), z1 = f(p01 + f(a * f(p11 + f(a * f(p21 + f(a * f(p31 + f(a * f(p41 + f(a * p51)))))))))), z2 = f(p02 + f(a * f(p12 + f(a * f(p22 + f(a * f(p32 + f(a * p42)))))))), z3 = f(p03 + f(a * f(p13 + f(a * f(p23 + f(a * p33)))))), z4 = f(p04 + f(a * f(p14 + f(a * p24)))), z5 = f(p05 + f(a * p15)), z6 = p06;
+      return f(z0 + f(b * f(z1 + f(b * f(z2 + f(b * f(z3 + f(b * f(z4 + f(b * f(z5 + f(b * z6))))))))))));
+    };
+    const chi = f(xf32 + f(xf32 * f(f(1 - xx) * series(xx, yy)))), psi = f(yf32 + f(yf32 * f(f(1 - yy) * series(yy, xx))));
+    const t = 1 / Math.sqrt(chi * chi + psi * psi + 1);
+    switch (face) {
+      case 1: return [t, chi * t, psi * t];
+      case 2: return [-chi * t, t, psi * t];
+      case 3: return [-t, -chi * t, -psi * t];
+      case 4: return [chi * t, -t, -psi * t];
+      case 5: return [-psi * -t, -chi * -t, -t];
+      default: return [-psi * t, chi * t, t];
     }
   }
   const direct = Math.abs(xf) > Math.abs(yf);

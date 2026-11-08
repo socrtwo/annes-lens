@@ -233,6 +233,27 @@ function registerIpc() {
   handle('remoteStop', async () => { if (remote) { remote.stop(); remote = null; } return { ok: true }; });
   handle('remoteState', async (state) => { if (remote) remote.setState(state); return { ok: true }; });
   app.on('before-quit', () => { if (remote) remote.stop(); });
+  // Network sharing (shared views and albums): one server for every room, started when first needed.
+  let share = null; const shares = new Map();
+  const shareServer = async () => share || (share = await require('./netshare.cjs').startShare(0));
+  handle('shareStart', async ({ kind }) => {
+    const s = await shareServer(); const room = kind === 'album' ? s.album({}) : s.view(); shares.set(room.token, room);
+    return { token: room.token, urls: room.urls, port: s.port };
+  });
+  handle('shareState', async ({ token, state }) => { const r = shares.get(String(token)); if (r && r.setState) r.setState(state && typeof state === 'object' ? state : {}); return { ok: !!r }; });
+  handle('shareAlbum', async ({ token, name, items, contribute, contribDir }) => {
+    const r = shares.get(String(token)); if (!r || !r.update) return { ok: false, servable: 0 };
+    let dir = null; if (contribute && contribDir) { try { dir = grantedDir(contribDir); if (!writableDirs.has(path.resolve(dir))) dir = null; } catch { dir = null; } }
+    const mapped = (Array.isArray(items) ? items : []).slice(0, 5000).map((it) => {
+      let p = null; try { p = it.uri ? grantedPath(String(it.uri)) : null; } catch { p = null; }
+      const ext = path.extname(String(it.name || '')).slice(1).toLowerCase();
+      return { id: String(it.id), name: String(it.name || 'picture'), size: it.size, mtime: it.mtime, mime: MIME[ext] || 'application/octet-stream', thumb: typeof it.thumb === 'string' && it.thumb.startsWith('data:image/') ? it.thumb : null, path: p };
+    });
+    r.update({ name: String(name || ''), items: mapped, contribute: !!dir, contribDir: dir, onAdded: (f) => { grant(f.path); if (win && !win.isDestroyed()) win.webContents.send('ql:shareAdded', { token, uri: pathToFileURL(f.path).href, name: f.name, size: f.size }); } });
+    return { ok: true, servable: mapped.filter((m) => m.path).length, contribute: !!dir };
+  });
+  handle('shareStop', async ({ token }) => { const r = shares.get(String(token)); if (r) { r.stop(); shares.delete(String(token)); } if (!shares.size && share) { share.stop(); share = null; } return { ok: true }; });
+  app.on('before-quit', () => { if (share) share.stop(); });
   handle('cliJob', async () => { const j = cliJob; if (j && j.mode === 'view') cliJob = null; return j; });
   handle('listSubfolders', async ({ uri }) => ({ folders: listSubdirs(grantedDir(uri)) }));
   handle('parentFolder', async ({ uri }) => {

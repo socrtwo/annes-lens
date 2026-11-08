@@ -43,6 +43,7 @@ import './viewTools2';
 import './ocrCodes';
 import './paintCmds';
 import './compare2';
+import './netshare';
 import './specialViews';
 import './scientific';
 import './colorMgmt';

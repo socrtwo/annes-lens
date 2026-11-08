@@ -176,6 +176,56 @@ try {
   const offStatus = await fetch(rbase + 'state').then((r) => r.status, () => 'closed');
   check('desktop phone remote: page behind a token, live state, commands drive the app, off closes it', [rm.on, /Start slideshow/.test(page), /EventSource/.test(js), wrongToken, s0.name, /^data: \{/.test(firstEvent), bad, n1, s1.name, s1.index, /^data:image\/jpeg/.test(s1.thumb || ''), s2.running, s3.paused, s4.running, offStatus],
     [true, true, true, 404, 'c.png', true, 400, 204, 'd.png', 2, true, true, true, false, 'closed'], JSON.stringify({ s0: { ...s0, thumb: undefined }, s1: { ...s1, thumb: undefined }, rm }));
+  // Network sharing on the desktop: the view room from Node (page, state, conditional state), following the own share in a
+  // second window (the same file is shown from the open folder, not the rendition), an album room with files and an upload.
+  mkdirSync(join(lib, 'Uploads'), { recursive: true });
+  await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, join(lib, 'Uploads'));
+  const shv = await w.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); const r = await qn.exec('view.shareView', { quiet: true, relay: '' }); await wait(600); return { urls: r.urls, token: r.token, relayUrl: r.relayUrl, name: qn.picture.name, on: window.__qnGetCommand('view.shareView').isActive(qn) }; });
+  const sbase = shv.urls[0].replace(/^http:\/\/[^/:]+/, 'http://127.0.0.1');
+  const spage = await (await fetch(sbase)).text(), sst = await (await fetch(sbase + 'state')).json();
+  const sNotMod = (await fetch(sbase + 'state?since=' + encodeURIComponent(sst.sig))).status, sWrong = (await fetch(sbase.replace(/\/s\/[0-9a-f]+\//, '/s/' + '0'.repeat(32) + '/') + 'state')).status;
+  const folv = await w.evaluate(async (base) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const r = await qn.exec('view.followView', { url: base, quiet: true });
+    for (let i = 0; i < 80 && !(qn.folder.name === 'Shared view' && qn.picture); i++) await wait(100); await wait(200);
+    const twin = qn.tabs[0].folder.entries.find((e) => e.name === qn.picture?.name);
+    const out = { base: r?.base === base, folder: qn.folder.name, name: qn.picture?.name, tabs: qn.tabs.length, fullQuality: !!twin && qn.picture.entry === twin, on: window.__qnGetCommand('view.followView').isActive(qn) };
+    await qn.exec('view.followView'); qn.closeTab(qn.tab); await qn.exec('view.shareView'); await wait(200);
+    out.after = [qn.tabs.length, window.__qnGetCommand('view.followView').isActive(qn), window.__qnGetCommand('view.shareView').isActive(qn)];
+    return out;
+  }, sbase);
+  const sGone = await fetch(sbase + 'state').then((r) => r.status, () => 'closed'); // the last room gone, the server closes
+  const alb1 = await w.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t = qn.tab; t.marked.clear(); for (const e of qn.folder.entries) t.marked.add(e);
+    await qn.exec('browse.addToAlbum', { album: '', name: 'Desk' }); t.marked.clear(); await wait(100);
+    const r = await qn.exec('browse.shareAlbum', { album: 'Desk', contribute: true, contribDir: 'file:///placeholder', quiet: true, relay: '' });
+    return { pictures: r.pictures, contribute: r.contribute, urls: r.urls };
+  });
+  // The placeholder folder is not one the app may write to, so additions stay off; share again through the (stubbed) folder dialog.
+  const alb2 = await w.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await qn.exec('browse.shareAlbum');
+    const dir = await window.quillDesktop.pickFolder({ title: 'x' });
+    const r = await qn.exec('browse.shareAlbum', { album: 'Desk', contribute: true, contribDir: dir.uri, quiet: true, relay: '' });
+    for (let i = 0; i < 60; i++) { const st = await (await fetch(r.urls[0].replace(/^http:\/\/[^/:]+/, 'http://127.0.0.1') + 'state')).json(); if (st.items.length) break; await wait(100); }
+    return { pictures: r.pictures, contribute: r.contribute, urls: r.urls };
+  });
+  const abase = alb2.urls[0].replace(/^http:\/\/[^/:]+/, 'http://127.0.0.1');
+  const ast = await (await fetch(abase + 'state')).json(), apage = await (await fetch(abase)).text();
+  const afile = await fetch(abase + 'file/' + ast.items[0].id), abytes = Buffer.from(await afile.arrayBuffer());
+  let athumb = 404; for (let i = 0; i < 60 && athumb !== 200; i++) { athumb = (await fetch(abase + 'thumb/' + ast.items[0].id)).status; if (athumb !== 200) await new Promise((r) => setTimeout(r, 100)); }
+  const up = await fetch(abase + 'add?name=guest.png', { method: 'POST', headers: { 'content-type': 'image/png' }, body: png(7, 7, 200) });
+  const upBody = await up.json();
+  const alb3 = await w.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); const { listAlbums } = await window.__qnAlbums(); let alb; for (let i = 0; i < 60; i++) { alb = (await listAlbums()).find((a) => a.name === 'Desk'); if (alb && alb.items.length === 3) break; await wait(100); } return { items: alb?.items.map((it) => it.name).sort() }; });
+  let ast2 = await (await fetch(abase + 'state')).json(); for (let i = 0; i < 50 && ast2.items.length < 3; i++) { await new Promise((r) => setTimeout(r, 100)); ast2 = await (await fetch(abase + 'state')).json(); }
+  await w.evaluate(() => qn.exec('browse.shareAlbum'));
+  check('desktop shared view: token page and state, conditional fetch, following the own share in a second window at full quality, off closes the room',
+    [shv.on, shv.urls.length > 0, shv.relayUrl, /Anne's Lens shared view/.test(spage), sst.name, sst.kind, /^data:image\/jpeg/.test(sst.picture || ''), typeof sst.rel, sNotMod, sWrong, folv.base, folv.folder, folv.name, folv.tabs, folv.fullQuality, folv.on, folv.after, sGone],
+    [true, true, '', true, shv.name, 'view', true, 'number', 304, 404, true, 'Shared view', shv.name, 2, true, true, [1, false, false], 'closed'], JSON.stringify({ shv, sst: { ...sst, picture: undefined }, folv }));
+  check('desktop shared album: files served from the album, thumbnails made, an upload lands in the chosen folder and in the album',
+    [alb1.pictures, alb1.contribute, alb2.contribute, ast.name, ast.items.length, ast.contribute, /Anne's Lens shared album/.test(apage), afile.status, afile.headers.get('content-type'), abytes.length === readFileSync(join(lib, 'Photos/2024', ast.items[0].name)).length, athumb, up.status, upBody.name, existsSync(join(lib, 'Uploads/guest.png')), alb3.items, ast2.items.length],
+    [2, false, true, 'Desk', 2, true, true, 200, 'image/png', true, 200, 200, 'guest.png', true, ['c.png', 'd.png', 'guest.png'], 3], JSON.stringify({ alb1, alb2, ast: { ...ast, items: ast.items.map((i) => i.name) }, upBody, alb3, ast2: ast2.items.map((i) => i.name) }));
   // Map on the desktop: the sidecar's location, and the offline outline loads under the app's security policy.
   const dm = await w.evaluate(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -245,6 +245,23 @@ def atari():
             plane = b''.join(line[g * 8 + p * 2:g * 8 + p * 2 + 2] for g in range(20))
             comp += packbits(plane)
     open(out('low.pc1'), 'wb').write(struct.pack('>H', 0x8000) + st_pal(ST_PAL) + bytes(comp) + bytes(32))
+    # Color cycling: Degas Elite's footer channel 0 turns colors 1–7 to the right every 8 VBLs (delay 120); NEOchrome's
+    # animation words turn the same colors to the left every 4 VBLs. Expected: the second frame (one step) of each.
+    footer = struct.pack('>4H4H4H4H', 1, 0, 0, 0, 7, 0, 0, 0, 2, 1, 1, 1, 120, 0, 0, 0)
+    open(out('low-cycle.pc1'), 'wb').write(struct.pack('>H', 0x8000) + st_pal(ST_PAL) + bytes(comp) + footer)
+    def turned(pal, lo, hi, right, steps):
+        pal = [tuple(c) for c in pal]
+        for _ in range(steps):
+            seg = pal[lo:hi + 1]
+            seg = [seg[-1]] + seg[:-1] if right else seg[1:] + [seg[0]]
+            pal = pal[:lo] + seg + pal[hi + 1:]
+        return pal
+    png(st_rgb(turned(ST_PAL, 1, 7, True, 1))[idx], 'low-cycle-f1.png')
+    neo_c = bytearray(128); neo_c[2:4] = struct.pack('>H', 0); neo_c[4:36] = st_pal(ST_PAL); neo_c[36:48] = b'CYCLE   .NEO'
+    neo_c[48:50] = struct.pack('>H', 0x8000 | (7 << 4) | 1); neo_c[50:52] = struct.pack('>H', 0x8000 | (0xfc))  # on; speed −4: left, 4 VBLs
+    neo_c[58:62] = struct.pack('>HH', 320, 200)
+    open(out('neo-cycle.neo'), 'wb').write(bytes(neo_c) + bm)
+    png(st_rgb(turned(ST_PAL, 1, 7, False, 1))[idx], 'neo-cycle-f1.png')
     # High (640 × 400, one plane; palette word 0 bit 0 = 0 means white paper).
     mono = ((x.repeat(2, 1)[:, :640] if False else None))
     yy, xx = np.mgrid[0:400, 0:640]

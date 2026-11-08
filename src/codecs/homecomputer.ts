@@ -68,7 +68,7 @@ export function decodeAtariSt(u8: Uint8Array, name: string): DecodeResult {
   const neo = e === 'neo', res = ST_RES[(neo ? be16(u8, 2) : be16(u8, 0)) & 3];
   if (!res) throw new Error('Unknown Atari ST resolution');
   const { rgb, ste } = stPalette(u8, neo ? 4 : 2);
-  let bm: Uint8Array;
+  let bm: Uint8Array, footerAt = 34 + 32000;
   if (/^pc/.test(e)) { // per line, each plane's bytes PackBits-compressed in turn, back into interleaved words
     bm = new Uint8Array(32000);
     const lineBytes = res.w / 8, plane = new Uint8Array(lineBytes);
@@ -78,13 +78,48 @@ export function decodeAtariSt(u8: Uint8Array, name: string): DecodeResult {
       for (let g = 0; g < lineBytes / 2; g++) { const o = (y * (res.w >> 4) + g) * res.planes * 2 + pl * 2; bm[o] = plane[g * 2]; bm[o + 1] = plane[g * 2 + 1]; }
     }
     if (p > u8.length) warnings.push('The picture data is cut short');
+    footerAt = p;
   } else bm = u8.subarray(neo ? 128 : 34, (neo ? 128 : 34) + 32000);
   const mono = res.planes === 1, normal = (be16(u8, neo ? 4 : 2) & 1) === 1;
   const r = stPlanar(bm, res, rgb, mono, normal);
   const kind = neo ? 'NEOchrome' : /^pc/.test(e) ? 'Degas Elite (compressed)' : 'Degas';
   const notes = [`Atari ST ${kind} picture, ${res.label}${ste && !mono ? ', STE colors' : ''}`];
   if (neo) { const fn = new TextDecoder('latin1').decode(u8.subarray(36, 48)).trim(); if (fn && /^[\x20-\x7e]+$/.test(fn)) notes.push(`saved as ${fn}`); }
+  // Color cycling: NEOchrome's animation words, or Degas Elite's four animation channels in the 32-byte footer.
+  const cycles = mono ? [] : neo ? neoCycles(u8) : degasCycles(u8, footerAt);
+  const active = cycles.filter((c) => c.hi > c.lo && c.hi < rgb.length);
+  if (active.length) {
+    const steps = Math.max(...active.map((c) => c.hi - c.lo + 1)), delay = Math.max(16, Math.round((1000 / 60) * Math.min(...active.map((c) => c.vbl))));
+    const frames: { raster: Raster; delay: number }[] = [];
+    let pal = rgb.map((c) => c.slice());
+    for (let st = 0; st < steps; st++) {
+      frames.push({ raster: stPlanar(bm, res, pal, mono, normal), delay });
+      pal = pal.map((c) => c.slice());
+      for (const c of active) { const seg = pal.slice(c.lo, c.hi + 1); const turned = c.right ? [seg[seg.length - 1], ...seg.slice(0, -1)] : [...seg.slice(1), seg[0]]; turned.forEach((col, k) => { pal[c.lo + k] = col; }); }
+    }
+    notes.push(`color cycling: ${active.length} range${active.length > 1 ? 's' : ''} (${active.map((c) => `colors ${c.lo}–${c.hi} ${c.right ? 'right' : 'left'}, ${c.vbl} VBL`).join('; ')}), played as an animation of ${frames.length} frames`);
+    return { pages: [{ width: r.width, height: r.height, frames, loops: 0, bitDepth: res.planes, hasAlpha: false, paletteSize: 1 << res.planes, dpi: res.planes === 2 ? [90, 45] : undefined, notes }], info: {}, warnings };
+  }
   return result(r, res.planes, notes, mono ? 2 : 1 << res.planes, res.planes === 2 ? [90, 45] : undefined, warnings);
+}
+interface Cycle { lo: number; hi: number; right: boolean; vbl: number }
+/** NEOchrome: word 24 holds the limits (bit 15 = valid, bits 4–7 the upper color, bits 0–3 the lower), word 25 the speed (bit 15 = on; the low byte, signed: VBLs per step, negative = left). */
+function neoCycles(u8: Uint8Array): Cycle[] {
+  const lim = be16(u8, 48), spd = be16(u8, 50);
+  if (!(lim & 0x8000) || !(spd & 0x8000)) return [];
+  const speed = (spd & 0xff) << 24 >> 24; // signed
+  return [{ lo: lim & 15, hi: (lim >> 4) & 15, right: speed >= 0, vbl: Math.max(1, Math.abs(speed) || 1) }];
+}
+/** Degas Elite: after the bitmap, four channels: left colors, right colors, directions (0 left, 1 off, 2 right) and delays (128 − delay VBLs per step). */
+function degasCycles(u8: Uint8Array, at: number): Cycle[] {
+  if (at + 32 > u8.length) return [];
+  const out: Cycle[] = [];
+  for (let k = 0; k < 4; k++) {
+    const lo = be16(u8, at + k * 2), hi = be16(u8, at + 8 + k * 2), dir = be16(u8, at + 16 + k * 2), delay = be16(u8, at + 24 + k * 2);
+    if (dir === 1 || dir > 2 || lo > 15 || hi > 15 || hi <= lo || delay > 128) continue;
+    out.push({ lo, hi, right: dir === 2, vbl: Math.max(1, 128 - delay) });
+  }
+  return out;
 }
 /** Spectrum 512: 199 lines, each with 48 colors in three palettes; the palette a pixel uses depends on x and its index. */
 function decodeSpectrum(u8: Uint8Array): DecodeResult {

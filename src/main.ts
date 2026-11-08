@@ -39,6 +39,7 @@ app.ui.tabsChanged();
 (window as any).__qnImageOps = () => import('./commands/imageOps');
 (window as any).__qnBatch = () => Promise.all([import('./commands/batch'), import('./picture/batch')]).then(([c, p]) => ({ ...c, ...p }));
 (window as any).__qnBatchSteps = () => import('./commands/batchSteps');
+(window as any).__qnAlbums = () => import('./picture/albums');
 (window as any).__qnEffects = () => import('./picture/effects');
 (window as any).__qnSimilar = () => import('./picture/similar');
 (window as any).__qnAnim = () => Promise.all([import('./codecs/pngenc'), import('./codecs/tiffwrite'), import('./commands/pagesEdit')]).then(([a, t, pe]) => ({ ...a, ...t, ...pe }));

@@ -12,7 +12,7 @@ import { openDialog, toast } from '../ui/dialog';
 import { decodePicture, encodeCanvas } from '../codecs/registry';
 import { isZip, readZip, readZipEntry } from '../codecs/zip';
 import { carvePictures } from '../codecs/carve';
-import { exposureFusion, focusStack } from '../picture/merge';
+import { exposureFusion, focusStack, exposureFusionRefined, focusStackRefined } from '../picture/merge';
 import { stitch, type Projection } from '../picture/stitch';
 import { rasterFrame } from '../picture/edit';
 import { resample } from '../picture/ops';
@@ -61,12 +61,13 @@ def([
     id: 'create.hdr', icon: 'hdr_strong', noRecord: true, isEnabled: many, tip: 'Exposure fusion of a bracket (dark, normal, bright) into one natural-looking picture',
     run: async (app) => {
       const entries = inputsOf(app);
-      const r = await openDialog({ title: 'Exposure Merge (HDR)', ok: 'Merge', help: `${entries.length} pictures of the same scene, taken from a tripod or aligned already.`, fields: [{ key: 'contrast', label: 'Weight: contrast', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'saturation', label: 'Weight: saturation', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'exposedness', label: 'Weight: well-exposedness', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'maxSide', label: 'Longest side (px, 0 = keep)', type: 'number', min: 0, max: 8000, value: 0, half: true }] });
+      const r = await openDialog({ title: 'Exposure Merge (HDR)', ok: 'Merge', help: `${entries.length} pictures of the same scene; they are lined up first unless you say not to.`, fields: [{ key: 'align', label: 'Line the pictures up (shift, turn, scale)', type: 'checkbox', value: true, half: true }, { key: 'deghost', label: 'Take moving things from one exposure', type: 'checkbox', value: true, half: true }, { key: 'contrast', label: 'Weight: contrast', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'saturation', label: 'Weight: saturation', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'exposedness', label: 'Weight: well-exposedness', type: 'range', min: 0, max: 200, value: 100, half: true }, { key: 'maxSide', label: 'Longest side (px, 0 = keep)', type: 'number', min: 0, max: 8000, value: 0, half: true }] });
       if (!r) return;
       const items = await loadRasters(app, entries, +r.maxSide || 0); if (items.length < 2) { toast('Fewer than two pictures could be loaded.'); return; }
       toast('Fusing…', { ms: 2000 }); await new Promise((res) => setTimeout(res, 30));
-      const out = exposureFusion(sameSize(items), { contrast: +r.contrast / 100, saturation: +r.saturation / 100, exposedness: +r.exposedness / 100 });
-      await openRaster(app, out, `${base(items[0].entry.name)}-fused.png`, 'Exposure merge');
+      const fused = exposureFusionRefined(sameSize(items), { contrast: +r.contrast / 100, saturation: +r.saturation / 100, exposedness: +r.exposedness / 100, align: !!r.align, deghost: !!r.deghost });
+      await openRaster(app, fused.raster, `${base(items[0].entry.name)}-fused.png`, 'Exposure merge');
+      if (fused.moved || fused.failed) toast(`${fused.moved ? `${fused.moved} picture${fused.moved > 1 ? 's' : ''} lined up` : ''}${fused.moved && fused.failed ? '; ' : ''}${fused.failed ? `${fused.failed} could not be matched and stayed as taken` : ''}.`, { ms: 5000 });
     },
   },
   {
@@ -100,11 +101,12 @@ def([
     id: 'create.focusStack', icon: 'center_focus_strong', noRecord: true, isEnabled: many, tip: 'Merges a focus bracket (near to far) into one picture that is sharp throughout',
     run: async (app) => {
       const entries = inputsOf(app);
-      const r = await openDialog({ title: 'Focus Stack', ok: 'Stack', help: `${entries.length} pictures focused at different distances, aligned already.`, fields: [{ key: 'radius', label: 'Smoothing of the choice (px)', type: 'range', min: 1, max: 16, value: 4 }, { key: 'map', label: 'Also open the map of which picture was used where', type: 'checkbox', value: false }] });
+      const r = await openDialog({ title: 'Focus Stack', ok: 'Stack', help: `${entries.length} pictures focused at different distances; they are lined up first unless you say not to.`, fields: [{ key: 'align', label: 'Line the pictures up (shift, turn, scale)', type: 'checkbox', value: true }, { key: 'radius', label: 'Smoothing of the choice (px)', type: 'range', min: 1, max: 16, value: 4 }, { key: 'map', label: 'Also open the map of which picture was used where', type: 'checkbox', value: false }] });
       if (!r) return;
       const items = await loadRasters(app, entries); if (items.length < 2) { toast('Fewer than two pictures could be loaded.'); return; }
       toast('Stacking…', { ms: 2000 }); await new Promise((res) => setTimeout(res, 30));
-      const { raster, map } = focusStack(sameSize(items), +r.radius);
+      const { raster, map, moved, failed } = focusStackRefined(sameSize(items), { radius: +r.radius, align: !!r.align });
+      if (moved || failed) toast(`${moved ? `${moved} picture${moved > 1 ? 's' : ''} lined up` : ''}${moved && failed ? '; ' : ''}${failed ? `${failed} could not be matched and stayed as taken` : ''}.`, { ms: 5000 });
       await openRaster(app, raster, `${base(items[0].entry.name)}-stacked.png`, 'Focus stack');
       if (r.map) { const m = { width: raster.width, height: raster.height, data: new Uint8ClampedArray(raster.width * raster.height * 4) as Uint8ClampedArray<ArrayBuffer> }; for (let j = 0; j < map.length; j++) { const v = Math.round((map[j] * 255) / Math.max(1, items.length - 1)); m.data[j * 4] = v; m.data[j * 4 + 1] = 255 - v; m.data[j * 4 + 2] = 128; m.data[j * 4 + 3] = 255; } await openRaster(app, m, 'focus-map.png', 'Focus map'); }
     },

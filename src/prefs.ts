@@ -107,6 +107,8 @@ export interface Prefs {
   keywordHistory: string[];
   /** Slideshow settings (partial; defaults fill the rest). */
   slideshow: Record<string, any>;
+  /** The relay for sharing views and albums beyond the local network (docs/NETSHARE.md); empty: local network only. */
+  netRelay: string;
   /** Information Overlay template. */
   osdTemplate: string;
   /** Copy Color Under Pointer format. */
@@ -186,7 +188,7 @@ export function defaultPrefs(): Prefs {
     escExits: false, wheel: 'navigate',
     jpegQuality: 90, defaultSaveFormat: 'png', keepMetadata: true, keepOriginal: false, tgaRle: true, printScale: 1,
     print: { paper: 'a4', orientation: 'auto', margin: 10, captions: false, fit: 'page' }, externalEditors: [], mapTiles: { basemap: 'osm', template: '' }, externalTools: [], scriptPlugins: [],
-    quickFolders: [], confirmDelete: true, convolutions: [], sidecarMode: 'embed', metaTemplates: [], adjustPresets: [], batchRecipes: [], rawPreferPreview: true, dicomOverlays: true, osdTemplate: '{name}  {w} × {h}  {zoom}%\n{exifdate}  {camera}  {exposure}\n{n} / {total}', colorFormat: 'hex', slideshow: {}, keywordHistory: [], thumbSize: 160, thumbMode: 'grid',
+    quickFolders: [], confirmDelete: true, convolutions: [], sidecarMode: 'embed', metaTemplates: [], adjustPresets: [], batchRecipes: [], rawPreferPreview: true, dicomOverlays: true, osdTemplate: '{name}  {w} × {h}  {zoom}%\n{exifdate}  {camera}  {exposure}\n{n} / {total}', colorFormat: 'hex', slideshow: {}, netRelay: '', keywordHistory: [], thumbSize: 160, thumbMode: 'grid',
     ai: defaultAiPrefs(), hiddenFiles: [], scanSource: '', importRules: [], people: [], faces: { enabled: false, threshold: 0.42 }, pdf: { dpi: 150, maxPages: 100 }, importedPlaces: [], ocrLangs: ['eng'], ocrLayout: 'auto',
     sort: 'natural', sortDescending: false,
   };

@@ -6,6 +6,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync,
 import { dirname } from 'node:path';
 import { chromium } from 'playwright';
 import { startMockAi } from './mockAi.mjs';
+import { startRelay } from '../../scripts/relay.mjs';
 
 // The on-device runtimes (ONNX Runtime, Tesseract with English, zxing) and the tiny AI fixture models
 // are staged into dist/ with a runtimes.json, as the desktop build does (never committed there).
@@ -40,6 +41,7 @@ if (existsSync('dist')) {
 const AI_PORT = 4193;
 const mockAi = await startMockAi(AI_PORT, 'tests/fixtures/ai');
 
+const relay = await startRelay(0), relayUrl = `http://127.0.0.1:${relay.port}`;
 const PORT = 4192;
 let server = null;
 let url = process.env.QN_URL;
@@ -2505,10 +2507,55 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
   check('plug-ins lists the components with their versions', tools.comps, [4, true, true, true]);
   check('back up library: pictures and sidecars of the catalog, the library JSON, nothing twice', [tools.backup, tools.tree, tools.lib], [[5, 0, 0, 5, true], ["Anne's Lens backup/Library 2/Kids/b.png", "Anne's Lens backup/Library 2/Kids/b.xmp", "Anne's Lens backup/Library 2/c.png", "Anne's Lens backup/Library 2/d.png", "Anne's Lens backup/Library 2/gone.xmp", "Anne's Lens backup/annes-lens-library.json"], ['library-backup', 1, 3, true, true, 2]], JSON.stringify(tools));
 
+  // Network sharing through the relay (the web app has no server of its own): the album page hosts a view and an
+  // album; a second browser follows the view (picture, zoom and pan) and opens the album (thumbnails through a relay).
+  const pFollow = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+  await pFollow.addInitScript(() => localStorage.setItem('quilllens.prefs.v1', JSON.stringify({ firstRun: false })));
+  await pFollow.goto(url); await pFollow.waitForFunction(() => window.qn && window.__qnGetCommand, null, { timeout: 30000 }); await pFollow.waitForTimeout(300);
+  const hostA = await pa.evaluate(async (relayUrl) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await qn.exec('browse.albums', 'Seaside and hills'); for (let i = 0; i < 60 && qn.folder.name !== 'Album: Seaside and hills'; i++) await wait(50); await wait(300);
+    qn.folder.select(0); await qn.tab.show(); await wait(200);
+    const noRelay = await qn.exec('view.shareView', { quiet: true, relay: '' }); // the web app cannot share without a relay
+    const r = await qn.exec('view.shareView', { quiet: true, relay: relayUrl });
+    await wait(600);
+    return { noRelay: noRelay === undefined, relayUrl: r.relayUrl, urls: r.urls, name: qn.picture.name, on: window.__qnGetCommand('view.shareView').isActive(qn) };
+  }, relayUrl);
+  const relayState = await (await fetch(hostA.relayUrl + 'state')).json();
+  const fol = await pFollow.evaluate(async (base) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const bad = await qn.exec('view.followView', { url: base.replace(/\/s\//, '/a/'), quiet: true });
+    const r = await qn.exec('view.followView', { url: base, quiet: true });
+    for (let i = 0; i < 80 && qn.picture?.name !== 'a-landscape.png'; i++) await wait(100);
+    return { bad: bad === undefined, base: r?.base, name: qn.picture?.name, folder: qn.folder.name, tabs: qn.tabs.length, on: window.__qnGetCommand('view.followView').isActive(qn), rel: +qn.viewer.viewRel().rel.toFixed(2) };
+  }, hostA.relayUrl);
+  // The host zooms in; the follower's zoom comes along. Then the host moves on; the follower shows the next picture (at fit again).
+  const hostZ = await pa.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); await qn.exec('view.zoomIn'); await qn.exec('view.zoomIn'); await wait(100); return +qn.viewer.viewRel().rel.toFixed(2); });
+  const folZ = await pFollow.evaluate(async (want) => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); for (let i = 0; i < 80 && Math.abs(qn.viewer.viewRel().rel - want) > 0.01; i++) await wait(100); return +qn.viewer.viewRel().rel.toFixed(2); }, hostZ);
+  const hostB = await pa.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); await qn.exec('view.next'); await wait(700); return { rel: +qn.viewer.viewRel().rel.toFixed(2), name: qn.picture.name }; });
+  const fol2 = await pFollow.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); for (let i = 0; i < 80 && qn.picture?.name !== 'b-beach.png'; i++) await wait(100); await wait(300); return { name: qn.picture?.name, history: qn.folder.length, rel: +qn.viewer.viewRel().rel.toFixed(2) }; });
+  // The album: shared with thumbnails; opened as a folder in the follower; the host's stop ends both.
+  const albA = await pa.evaluate(async (relayUrl) => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); const r = await qn.exec('browse.shareAlbum', { album: 'Seaside and hills', quiet: true, relay: relayUrl }); for (let i = 0; i < 60; i++) { const st = await (await fetch(r.relayUrl + 'state')).json(); if (st.items?.length && st.items.every((it) => it.thumb)) break; await wait(100); } return r; }, relayUrl);
+  const albSt = await (await fetch(albA.relayUrl + 'state')).json();
+  const albF = await pFollow.evaluate(async (base) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const r = await qn.exec('browse.openSharedAlbum', { url: base, quiet: true });
+    for (let i = 0; i < 60 && qn.folder.name !== 'Shared album: Seaside and hills'; i++) await wait(100); for (let i = 0; i < 60 && !qn.picture; i++) await wait(100);
+    return { r, folder: qn.folder.name, n: qn.folder.length, pic: qn.picture ? [qn.picture.name, qn.picture.width > 0] : null };
+  }, albA.relayUrl);
+  await pa.evaluate(async () => { await qn.exec('view.shareView'); await qn.exec('browse.shareAlbum'); });
+  const ended = await pFollow.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); for (let i = 0; i < 60 && window.__qnGetCommand('view.followView').isActive(qn); i++) await wait(100); return window.__qnGetCommand('view.followView').isActive(qn); });
+  const gone = (await fetch(hostA.relayUrl + 'state')).ok ? (await (await fetch(hostA.relayUrl + 'state')).json()).ended : 'missing';
+  check('shared view through the relay: a second browser follows the picture, zoom and navigation; stopping ends it', [hostA.noRelay, hostA.on, hostA.urls, relayState.name, fol.bad, fol.base === hostA.relayUrl, fol.name, fol.folder, fol.tabs, fol.on, fol.rel, hostZ > 1.5, folZ === hostZ, hostB.name, fol2.name, fol2.history, fol2.rel === hostB.rel, ended, gone],
+    [true, true, [], 'a-landscape.png', true, true, 'a-landscape.png', 'Shared view', 2, true, 1, true, true, 'b-beach.png', 'b-beach.png', 2, true, false, true], JSON.stringify({ hostA, fol, hostZ, folZ, hostB, fol2 }));
+  check('shared album through the relay: listing with thumbnails, opened as a folder on the other side', [albA.pictures, albA.contribute, albSt.name, albSt.items.length, albSt.items.every((it) => /^data:image\/jpeg/.test(it.thumb)), albSt.files, albF.r, albF.folder, albF.n, albF.pic],
+    [2, false, 'Seaside and hills', 2, true, false, { name: 'Seaside and hills', pictures: 2, contribute: false }, 'Shared album: Seaside and hills', 2, ['a-landscape.png', true]], JSON.stringify({ albA, albSt: { ...albSt, items: albSt.items.map((i) => i.name) }, albF }));
+  await pFollow.close();
   await pctx.close();
 
   if (errs.length) failures.push(...errs);
 } finally {
+  relay.close();
   await browser.close();
   if (server) try { process.kill(-server.pid); } catch { /* already gone */ }
   mockAi.close();

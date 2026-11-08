@@ -1,8 +1,8 @@
 # Anne's Lens Command Reference
 
-Anne's Lens has **563 commands** built, out of the **564** in the plan ([COMMANDS-PLAN.md](COMMANDS-PLAN.md)). Every built command can be placed on the Quick Access Bar, added to a custom tab, found in the classic menus, bound to a keyboard shortcut, recorded in a macro, or found with command search (Alt+Q). A command is registered only when it works; the rest of the plan is listed at the end of this file.
+Anne's Lens has **568 commands** built, out of the **569** in the plan ([COMMANDS-PLAN.md](COMMANDS-PLAN.md)). Every built command can be placed on the Quick Access Bar, added to a custom tab, found in the classic menus, bound to a keyboard shortcut, recorded in a macro, or found with command search (Alt+Q). A command is registered only when it works; the rest of the plan is listed at the end of this file.
 
-25 of the built commands are "Commands Not in the Tabs" (reachable through the Quick Access Bar chooser, Customize Tabs, the classic menus and command search), so nothing the app can do is hidden.
+26 of the built commands are "Commands Not in the Tabs" (reachable through the Quick Access Bar chooser, Customize Tabs, the classic menus and command search), so nothing the app can do is hidden.
 
 This file is generated from the source by `npm run catalog`; a unit test fails when it is out of date.
 
@@ -16,13 +16,13 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 - **Image**: Information (4) · Scientific pictures (4) · Rotate and flip (12) · Lossless JPEG (3) · Size (6) · Color depth and palette (12) · Color management (3)
 - **Adjust**: Automatic (6) · Tone (14) · Color (11) · Detail and retouch (9) · Presets and history (7)
 - **Effects**: Browse (3) · Artistic (13) · Photographic (11) · Distort (14) · Frames and shadows (5)
-- **Browse**: Views (18) · Rate and label (8) · Find and compare (8) · Catalog (5)
+- **Browse**: Views (20) · Rate and label (8) · Find and compare (8) · Catalog (5)
 - **Metadata**: View and edit (12) · Date and place (5) · Privacy and integrity (5) · Records and genealogy (4)
 - **Batch**: Batch (13)
 - **Create**: Create (17)
 - **Pages and Frames** (contextual): Pages (7) · Frames (8)
 - **RAW** (contextual): RAW (4)
-- **View**: Zoom (12) · Navigate (9) · Window (16) · Inspect (12) · Display (11) · Compare (4) · Media (4) · Quick Access Bar and search (5)
+- **View**: Zoom (12) · Navigate (9) · Window (16) · Inspect (12) · Display (11) · Compare (6) · Media (4) · Quick Access Bar and search (5)
 - **Slideshow**: Slideshow (13)
 - **Tools**: Text and codes (4) · Documents and print (4) · Color and vector (2) · Organize (2) · Extend (2)
 - **AI**: Generate (10) · Edit (20) · Select (3) · Understand (12) · Provenance (2) · Providers (9)
@@ -35,15 +35,15 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 |---|---|---|
 | IrfanView style (`irfanview`) | IrfanView 4.x main window (File, Edit, Image, Options, View, Help) | 207 |
 | IrfanView Thumbnails style (`irfanview-thumbs`) | IrfanView 4.x thumbnail window | 89 |
-| XnView style (`xnview`) | XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help) | 208 |
+| XnView style (`xnview`) | XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help) | 210 |
 | FastStone style (`faststone`) | FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help) | 167 |
 | ACDSee style (`acdsee`) | ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help) | 144 |
-| Windows Photo Viewer style (`photoviewer`) | Windows Photo Viewer and Microsoft Photos (toolbar commands as menus) | 95 |
-| Picasa style (`picasa`) | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help) | 138 |
-| Preview style (`preview`) | macOS Preview (File, Edit, View, Go, Tools, Window, Help) | 122 |
-| digiKam style (`digikam`) | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help) | 145 |
-| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | 373 |
-| Anne's Lens complete (`complete`) | the ribbon itself: one menu per tab, one submenu per group, every command | 563 |
+| Windows Photo Viewer style (`photoviewer`) | Windows Photo Viewer and Microsoft Photos (toolbar commands as menus) | 97 |
+| Picasa style (`picasa`) | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help) | 140 |
+| Preview style (`preview`) | macOS Preview (File, Edit, View, Go, Tools, Window, Help) | 124 |
+| digiKam style (`digikam`) | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help) | 147 |
+| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | 377 |
+| Anne's Lens complete (`complete`) | the ribbon itself: one menu per tab, one submenu per group, every command | 568 |
 
 ## File (82 of 82)
 
@@ -345,7 +345,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Round Corners | Frames and shadows |  | `fx.roundCorners` | from FastStone Image Viewer |
 | Vignette Frame | Frames and shadows |  | `fx.vignetteFrame` | from FastStone Image Viewer |
 
-## Browse (40 of 40)
+## Browse (42 of 42)
 
 | Command | Group | Shortcut | ID | Notes |
 |---|---|---|---|---|
@@ -359,7 +359,9 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Include Subfolders | Views |  | `browse.recursive` | from IrfanView, XnView Classic and XnView MP |
 | Map | Views |  | `browse.map` | from Picasa, digiKam, XnView Classic and XnView MP, Apple Photos and iPhoto |
 | Open Archive as Folder | Views |  | `browse.openArchive` | from Honeyview, XnView Classic and XnView MP |
+| Open Shared Album… | Views |  | `browse.openSharedAlbum` | from Google Photos, Apple Photos and iPhoto, new in Anne's Lens |
 | People | Views | Ctrl+F6 | `browse.people` | from Picasa, digiKam, Apple Photos and iPhoto, Google Photos, ACDSee, Windows Live Photo Gallery |
+| Share Album… | Views |  | `browse.shareAlbum` | from Google Photos, Apple Photos and iPhoto, new in Anne's Lens |
 | Show All Files | Views |  | `browse.showAllFiles` | from XnView Classic and XnView MP |
 | Smart Albums | Views |  | `browse.smartAlbum` | from Apple Photos and iPhoto, digiKam, Lightroom Classic (Library and Develop) |
 | Sort By | Views |  | `browse.sort` | has options menu; from IrfanView, XnView Classic and XnView MP |
@@ -490,7 +492,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Show Embedded Preview | RAW |  | `raw.preview` | from IrfanView, XnView Classic and XnView MP, FastStone Image Viewer |
 | Use Embedded Preview by Default | RAW |  | `raw.preferPreview` | from IrfanView, FastStone Image Viewer |
 
-## View (74 of 74)
+## View (77 of 77)
 
 | Command | Group | Shortcut | ID | Notes |
 |---|---|---|---|---|
@@ -557,6 +559,9 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Before/After Slider | Compare |  | `view.compareSplit` | has options menu; from new in Anne's Lens |
 | Compare Pictures | Compare | Ctrl+Alt+y | `view.compare` | from FastStone Image Viewer, XnView Classic and XnView MP, nomacs, digiKam |
 | Difference Overlay | Compare |  | `view.diffOverlay` | from new in Anne's Lens |
+| Follow a Shared View… | Compare |  | `view.followView` | from nomacs, new in Anne's Lens |
+| Network Relay… | Compare |  | `view.netRelay` | not in tabs; from the Anne's Office suite, new in Anne's Lens |
+| Share View on the Network | Compare |  | `view.shareView` | from nomacs, new in Anne's Lens |
 | Synchronize Windows | Compare |  | `view.syncWindows` | from nomacs |
 | Media Player | Media |  | `view.media` | from IrfanView, XnView Classic and XnView MP, new in Anne's Lens |
 | Motion Photo | Media |  | `view.motionPhoto` | from Apple Photos and iPhoto, Google Photos |

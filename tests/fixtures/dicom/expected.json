@@ -188,6 +188,17 @@
   "what": "uncompressed YBR_FULL_422",
   "width": 100
  },
+ "bsps.dcm": {
+  "comment": "blending: the PET blob through the WINTER palette at opacity 0.6 over the CT windowed 100/600",
+  "frames": 1,
+  "height": 32,
+  "pi": "MONOCHROME2",
+  "references": "ct-window.dcm",
+  "superimposed": "pet-blob.dcm",
+  "ts": "1.2.840.10008.1.2.1",
+  "what": "presentation state: blending: the PET blob through the WINTER palette at opacity 0.6 over the CT windowed 100/600",
+  "width": 48
+ },
  "ct-window.dcm": {
   "comment": "12 bits stored, rescale and a window; two window pairs",
   "frames": 1,
@@ -393,6 +404,15 @@
   "references": "ct-window.dcm",
   "ts": "1.2.840.10008.1.2.1",
   "what": "presentation state: pseudo-color: window 100/600 through the segmented WINTER palette",
+  "width": 48
+ },
+ "pet-blob.dcm": {
+  "comment": "a blob for the blending presentation state",
+  "frames": 1,
+  "height": 32,
+  "pi": "MONOCHROME2",
+  "ts": "1.2.840.10008.1.2.1",
+  "what": "a blob for the blending presentation state",
   "width": 48
  },
  "raw-noheader.dcm": {

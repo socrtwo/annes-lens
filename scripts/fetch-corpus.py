@@ -59,9 +59,17 @@ def pixls_candidates(max_mb):
         try: size = float(size)
         except (TypeError, ValueError): continue
         if ext not in RAW_FORMATS or size > max_mb: continue
+        # Camera files in their ordinary mode: Canon's sRAW/mRAW and Nikon's film scanners test other paths (kept under a second name below).
+        odd = re.search(r'sRAW|mRAW', mode or '') or re.search(r'COOLSCAN|LS-', model or '') or (ext == 'CR2' and 'PowerShot' in (model or ''))  # CHDK's PowerShot files are DNGs by another name
+        key = ext + ('-odd' if odd else '')
+        if ext == 'NEF' and not odd and 'compressed' in (mode or '').lower() and 'uncompressed' not in (mode or '').lower(): key = 'NEF-compressed'  # the smallest "compressed" one (a small-size YCbCr NEF, as it happens)
+        if ext == 'NEF' and not odd and re.search(r'lossy|lossless', mode or '', re.I): key = 'NEF-huffman'  # the Huffman-coded kind (Nikon's lossy type 1 or lossless)
+        if key not in best or size < best[key]['mb']:
+            best[key] = {'mb': size, 'make': make, 'model': model, 'mode': mode, 'url': url, 'sha256': sha.group(1), 'ext': ext}
+        continue
         if ext not in best or size < best[ext]['mb']:
             best[ext] = {'mb': size, 'make': make, 'model': model, 'mode': mode, 'url': url, 'sha256': sha.group(1), 'ext': ext}
-    return [best[k] for k in RAW_FORMATS if k in best]
+    return [best[k] for k in sorted(best) if k.split('-')[0] in RAW_FORMATS]
 
 
 def damage(src, dest_dir, name):
@@ -78,8 +86,34 @@ def damage(src, dest_dir, name):
     return out
 
 
+def write_refs():
+    """LibRaw's reading of each RAW sample (rawpy): the visible sensor values as 16-bit little-endian, and sizes, black and
+    white levels, the CFA pattern and the camera white balance in refs.json, for tests/unit/corpus.test.ts."""
+    import numpy as np, rawpy
+    mpath = os.path.join(OUT, 'manifest.json'); manifest = json.load(open(mpath)); refs = {}
+    os.makedirs(os.path.join(OUT, 'ref'), exist_ok=True)
+    for f in manifest['files']:
+        if f['format'] != 'raw': continue
+        p = os.path.join(OUT, f['name'])
+        try:
+            with rawpy.imread(p) as r:
+                vis = np.asarray(r.raw_image_visible)
+                if vis.ndim != 2: refs[f['name']] = {'skipped': 'not a mosaic (%s)' % str(r.raw_type)}; continue
+                name = os.path.basename(f['name']) + '.bin'
+                vis.astype('<u2').tofile(os.path.join(OUT, 'ref', name))
+                s = r.sizes
+                refs[f['name']] = {'bin': 'ref/' + name, 'width': int(vis.shape[1]), 'height': int(vis.shape[0]), 'rawWidth': int(s.raw_width), 'rawHeight': int(s.raw_height), 'left': int(s.left_margin), 'top': int(s.top_margin),
+                                   'black': [int(x) for x in r.black_level_per_channel], 'white': int(r.white_level), 'pattern': r.raw_pattern.tolist() if r.raw_pattern is not None else None,
+                                   'colors': str(r.color_desc, 'ascii'), 'wb': [float(x) for x in r.camera_whitebalance], 'flip': int(s.flip)}
+        except Exception as e: refs[f['name']] = {'skipped': str(e)}
+        print('ref', f['name'], refs[f['name']].get('skipped', 'ok'))
+    json.dump(refs, open(os.path.join(OUT, 'refs.json'), 'w'), indent=1)
+
+
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--max-mb', type=float, default=45.0); ap.add_argument('--only', choices=['raw', 'fits']); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument('--max-mb', type=float, default=45.0); ap.add_argument('--only', choices=['raw', 'fits']); ap.add_argument('--refs', action='store_true', help='also write LibRaw reference readings of the RAW samples (needs rawpy)'); a = ap.parse_args()
+    if a.refs and a.only is None and os.path.exists(os.path.join(OUT, 'manifest.json')) and not any(x in sys.argv for x in ('--max-mb',)):
+        pass
     os.makedirs(os.path.join(OUT, 'raw'), exist_ok=True); os.makedirs(os.path.join(OUT, 'fits'), exist_ok=True); os.makedirs(os.path.join(OUT, 'damaged'), exist_ok=True)
     mpath = os.path.join(OUT, 'manifest.json')
     manifest = json.load(open(mpath)) if os.path.exists(mpath) else {'files': [], 'damaged': []}
@@ -108,6 +142,7 @@ def main():
     json.dump(manifest, open(mpath, 'w'), indent=1)
     total = sum(f['bytes'] for f in manifest['files'])
     print(f"{len(manifest['files'])} files ({total / 1e6:.1f} MB), {len(manifest['damaged'])} damaged copies; manifest at {os.path.relpath(mpath, ROOT)}")
+    if a.refs: write_refs()
 
 
 if __name__ == '__main__':

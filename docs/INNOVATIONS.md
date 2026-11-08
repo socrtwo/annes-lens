@@ -220,7 +220,7 @@ These were not found in the viewers surveyed (some exist in other kinds of softw
 |---|---|---|
 | Slideshows saved as .exe or screensaver | IrfanView, FastStone | Runnable files made from pictures are a malware vector and do not exist on phones; HTML and video exports replace them |
 | Burn to CD/DVD | Windows Photo Viewer, Picasa | Rarely available hardware; Back Up Library covers the need |
-| Network-synchronized viewers | nomacs | Synchronize Windows works on one device first; network sync may follow with the suite's relay (M8) |
+| Network-synchronized viewers | nomacs | Synchronize Windows on one device; Share View on the Network and Follow a Shared View across devices (the desktop's local server behind a token, or the self-hosted relay); Share Album and Open Shared Album the same way (docs/NETSHARE.md) |
 | Uploading to specific photo-sharing sites | Picasa, digiKam, many | Sites and their APIs change too often; the system share sheet reaches every installed app |
 | Pixel-based "AI detector" | various web tools | Unreliable; Anne's Lens reports a file's own provenance instead (AI-PLAN.md) |
 | Reading Photoshop layers for editing | XnView (composite only), others | Layered .psd is shown as its composite; Anne's Lens is not a layer editor |

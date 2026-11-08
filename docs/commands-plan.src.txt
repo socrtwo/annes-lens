@@ -377,6 +377,8 @@ People | browse.people | Ctrl+F6 | PIC,DK,APH,GP,ACD,WLPG | on-device face detec
 Albums | browse.albums | | PIC,DK,GT,GQ |
 Smart Albums | browse.smartAlbum | | APH,DK,LR | saved searches that update themselves
 Add to Album… | browse.addToAlbum | Ctrl+Shift+K | PIC,DK |
+Share Album… | browse.shareAlbum | | GP,APH,NEW | toggle: guests see the album's pictures, download them and may add some (desktop server on this network; thumbnails through the relay)
+Open Shared Album… | browse.openSharedAlbum | | GP,APH,NEW | an album another Anne's Lens shares, as a folder here
 
 ## Rate and label
 Rating | browse.rate | Ctrl+0…Ctrl+5 | XN,LR,ACD | argument: 0–5 stars; stored in XMP
@@ -585,6 +587,9 @@ Compare Pictures | view.compare | Ctrl+Alt+Y | FS,XN,NM,DK | two to four panes, 
 Before/After Slider | view.compareSplit | | NEW | one divider over two pictures or two versions
 Difference Overlay | view.diffOverlay | | NEW | highlights changed pixels; threshold
 Synchronize Windows | view.syncWindows | | NM | several windows follow the same zoom, pan and navigation
+Share View on the Network | view.shareView | | NM,NEW | toggle: other devices follow this window's picture, zoom and pan live (desktop server on this network, or the relay)
+Follow a Shared View… | view.followView | | NM,NEW | toggle: a window here follows a view shared from another Anne's Lens
+Network Relay… | view.netRelay | | SUITE,NEW | the self-hosted relay (scripts/relay.mjs) for sharing beyond the local network; not in tabs
 
 ## Media
 Media Player | view.media | | IV,XN,NEW | toggle: plays a video or audio file met while browsing (opens by itself when one is shown; the first frame or the cover art is the picture)

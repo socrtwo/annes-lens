@@ -40,6 +40,7 @@ def write(name, extra, compressed=False, note=''):
         if w.has_celestial:
             a = w.pixel_to_world(PIXELS[0][0], PIXELS[0][1]); b = w.pixel_to_world(PIXELS[1][0], PIXELS[1][1])
             sep = float(a.separation(b).deg)
+            if sep != sep: sep = None  # a pixel outside the projection
     except Exception:
         pass
     manifest[name] = {'note': note, 'pixels': PIXELS, 'world': [[None if np.isnan(v) else float(v) for v in row] for row in world], 'separation01': sep, 'celestial': bool(w.has_celestial)}
@@ -87,6 +88,12 @@ for code, note in [('COP', 'conic perspective'), ('COE', 'conic equal area'), ('
     proj(code, {'PV2_1': 45.0, 'PV2_2': 25.0, 'CRVAL2': 45.0, 'CDELT1': -0.1, 'CDELT2': 0.1}, note=f'{note}, θa 45, η 25')
 proj('TSC', {'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 60.5, 'CRPIX2': 40.5}, note='tangential spherical cube')
 proj('QSC', {'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 60.5, 'CRPIX2': 40.5}, note='quadrilateralized spherical cube')
+proj('CSC', {'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 60.5, 'CRPIX2': 40.5}, note='COBE quadrilateralized spherical cube')
+proj('HPX', {'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 20.5, 'CRPIX2': 15.5}, note='HEALPix (H 4, K 3), equatorial part')
+write('wcs-hpx-polar.fits', {**zen, 'CTYPE1': 'RA---HPX', 'CTYPE2': 'DEC--HPX', 'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 20.5, 'CRPIX2': -50.5}, note='HEALPix, a polar facet')
+write('wcs-hpx-south.fits', {**zen, 'CTYPE1': 'RA---HPX', 'CTYPE2': 'DEC--HPX', 'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': -40.5, 'CRPIX2': 110.5}, note='HEALPix, a southern polar facet off center')
+proj('XPH', {'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 20.5, 'CRPIX2': 15.5}, note='HEALPix polar (butterfly)')
+write('wcs-xph-wing.fits', {**zen, 'CTYPE1': 'RA---XPH', 'CTYPE2': 'DEC--XPH', 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 80.5, 'CRPIX2': -60.5}, note='butterfly, out on a wing')
 for code in ('TSC', 'QSC'):
     cube = {**zen, 'CTYPE1': f'RA---{code}', 'CTYPE2': f'DEC--{code}', 'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0}
     write(f'wcs-{code.lower()}-north.fits', {**cube, 'CRPIX1': 20.5, 'CRPIX2': -50.5}, note=f'{code} on the north polar face')

@@ -13,7 +13,7 @@ import type { Page, Frame } from '../picture/model';
 import { Folder, entryFromBytes } from '../picture/folder';
 import { decodePicture, encodeCanvas } from '../codecs/registry';
 import { findEmbeddedJpegs } from '../codecs/rawpreview';
-import { isDng } from '../raw/dng';
+import { rawSupport } from '../raw/families';
 import type { DevelopOptions } from '../raw/develop';
 import { editRaster } from '../picture/edit';
 import { writeZip } from '../picture/batch';
@@ -145,11 +145,11 @@ def([
     run: async (app) => { const pic = app.picture!; const previews = findEmbeddedJpegs(pic.bytes); if (!previews.length) { toast('No embedded JPEG preview in this file.'); return; } const pv = previews.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a)); const bytes = pic.bytes.slice(pv.offset, pv.offset + pv.length); const saved = await saveAs(new Blob([bytes as BlobPart], { type: 'image/jpeg' }), `${base(pic.name)}.jpg`); if (saved) toast(`Saved ${saved.name} (${pv.width}×${pv.height}, ${fmtSize(bytes.length)})`); },
   },
   {
-    id: 'raw.develop', icon: 'tune', noRecord: true, isEnabled: (app) => isRaw(app) && isDng(app.picture!.bytes), tip: 'Develops a DNG file\'s sensor data: white balance, exposure, highlights, demosaic quality and output color space (other RAW families need the RAW module)',
+    id: 'raw.develop', icon: 'tune', noRecord: true, isEnabled: (app) => isRaw(app) && rawSupport(app.picture!.bytes, app.picture!.name).ok, tip: 'Develops a RAW file\'s sensor data (DNG and the other families the reader knows): white balance, exposure, highlights, demosaic quality and output color space (other RAW families need the RAW module)',
     run: async (app, arg?: DevelopOptions) => {
       const pic = app.picture!;
-      const { develop, neutralToTemp } = await import('../raw/develop'), { readDng } = await import('../raw/dng');
-      let raw; try { raw = readDng(pic.bytes); } catch (e) { toast(`Develop RAW: ${(e as Error).message}.`, { ms: 5000 }); return; }
+      const { develop, neutralToTemp } = await import('../raw/develop'), { readRaw } = await import('../raw/families');
+      let raw; try { raw = readRaw(pic.bytes, pic.name); } catch (e) { toast(`Develop RAW: ${(e as Error).message}.`, { ms: 5000 }); return; }
       let o: DevelopOptions = arg || lastDevelop;
       if (!arg) {
         const shot = raw.asShotNeutral ? neutralToTemp(raw, raw.asShotNeutral) : null;
@@ -191,6 +191,6 @@ def([
       return { width: d.raster.width, height: d.raster.height, temp: d.temp, tint: d.tint, multipliers: d.multipliers };
     },
   },
-  { id: 'raw.preferPreview', icon: 'bolt', kind: 'toggle', noRecord: true, isActive: (app) => app.prefs.rawPreferPreview, tip: 'RAW files open as their embedded preview (fast culling); off: DNG files are developed when opened (other RAW families still show their preview)', run: (app) => { app.prefs.rawPreferPreview = !app.prefs.rawPreferPreview; app.savePrefs(); toast(app.prefs.rawPreferPreview ? 'RAW files open as the embedded preview.' : 'DNG files are developed when opened; other RAW files show their embedded preview.'); } },
+  { id: 'raw.preferPreview', icon: 'bolt', kind: 'toggle', noRecord: true, isActive: (app) => app.prefs.rawPreferPreview, tip: 'RAW files open as their embedded preview (fast culling); off: files the RAW reader knows are developed when opened (others still show their preview)', run: (app) => { app.prefs.rawPreferPreview = !app.prefs.rawPreferPreview; app.savePrefs(); toast(app.prefs.rawPreferPreview ? 'RAW files open as the embedded preview.' : 'DNG files are developed when opened; other RAW files show their embedded preview.'); } },
 ]);
 function h2(f: Frame): string { return `<img src="${thumbOf(f, 240).toDataURL()}" style="max-height:30vh"> <div class="ql-help">${f.width} × ${f.height}, ${f.delay} ms</div>`; }

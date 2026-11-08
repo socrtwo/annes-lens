@@ -8,12 +8,12 @@ const call = (name) => (opts) => ipcRenderer.invoke('ql:' + name, opts);
 const methods = ['openDocument', 'openFolder', 'listFolder', 'saveAs', 'writeUri', 'readUri', 'print', 'share', 'getLaunchFile', 'keepAwake', 'readClipboard', 'writeClipboard', 'openExternal', 'revealInFolder', 'openWith', 'setAlwaysOnTop', 'minimize', 'fitWindow', 'getArgs', 'getPortableMode', 'setPortableMode', 'relaunch',
   'renameDocument', 'deleteDocument', 'pickFolder', 'moveFile', 'copyFile', 'createInFolder', 'setFileTime', 'fetchUrl', 'pickProgram', 'openWithProgram', 'request',
   'setWallpaper', 'showProperties', 'copyFileToClipboard', 'setAssociations', 'listScanners', 'scan', 'createSubfolder',
-  'listSubfolders', 'parentFolder', 'rememberFolder', 'secretInfo', 'secretGet', 'secretSet', 'secretDelete', 'remoteStart', 'remoteStop', 'remoteState', 'listDisplays', 'moveToDisplay', 'setFrameless', 'windowControl', 'cliJob', 'cliWrite', 'cliDone'];
+  'listSubfolders', 'parentFolder', 'rememberFolder', 'secretInfo', 'secretGet', 'secretSet', 'secretDelete', 'remoteStart', 'remoteStop', 'remoteState', 'shareStart', 'shareState', 'shareAlbum', 'shareStop', 'listDisplays', 'moveToDisplay', 'setFrameless', 'windowControl', 'cliJob', 'cliWrite', 'cliDone'];
 
 const api = { platform: process.platform };
 for (const m of methods) api[m] = call(m);
 api.addListener = (event, cb) => {
-  if (event !== 'fileOpened' && event !== 'remoteCommand') return Promise.reject(new Error('Unknown event'));
+  if (event !== 'fileOpened' && event !== 'remoteCommand' && event !== 'shareAdded') return Promise.reject(new Error('Unknown event'));
   const listener = (_e, data) => cb(data);
   ipcRenderer.on('ql:' + event, listener);
   if (event === 'fileOpened') ipcRenderer.send('ql:fileListenerReady');

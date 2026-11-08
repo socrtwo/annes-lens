@@ -21,7 +21,7 @@ let openjpeg: any;
 const DIR = 'tests/fixtures/dicom/';
 const fx = (n: string) => new Uint8Array(readFileSync(DIR + n));
 const ref = (n: string) => decodePngTolerant(fx(n)).pages[0].frames[0].raster;
-const expected: Record<string, { frames: number; width: number; height: number; pi: string; ts: string | null; what: string; unsupported?: string; references?: string; annotations?: boolean }> = JSON.parse(readFileSync(DIR + 'expected.json', 'utf8'));
+const expected: Record<string, { frames: number; width: number; height: number; pi: string; ts: string | null; what: string; unsupported?: string; references?: string; superimposed?: string; annotations?: boolean }> = JSON.parse(readFileSync(DIR + 'expected.json', 'utf8'));
 
 /** Mean and greatest absolute difference over the RGB channels. */
 function diff(a: { width: number; height: number; data: Uint8ClampedArray }, b: { width: number; height: number; data: Uint8ClampedArray }): { mean: number; max: number } {
@@ -48,7 +48,12 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
   for (const [name, e] of Object.entries(expected)) {
     if (e.unsupported) continue;
     it(`${name}: ${e.what}`, async () => {
-      const d = e.references ? await decodeDicom(fx(e.references), pdfjs, { presentation: readPresentationState(fx(name), name) }) : await decodeDicom(fx(name), pdfjs);
+      let d;
+      if (e.references) {
+        const ps = readPresentationState(fx(name), name);
+        const superimposed = e.superimposed ? (await decodeDicom(fx(e.superimposed), pdfjs, { window: ps.blend?.window })).pages[0].frames[0].raster : undefined; // a blending state's second picture
+        d = await decodeDicom(fx(e.references), pdfjs, { presentation: ps, superimposed });
+      } else d = await decodeDicom(fx(name), pdfjs);
       if (e.annotations) { expect(d.pages.length).toBe(e.frames); expect([d.pages[0].width, d.pages[0].height]).toEqual([e.width, e.height]); return; } // checked pixel by pixel below
       expect(d.pages.length).toBe(e.frames);
       expect([d.pages[0].width, d.pages[0].height]).toEqual([e.width, e.height]);
@@ -115,6 +120,15 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
     expect(isPresentationState(fx('pcsps.dcm'))).toBe(true);
     expect([pc.palette?.n, pc.palette?.first, pc.window]).toEqual([256, 0, { wc: 100, ww: 600, fn: 'LINEAR' }]);
     const pcd = await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: pc });
+    const bs = readPresentationState(fx('bsps.dcm'), 'bsps.dcm'); // blending: a second picture through its palette over the first
+    expect(isPresentationState(fx('bsps.dcm'))).toBe(true);
+    expect(bs.window).toEqual({ wc: 100, ww: 600, fn: 'LINEAR' }); expect(bs.references.length).toBe(1);
+    expect(bs.blend!.opacity).toBeCloseTo(0.6, 5); expect(bs.blend!.window).toEqual({ wc: 1200, ww: 2400, fn: 'LINEAR' }); expect(bs.blend!.references.length).toBe(1); expect(bs.blend!.palette!.n).toBe(256);
+    const pet = (await decodeDicom(fx('pet-blob.dcm'), pdfjs, { window: bs.blend!.window })).pages[0].frames[0].raster;
+    const bd = await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: bs, superimposed: pet });
+    expect(bd.pages[0].notes).toContain('presentation state FIXTURE (blending: the PET blob through the WINTER palette at opacity 0.6 over the CT windowed 100/600) applied: window center 100, width 600, the superimposed picture through its palette (256 entries) at opacity 0.60');
+    const alone = await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: bs }); // without the second picture: a warning, the CT alone
+    expect(alone.warnings.some((w) => /superimposed picture .* is not in this folder/.test(w))).toBe(true);
     expect(pcd.pages[0].notes).toContain('presentation state FIXTURE (pseudo-color: window 100/600 through the segmented WINTER palette) applied: window center 100, width 600, pseudo-color palette (256 entries)');
     expect(d.pages[0].notes[0]).toBe('window center 40, width 400, after the rescale');
     expect(d.warnings).toEqual([]);

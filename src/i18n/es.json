@@ -568,7 +568,12 @@
   "help.reportIssue": "Informar de un problema",
   "help.sendSample": "Enviar un archivo de muestra…",
   "help.checkUpdates": "Buscar actualizaciones",
-  "help.about": "Acerca de Anne's Lens"
+  "help.about": "Acerca de Anne's Lens",
+  "view.shareView": "Compartir vista en la red",
+  "view.followView": "Seguir una vista compartida…",
+  "view.netRelay": "Relé de red…",
+  "browse.shareAlbum": "Compartir álbum…",
+  "browse.openSharedAlbum": "Abrir álbum compartido…"
  },
  "tabs": {
   "Home": "Inicio",

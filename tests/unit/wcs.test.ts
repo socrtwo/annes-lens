@@ -20,11 +20,11 @@ describe('FITS world coordinates (files written with astropy; wcslib\'s position
         expect(got, `pixel ${i}`).toBeTruthy();
         if (n === 'wcs-linear.fits') { expect(got![0]).toBeCloseTo(500 + 0.25 * px, 9); expect(got![1]).toBeCloseTo(2 * py, 9); return; }
         const exp = (n === 'wcs-swapped.fits' ? [c.world[i][1], c.world[i][0]] : c.world[i]) as [number, number];
-        expect(angularSeparation(got!, exp) * 3600, `pixel ${i}`).toBeLessThan(1e-5); // 10 µas
+        expect(angularSeparation(got!, exp) * 3600, `pixel ${i}`).toBeLessThan(w.proj === 'CSC' ? 0.02 : 1e-5); // 10 µas; CSC's inverse is a single-precision polynomial fit in wcslib too, and rounding paths differ by milliarcseconds
       });
       if (c.separation01 !== null) {
         const a = pixelToWorld(w, c.pixels[0][0] + 0.5, H - c.pixels[0][1] - 0.5)!, b = pixelToWorld(w, c.pixels[1][0] + 0.5, H - c.pixels[1][1] - 0.5)!;
-        expect(angularSeparation(a, b)).toBeCloseTo(c.separation01, 8);
+        expect(angularSeparation(a, b)).toBeCloseTo(c.separation01, w.proj === 'CSC' ? 5 : 8);
       }
     });
   }
@@ -66,7 +66,6 @@ describe('FITS world coordinates (files written with astropy; wcslib\'s position
   });
   it('ignores headers without a usable system', () => {
     expect(parseWcs(new Map(), 10, 10)).toBeNull();
-    expect(parseWcs(new Map([['CTYPE1', 'RA---CSC'], ['CTYPE2', 'DEC--CSC'], ['CRVAL1', '1'], ['CD1_1', '0.1']]), 10, 10)).toBeNull(); // COBE's cube needs its fitted coefficient tables
-    expect(parseWcs(new Map([['CTYPE1', 'RA---HPX'], ['CTYPE2', 'DEC--HPX'], ['CRVAL1', '1'], ['CD1_1', '0.1']]), 10, 10)).toBeNull();
+    expect(parseWcs(new Map([['CTYPE1', 'RA---XYZ'], ['CTYPE2', 'DEC--XYZ'], ['CRVAL1', '1'], ['CD1_1', '0.1']]), 10, 10)).toBeNull(); // an unknown projection code
   });
 });

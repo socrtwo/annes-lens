@@ -49,6 +49,12 @@ describe('Atari ST (references: netpbm)', () => {
   it('Degas low resolution, plain and Elite-compressed', () => {
     expect(diff(first(decodeAtariSt(fx('low.pi1'), 'low.pi1')), ref('low.png'))).toBe(0);
     expect(diff(first(decodeAtariSt(fx('low.pc1'), 'low.pc1')), ref('low.png'))).toBe(0);
+    const cyc = decodeAtariSt(fx('low-cycle.pc1'), 'low-cycle.pc1'), fr = cyc.pages[0].frames; // Degas Elite footer: colors 1–7 to the right, 8 VBLs
+    expect(fr.length).toBe(7); expect(fr[0].delay).toBe(133); expect(diff(fr[0].raster, ref('low.png'))).toBe(0); expect(diff(fr[1].raster, ref('low-cycle-f1.png'))).toBe(0);
+    expect(cyc.pages[0].notes.some((n) => /color cycling: 1 range \(colors 1–7 right, 8 VBL\), played as an animation of 7 frames/.test(n))).toBe(true);
+    const neoC = decodeAtariSt(fx('neo-cycle.neo'), 'neo-cycle.neo').pages[0].frames; // NEOchrome words: the same colors to the left, 4 VBLs
+    expect(neoC.length).toBe(7); expect(neoC[0].delay).toBe(67); expect(diff(neoC[1].raster, ref('neo-cycle-f1.png'))).toBe(0);
+    expect(decodeAtariSt(fx('neo.neo'), 'neo.neo').pages[0].frames.length).toBe(1);
   });
   it('Degas high and medium resolution', () => {
     expect(diff(first(decodeAtariSt(fx('mono.pi3'), 'mono.pi3')), ref('mono.png'))).toBe(0);

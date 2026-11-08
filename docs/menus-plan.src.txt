@@ -338,6 +338,8 @@ browse.map
 view.statusBar
 ---
 view.syncWindows
+view.shareView
+view.followView
 view.frameless
 view.alwaysOnTop
 = Image
@@ -790,6 +792,8 @@ view.previous
 show.start
 browse.favorite
 browse.albums
+browse.shareAlbum
+browse.openSharedAlbum
 browse.people
 = Help
 help.contents
@@ -798,6 +802,8 @@ help.about
 @layout picasa | Picasa style | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help)
 = File
 browse.albums
+browse.shareAlbum
+browse.openSharedAlbum
 browse.folderManager
 file.open
 file.importCamera
@@ -1016,6 +1022,8 @@ tools.ocr
 view.minimize
 view.alwaysOnTop
 view.syncWindows
+view.shareView
+view.followView
 = Help
 help.contents
 help.about
@@ -1023,6 +1031,8 @@ help.about
 @layout digikam | digiKam style | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help)
 = Browse
 browse.albums
+browse.shareAlbum
+browse.openSharedAlbum
 meta.keywords
 browse.colorLabel
 browse.timeline

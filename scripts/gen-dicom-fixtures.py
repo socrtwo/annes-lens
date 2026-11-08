@@ -454,6 +454,40 @@ rgb = (rgb if rgb.dtype == np.uint8 else np.round(rgb.astype(np.float64) * 255 /
 Image.fromarray(rgb, 'RGB').save(os.path.join(OUT, 'pcsps.png'), optimize=True)
 manifest['pcsps.dcm'] = {'what': 'presentation state: ' + ps.ContentDescription, 'frames': 1, 'width': int(rgb.shape[1]), 'height': int(rgb.shape[0]), 'pi': 'MONOCHROME2', 'ts': str(ps.file_meta.TransferSyntaxUID), 'comment': ps.ContentDescription, 'references': 'ct-window.dcm'}
 
+# A blending softcopy presentation state (PS3.3 A.33.5, C.11.14): a second picture (a "PET" blob of the same size) windowed,
+# through the WINTER palette, over the CT at opacity 0.6. Its expected picture is computed here.
+pet = base_ds(ExplicitVRLittleEndian, 32, 48, 'MONOCHROME2', bits=16)
+pet.Modality = 'PT'; pet.ImageComments = 'a blob for the blending presentation state'
+yy, xx = np.mgrid[0:32, 0:48]
+blob = np.round(3000 * np.exp(-(((xx - 30) ** 2) / 60 + ((yy - 14) ** 2) / 30))).astype(np.uint16)
+pet.PixelData = blob.tobytes(); pet.WindowCenter, pet.WindowWidth = 1500, 3000
+write('pet-blob.dcm', pet)
+pet = pydicom.dcmread(os.path.join(OUT, 'pet-blob.dcm'))
+ps, ref = gsps('bsps.dcm', 'blending: the PET blob through the WINTER palette at opacity 0.6 over the CT windowed 100/600')
+ps.file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.11.4'; ps.SOPClassUID = ps.file_meta.MediaStorageSOPClassUID
+del ps.ReferencedSeriesSequence
+def layer(position, image, center, width):
+    it = Dataset(); it.BlendingPosition = position
+    r = Dataset(); r.ReferencedSOPClassUID = image.SOPClassUID; r.ReferencedSOPInstanceUID = image.SOPInstanceUID
+    series = Dataset(); series.SeriesInstanceUID = generate_uid(entropy_srcs=['series ' + position]); series.ReferencedImageSequence = Sequence([r])
+    it.ReferencedSeriesSequence = Sequence([series])
+    voi = Dataset(); voi.WindowCenter = center; voi.WindowWidth = width; voi.ReferencedImageSequence = Sequence([r])
+    it.SoftcopyVOILUTSequence = Sequence([voi])
+    return it
+under = layer('UNDERLYING', img, 100, 600)
+over = layer('SUPERIMPOSED', pet, 1200, 2400); over.RelativeOpacity = 0.6
+for tag in [(0x28, 0x1101), (0x28, 0x1102), (0x28, 0x1103), (0x28, 0x1221), (0x28, 0x1222), (0x28, 0x1223)]:
+    over.add(winter[tag])
+ps.BlendingSequence = Sequence([under, over])
+ps.save_as(os.path.join(OUT, 'bsps.dcm'), enforce_file_format=True)
+under_y = window(img.pixel_array.astype(np.float64) * float(img.RescaleSlope) + float(img.RescaleIntercept), 100, 600)
+over_y = window(pet.pixel_array.astype(np.float64), 1200, 2400).astype(np.uint8)
+over_rgb = apply_color_lut(over_y, winter)
+over_rgb = (over_rgb if over_rgb.dtype == np.uint8 else np.round(over_rgb.astype(np.float64) * 255 / 65535)).astype(np.float64)
+out = np.round(under_y[..., None] * 0.4 + over_rgb * 0.6).astype(np.uint8)
+Image.fromarray(out, 'RGB').save(os.path.join(OUT, 'bsps.png'), optimize=True)
+manifest['bsps.dcm'] = {'what': 'presentation state: ' + ps.ContentDescription, 'frames': 1, 'width': 48, 'height': 32, 'pi': 'MONOCHROME2', 'ts': str(ps.file_meta.TransferSyntaxUID), 'comment': ps.ContentDescription, 'references': 'ct-window.dcm', 'superimposed': 'pet-blob.dcm'}
+
 ps, ref = gsps('gsps-missing.dcm', 'references an image that is not in the folder')
 ref.ReferencedSOPInstanceUID = '1.2.826.0.1.3680043.8.498.99999999999999999999'
 ps.save_as(os.path.join(OUT, 'gsps-missing.dcm'), enforce_file_format=True)

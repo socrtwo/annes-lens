@@ -38,8 +38,8 @@ src/
     registry.ts           content sniffing and codec selection (platform codec, built-in, optional module)
     jpeg/                 decoder with tolerant mode, lossless transforms (DCT-domain), quality estimate, writer
     png/ gif/ webp/ avif/ jxl/ tiff/ bmp/ ico/ psd/ … one folder per format family
-    raw/                  container parsing and embedded previews (built in); develop via the optional module
-    module-loader.ts      optional modules (HEIC, RAW develop, AVIF encoder): download, verify hash, license, load
+    raw/                  container parsing and embedded previews; DNG developer and the camera-family readers (own code)
+    module-loader.ts      optional modules (HEIC, AVIF encoder): download, verify hash, license, load
   meta/                   EXIF, IPTC-IIM, XMP (read/write, sidecars), ICC, C2PA manifests, maker notes, region tags
   catalog/                SQLite (WASM on the web, native on mobile/desktop): files, folders, thumbnails, metadata index,
                           ratings, labels, albums, faces, embeddings, fixity records; watch folders

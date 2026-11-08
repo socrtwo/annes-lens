@@ -427,7 +427,7 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## XnView style
 
-*Modeled on XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help). 209 commands.*
+*Modeled on XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help). 211 commands.*
 
 ### File
 
@@ -520,6 +520,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Status Bar — `view.statusBar`
 - ───
 - Synchronize Windows — `view.syncWindows`
+- Share View on the Network — `view.shareView`
+- Follow a Shared View… — `view.followView`
 - Frameless Window — `view.frameless`
 - Always on Top — `view.alwaysOnTop`
 
@@ -1167,7 +1169,7 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## Windows Photo Viewer style
 
-*Modeled on Windows Photo Viewer and Microsoft Photos (toolbar commands as menus). 95 commands.*
+*Modeled on Windows Photo Viewer and Microsoft Photos (toolbar commands as menus). 97 commands.*
 
 ### File
 
@@ -1218,6 +1220,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Start Slideshow — `show.start`
 - Favorite — `browse.favorite`
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - People — `browse.people`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
@@ -1298,11 +1302,13 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## Picasa style
 
-*Modeled on Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help). 138 commands.*
+*Modeled on Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help). 140 commands.*
 
 ### File
 
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - Folder Manager… — `browse.folderManager`
 - Open… — `file.open`
 - Import from Camera or Phone… — `file.importCamera`
@@ -1513,7 +1519,7 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## Preview style
 
-*Modeled on macOS Preview (File, Edit, View, Go, Tools, Window, Help). 122 commands.*
+*Modeled on macOS Preview (File, Edit, View, Go, Tools, Window, Help). 124 commands.*
 
 ### File
 
@@ -1615,6 +1621,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Minimize — `view.minimize`
 - Always on Top — `view.alwaysOnTop`
 - Synchronize Windows — `view.syncWindows`
+- Share View on the Network — `view.shareView`
+- Follow a Shared View… — `view.followView`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -1694,11 +1702,13 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## digiKam style
 
-*Modeled on digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help). 145 commands.*
+*Modeled on digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help). 147 commands.*
 
 ### Browse
 
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - Keywords… — `meta.keywords`
 - Color Label — `browse.colorLabel`
 - Timeline — `browse.timeline`
@@ -1924,7 +1934,7 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## All viewers combined
 
-*Modeled on the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options). 374 commands.*
+*Modeled on the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options). 378 commands.*
 
 ### File
 
@@ -1988,6 +1998,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - File Properties (system) — `file.sysProperties`
 - ───
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - Folder Manager… — `browse.folderManager`
 - New Folder — `browse.newFolder`
 - Revert to Original — `adjust.revertOriginal`
@@ -2126,6 +2138,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Navigator — `view.navigator`
 - Map — `browse.map`
 - Synchronize Windows — `view.syncWindows`
+- Share View on the Network — `view.shareView`
+- Follow a Shared View… — `view.followView`
 - Frameless Window — `view.frameless`
 - ───
 - Browser — `browse.browser`
@@ -2142,6 +2156,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Compare Pictures — `view.compare`
 - Favorite — `browse.favorite`
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - ───
 - Thumbnails — `browse.thumbnails`
 - Keywords… — `meta.keywords`
@@ -2497,6 +2513,8 @@ The **AI** menu is the same in every layout and sits just before Help.
 ### Browse
 
 - Albums — `browse.albums`
+- Share Album… — `browse.shareAlbum`
+- Open Shared Album… — `browse.openSharedAlbum`
 - Keywords… — `meta.keywords`
 - Color Label — `browse.colorLabel`
 - Timeline — `browse.timeline`
@@ -2593,7 +2611,7 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## Anne's Lens complete
 
-*Modeled on the ribbon itself: one menu per tab, one submenu per group, every command. 564 commands.*
+*Modeled on the ribbon itself: one menu per tab, one submenu per group, every command. 569 commands.*
 
 <details><summary><b>File</b></summary>
 
@@ -2949,6 +2967,8 @@ The **AI** menu is the same in every layout and sits just before Help.
   - Albums — `browse.albums`
   - Smart Albums — `browse.smartAlbum`
   - Add to Album… — `browse.addToAlbum`
+  - Share Album… — `browse.shareAlbum`
+  - Open Shared Album… — `browse.openSharedAlbum`
 - **Rate and label ▸**
   - Rating — `browse.rate`
   - Color Label — `browse.colorLabel`
@@ -3155,6 +3175,9 @@ The **AI** menu is the same in every layout and sits just before Help.
   - Before/After Slider — `view.compareSplit`
   - Difference Overlay — `view.diffOverlay`
   - Synchronize Windows — `view.syncWindows`
+  - Share View on the Network — `view.shareView`
+  - Follow a Shared View… — `view.followView`
+  - Network Relay… — `view.netRelay`
 - **Media ▸**
   - Media Player — `view.media`
   - Play / Pause — `view.mediaPlay`

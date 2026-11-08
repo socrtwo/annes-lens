@@ -15,7 +15,8 @@
 import type { Raster } from '../codecs/raster';
 import { spaceIcc, SPACES, rgbToD50, mul3, inv3, apply3 } from '../color/spaces';
 import type { Mat3, Para } from '../color/icc';
-import { readDng, type DngRaw } from './dng';
+import type { DngRaw } from './dng';
+import { readRaw } from './families';
 
 export type WbMode = 'asShot' | 'auto' | 'daylight' | 'custom';
 export type HighlightMode = 'clip' | 'unclip' | 'recover';
@@ -98,7 +99,7 @@ const SRGB_XYZ_D65: Mat3 = [0.412453, 0.35758, 0.180423, 0.212671, 0.71516, 0.07
 
 /** Develops DNG bytes (or an already read raw). */
 export function develop(src: Uint8Array | DngRaw, o: DevelopOptions = {}): Developed {
-  const r = src instanceof Uint8Array ? readDng(src) : src;
+  const r = src instanceof Uint8Array ? readRaw(src) : src;
   const W = r.width, H = r.height, spp = r.samples;
   // 1. Normalized samples (0…1 at the white level).
   const bdx = r.blackDim[1], bdy = r.blackDim[0], f = new Float32Array(W * H * spp);
