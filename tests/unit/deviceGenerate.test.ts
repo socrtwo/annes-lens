@@ -50,6 +50,6 @@ describe('on-device picture generation (the plumbing; the model runs in the brow
     expect(hasImages(svc)).toBe(true); expect(isDevice(svc)).toBe(true);
     expect(hasImages({ ...svc, imageModel: '' })).toBe(false);
     const prefs = sanitizePrefs({ ...defaultPrefs(), ai: { ...defaultPrefs().ai, services: [svc], imageService: 'device' } } as any);
-    expect(prefs.ai.services.map((s) => s.api)).toEqual(['device']); expect(prefs.ai.imageService).toBe('device');
+    expect(prefs.ai!.services.map((s) => s.api)).toEqual(['device']); expect(prefs.ai!.imageService).toBe('device');
   });
 });
