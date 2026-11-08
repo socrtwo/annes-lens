@@ -44,6 +44,7 @@ import './ocrCodes';
 import './paintCmds';
 import './compare2';
 import './specialViews';
+import './scientific';
 import './colorMgmt';
 import './viewWindow';
 import './devConsole';

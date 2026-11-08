@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { decodeDicom, isDicom, isRawDicom, NOT_FOR_DIAGNOSIS, isPresentationState, readPresentationState } from '../../src/codecs/dicom';
+import { decodeDicom, isDicom, isRawDicom, NOT_FOR_DIAGNOSIS, isPresentationState, readPresentationState, dumpDicom } from '../../src/codecs/dicom';
 import { decodePicture, decodeOptions } from '../../src/codecs/registry';
 import { decodePngTolerant } from '../../src/codecs/png';
 import { sniff } from '../../src/codecs/registry';
@@ -64,6 +64,38 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
       expect(d.pages[0].notes.at(-1)).toBe(NOT_FOR_DIAGNOSIS);
     });
   }
+  it('Window / Level: a window of the user\'s replaces the file\'s (and its VOI LUT); \'full\' shows the whole range', async () => {
+    const file = await decodeDicom(fx('ct-window.dcm'), pdfjs), own = await decodeDicom(fx('ct-window.dcm'), pdfjs, { window: { wc: 100, ww: 600 } }), full = await decodeDicom(fx('ct-window.dcm'), pdfjs, { window: 'full' });
+    expect(file.info.window).toBe('center 40, width 400 (first of 2)');
+    expect(own.info.window).toBe('center 100, width 600 (Window / Level)');
+    expect(own.info['file window']).toBe('center 40, width 400');
+    expect(full.info.window).toBe('the full range (Window / Level)');
+    expect(own.pages[0].notes).toContain('window center 100, width 600, after the rescale');
+    expect(full.pages[0].notes.some((n) => /^shown over the frame's range/.test(n))).toBe(true);
+    const px = (d: typeof file, i: number) => d.pages[0].frames[0].raster.data[i * 4];
+    let diff = 0; for (let i = 0; i < 48 * 32; i++) if (px(file, i) !== px(own, i)) diff++;
+    expect(diff).toBeGreaterThan(100);
+    const sig = await decodeDicom(fx('ct-window.dcm'), pdfjs, { window: { wc: 40, ww: 400, fn: 'sigmoid' } });
+    expect(sig.info.window).toBe('center 40, width 400 (SIGMOID) (Window / Level)');
+    const lut = await decodeDicom(fx('luts.dcm'), pdfjs, { window: { wc: 100, ww: 200 } });
+    expect(lut.pages[0].notes.some((n) => /VOI lookup table/.test(n))).toBe(false); // the user's window sets the file's VOI LUT aside
+  });
+  it('DICOM Tags: every element named, sequences nested, values as text', () => {
+    const { rows, transferSyntax } = dumpDicom(fx('ct-window.dcm'));
+    expect(transferSyntax).toBe('1.2.840.10008.1.2.1');
+    const by = (tag: string) => rows.find((r) => r.tag === tag && r.depth === 0)!;
+    expect(by('(0002,0010)').value).toBe('1.2.840.10008.1.2.1 (explicit VR little endian)');
+    expect([by('(0010,0010)').name, by('(0010,0010)').vr, by('(0010,0010)').value]).toEqual(['Patient\'s Name', 'PN', 'Lens^Anne']);
+    expect([by('(0028,0010)').name, by('(0028,0010)').value, by('(0028,1050)').value]).toEqual(['Rows', '32', '40.0\\300.0']);
+    expect(by('(7fe0,0010)').value).toMatch(/^\d+ bytes \(/);
+    const ps = dumpDicom(fx('gsps-annot.dcm')).rows;
+    const seq = ps.find((r) => r.tag === '(0070,0001)')!;
+    expect([seq.name, seq.vr, seq.value]).toEqual(['Graphic Annotation Sequence', 'SQ', '1 item']);
+    expect(ps.some((r) => r.name === 'item 1' && r.depth === 1)).toBe(true);
+    expect(ps.some((r) => r.tag === '(0070,0023)' && r.depth >= 2 && r.value === 'POLYLINE')).toBe(true);
+    const txt = rows.map((r) => `${r.tag} ${r.vr} ${r.name}`).join('\n');
+    expect(txt).toContain('(0008,0060) CS Modality');
+  });
   it('names the transfer syntax, the window, the rescale and the patient in the details', async () => {
     const d = await decodeDicom(fx('ct-window.dcm'), pdfjs);
     expect(d.info.modality).toBe('CT');

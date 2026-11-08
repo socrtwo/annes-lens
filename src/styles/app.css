@@ -551,6 +551,13 @@ body.ql-fullscreen .ql-titlebar, body.ql-fullscreen .ql-tabs, body.ql-fullscreen
 /* Hex view and side-by-side previews (M2 file tools) */
 .ql-hex { font: 12px/1.45 ui-monospace, 'Cousine', monospace; white-space: pre; overflow: auto; margin: 0; padding: 8px; background: var(--surface2); border-radius: 6px; max-height: 60vh; }
 .ql-sxs { display: flex; gap: 12px; align-items: flex-start; }
+.qn-listing-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.qn-listing-bar input { flex: 1; }
+.qn-listing-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.qn-listing { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.qn-listing th { position: sticky; top: 0; background: var(--surface2); text-align: left; padding: 4px 8px; font-weight: 600; }
+.qn-listing td { padding: 2px 8px; vertical-align: top; border-top: 1px solid var(--border); word-break: break-word; }
+.qn-listing tr.qn-dim td { color: var(--muted); font-style: italic; }
 .ql-sxs figure { margin: 0; flex: 1 1 0; min-width: 0; text-align: center; }
 .ql-sxs img { max-width: 100%; max-height: 40vh; object-fit: contain; background: repeating-conic-gradient(#888 0 25%, #bbb 0 50%) 0 0 / 16px 16px; }
 .ql-sxs figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }

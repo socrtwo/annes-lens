@@ -18,6 +18,7 @@ import { jpxInfo } from './jpx';
 import { decodeLjpeg } from '../raw/ljpeg';
 import { decodeDctSamples } from './jpegdct';
 import { decodeJpegLs } from './jpegls';
+import { dicomTagName } from './dicomDict';
 import { openJpegReady, decodeJ2k16 } from './openjpeg16';
 
 export const NOT_FOR_DIAGNOSIS = 'For viewing only: Anne\'s Lens is not a medical device, and this picture is not for diagnosis or treatment decisions';
@@ -126,6 +127,7 @@ const CHARSETS: Record<string, string> = {
 };
 const LONG_VR = new Set(['OB', 'OW', 'OF', 'OD', 'OL', 'OV', 'SQ', 'UT', 'UN', 'UC', 'UR', 'SV', 'UV']);
 const T = (g: number, e: number) => ((g << 16) | e) >>> 0;
+let keepAll = false; // the tag dump keeps every sequence's items
 const PIXEL = T(0x7fe0, 0x0010), FLOAT_PIXEL = T(0x7fe0, 0x0008), DOUBLE_PIXEL = T(0x7fe0, 0x0009), ITEM = 0xfffee000, ITEM_END = 0xfffee00d, SEQ_END = 0xfffee0dd;
 
 interface Element { vr: string; off: number; len: number; be: boolean; frags?: { off: number; len: number }[]; bot?: number[]; items?: Elements[] }
@@ -186,12 +188,12 @@ function parseDataset(u8: Uint8Array, start: number, end: number, explicit: bool
         p = q; continue;
       }
       // A sequence (or UN) of undefined length: walk its items to the delimiter (UN items are implicit VR little endian).
-      const w = walkItems(u8, off, Infinity, explicit && vr !== 'UN', vr === 'UN' ? false : be, KEEP_ITEMS.has(tag), depth);
+      const w = walkItems(u8, off, Infinity, explicit && vr !== 'UN', vr === 'UN' ? false : be, keepAll || KEEP_ITEMS.has(tag), depth);
       if (!into.has(tag)) into.set(tag, { vr: vr || 'SQ', off, len: w.end - off, be, items: w.items });
       p = w.end; continue;
     }
     if (tag === ITEM) { p = off + len; continue; } // an item in a data set is out of place: skip it
-    if (KEEP_ITEMS.has(tag) && !into.has(tag)) { // a sequence of known length whose items matter
+    if ((KEEP_ITEMS.has(tag) || (keepAll && vr === 'SQ')) && !into.has(tag)) { // a sequence of known length whose items matter
       const w = walkItems(u8, off, off + len, explicit, be, true, depth);
       into.set(tag, { vr: 'SQ', off, len, be, items: w.items });
       p = off + len; continue;
@@ -389,7 +391,8 @@ function readOverlays(d: Parsed): Overlay[] {
 }
 
 /** `dec` is pdf.js's image-decoders module (JpegImage, JpxImage); needed only for JPEG and JPEG 2000 pixel data. */
-export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFrames?: number; maxPixels?: number; presentation?: PresentationState; drawText?: TextRasterizer; /** Draw the overlay planes (default true). */ overlays?: boolean } = {}): Promise<DecodeResult> {
+export interface DicomWindow { wc: number; ww: number; fn?: string }
+export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFrames?: number; maxPixels?: number; presentation?: PresentationState; drawText?: TextRasterizer; /** Draw the overlay planes (default true). */ overlays?: boolean; /** Window / Level: a window of the user's instead of the file's (and its VOI LUT), or 'full' for the frame's whole range. */ window?: DicomWindow | 'full' } = {}): Promise<DecodeResult> {
   const ps = o.presentation;
   const d = parseFile(input), warnings: string[] = [], info: Record<string, string> = {};
   const { u8, ts, be } = d;
@@ -442,6 +445,7 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
   const rescaleSlope = ps?.rescale ? ps.rescale.slope : nums(d, 0x28, 0x1053)[0], rescaleIntercept = ps?.rescale ? ps.rescale.intercept : nums(d, 0x28, 0x1052)[0];
   let wc = nums(d, 0x28, 0x1050)[0], ww = nums(d, 0x28, 0x1051)[0], voiFn = (str(d, 0x28, 0x1056) || 'LINEAR').toUpperCase();
   if (ps?.window) { wc = ps.window.wc; ww = ps.window.ww; voiFn = ps.window.fn; }
+  if (o.window === 'full') { wc = NaN; ww = NaN; } else if (o.window) { wc = o.window.wc; ww = o.window.ww; voiFn = (o.window.fn || 'LINEAR').toUpperCase(); }
   const haveWindow = Number.isFinite(wc) && Number.isFinite(ww) && ww >= 1;
   const haveRescale = Number.isFinite(rescaleSlope) && Number.isFinite(rescaleIntercept) && !(rescaleSlope === 1 && rescaleIntercept === 0);
   const spacing = nums(d, 0x28, 0x30).length === 2 ? nums(d, 0x28, 0x30) : nums(d, 0x18, 0x1164).length === 2 ? nums(d, 0x18, 0x1164) : null;
@@ -449,11 +453,14 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
   const thick = nums(d, 0x18, 0x50)[0];
   if (Number.isFinite(thick)) info['slice thickness'] = `${thick} mm`;
   if (haveRescale) info.rescale = `× ${rescaleSlope} + ${rescaleIntercept}${modality === 'CT' ? ' (Hounsfield units)' : ''}`;
-  if (haveWindow) info.window = `center ${wc}, width ${ww}${voiFn !== 'LINEAR' ? ` (${voiFn})` : ''}${nums(d, 0x28, 0x1050).length > 1 ? ` (first of ${nums(d, 0x28, 0x1050).length})` : ''}`;
+  if (haveWindow) info.window = `center ${wc}, width ${ww}${voiFn !== 'LINEAR' ? ` (${voiFn})` : ''}${o.window ? ' (Window / Level)' : nums(d, 0x28, 0x1050).length > 1 ? ` (first of ${nums(d, 0x28, 0x1050).length})` : ''}`;
+  else if (o.window === 'full') info.window = 'the full range (Window / Level)';
+  const fileWindow = nums(d, 0x28, 0x1050).length && nums(d, 0x28, 0x1051).length ? `${nums(d, 0x28, 0x1050)[0]}/${nums(d, 0x28, 0x1051)[0]}` : '';
+  if (fileWindow && o.window) info['file window'] = `center ${nums(d, 0x28, 0x1050)[0]}, width ${nums(d, 0x28, 0x1051)[0]}`;
   info.pixels = `${pi.spp === 1 ? 'monochrome' : `${pi.spp} samples`}, ${pi.bitsStored} of ${pi.bitsAlloc} bits${pi.signed ? ', signed' : ''}, ${pi.pi}${pi.frames > 1 ? `, ${pi.frames} frames` : ''}`;
   const overlays = readOverlays(d);
   const modalityLut = ps?.modalityLut || (ps?.rescale ? null : (d.el.get(T(0x28, 0x3000))?.items || []).map((it) => readLut(d, it, pi.signed)).find(Boolean) || null);
-  const voiLut = ps?.window ? null : ps?.voiLut || (d.el.get(T(0x28, 0x3010))?.items || []).map((it) => readLut(d, it, true)).find(Boolean) || null;
+  const voiLut = ps?.window || o.window ? null : ps?.voiLut || (d.el.get(T(0x28, 0x3010))?.items || []).map((it) => readLut(d, it, true)).find(Boolean) || null;
   if (modalityLut) info['modality LUT'] = `${modalityLut.values.length} entries from ${modalityLut.first}${modalityLut.explanation ? ` (${modalityLut.explanation})` : ''}`;
   if (voiLut) info['VOI LUT'] = `${voiLut.values.length} entries from ${voiLut.first}${voiLut.explanation ? ` (${voiLut.explanation})` : ''}${haveWindow ? '; used instead of the window' : ''}`;
   if (overlays.length) info.overlays = overlays.map((o) => `${o.rows} × ${o.cols} at (${o.originCol}, ${o.originRow})${o.type === 'R' ? ', ROI' : ''}${o.bits ? '' : ' (embedded)'}`).join('; ');
@@ -781,4 +788,37 @@ function ellipsePoints(c: [number, number], a: number, b: number, angle: number)
   const n = Math.max(16, Math.ceil(2 * Math.PI * Math.max(a, b))), out: [number, number][] = [], ca = Math.cos(angle), sa = Math.sin(angle);
   for (let i = 0; i < n; i++) { const t = (2 * Math.PI * i) / n, ex = a * Math.cos(t), ey = b * Math.sin(t); out.push([c[0] + ex * ca - ey * sa, c[1] + ex * sa + ey * ca]); }
   return out;
+}
+
+// ---- The tag dump (DICOM Tags…) -----------------------------------------------------------------------------------
+export interface DicomRow { tag: string; vr: string; name: string; value: string; depth: number; bytes: number }
+const TEXT_VR = new Set(['AE', 'AS', 'CS', 'DA', 'DS', 'DT', 'IS', 'LO', 'LT', 'PN', 'SH', 'ST', 'TM', 'UC', 'UI', 'UR', 'UT', '']);
+/** Every element of the file (the meta group and the data set, sequences nested), named from the dictionary, values as text. */
+export function dumpDicom(u8: Uint8Array): { rows: DicomRow[]; transferSyntax: string } {
+  keepAll = true;
+  let d: Parsed;
+  try { d = parseFile(u8); } finally { keepAll = false; }
+  const rows: DicomRow[] = [];
+  if (isDicom(u8)) { // the meta group again, for the listing
+    const meta: Elements = new Map(); let q = 132; const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    while (q + 8 <= u8.length && dv.getUint16(q, true) === 0x0002) { const vr = String.fromCharCode(u8[q + 4], u8[q + 5]); const long = LONG_VR.has(vr), len = long ? dv.getUint32(q + 8, true) : dv.getUint16(q + 6, true), off = q + (long ? 12 : 8); meta.set(T(2, dv.getUint16(q + 2, true)), { vr, off, len, be: false }); q = off + len; }
+    walk({ ...d, u8, el: meta }, meta, 0, rows);
+  }
+  walk(d, d.el, 0, rows);
+  return { rows, transferSyntax: d.ts };
+}
+function walk(d: Parsed, el: Elements, depth: number, rows: DicomRow[]): void {
+  for (const [tag, e] of [...el.entries()].sort((a, b) => a[0] - b[0])) {
+    const g = tag >>> 16, n = tag & 0xffff, hex = `(${g.toString(16).padStart(4, '0')},${n.toString(16).padStart(4, '0')})`;
+    const dict = dicomTagName(g, n), vr = e.vr || dict?.[1] || '';
+    let value: string;
+    if (e.items) value = `${e.items.length} item${e.items.length === 1 ? '' : 's'}`;
+    else if (e.frags) value = `${e.frags.length} fragment${e.frags.length === 1 ? '' : 's'}, ${e.frags.reduce((a, f) => a + f.len, 0)} bytes`;
+    else if (tag === PIXEL || tag === FLOAT_PIXEL || tag === DOUBLE_PIXEL || vr === 'OB' || vr === 'OW' || vr === 'OF' || vr === 'OD' || vr === 'OL' || vr === 'OV' || vr === 'UN' || (vr === '' && e.len > 64)) value = `${e.len} bytes${e.len ? ` (${Array.from(d.u8.subarray(e.off, e.off + Math.min(8, e.len))).map((b) => b.toString(16).padStart(2, '0')).join(' ')}${e.len > 8 ? ' …' : ''})` : ''}`;
+    else if (['FL', 'FD', 'SL', 'UL', 'SS', 'US', 'SV', 'UV', 'AT'].includes(vr)) { const dv = new DataView(d.u8.buffer, d.u8.byteOffset + e.off, e.len), out: string[] = []; const w = vr === 'FD' || vr === 'SV' || vr === 'UV' ? 8 : vr === 'SS' || vr === 'US' ? 2 : 4; for (let i = 0; i + w <= e.len && out.length < 64; i += w) out.push(vr === 'FL' ? String(+dv.getFloat32(i, !e.be).toPrecision(7)) : vr === 'FD' ? String(dv.getFloat64(i, !e.be)) : vr === 'SL' ? String(dv.getInt32(i, !e.be)) : vr === 'UL' ? String(dv.getUint32(i, !e.be)) : vr === 'SS' ? String(dv.getInt16(i, !e.be)) : vr === 'US' ? String(dv.getUint16(i, !e.be)) : vr === 'AT' ? `(${dv.getUint16(i, !e.be).toString(16).padStart(4, '0')},${dv.getUint16(i + 2, !e.be).toString(16).padStart(4, '0')})` : String(dv.getBigInt64(i, !e.be))); value = out.join('\\') + (e.len > 64 * w ? ' …' : ''); }
+    else if (TEXT_VR.has(vr)) { value = decodeText(d, e); if (vr === 'UI') { const name = TS[value] || SOP[value]; if (name) value = `${value} (${name})`; } if (value.length > 200) value = value.slice(0, 200) + ' …'; }
+    else value = `${e.len} bytes`;
+    rows.push({ tag: hex, vr, name: dict?.[0] || (g & 1 ? 'private' : ''), value, depth, bytes: e.len });
+    if (e.items) e.items.forEach((item, i) => { rows.push({ tag: '', vr: '', name: `item ${i + 1}`, value: '', depth: depth + 1, bytes: 0 }); walk(d, item, depth + 2, rows); });
+  }
 }

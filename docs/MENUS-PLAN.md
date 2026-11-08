@@ -15,19 +15,19 @@ The **AI** menu is the same in every layout and sits just before Help.
 |---|---|---|
 | IrfanView style (`irfanview`) | IrfanView 4.x main window (File, Edit, Image, Options, View, Help) | File, Edit, Image, Options, View, AI, Help |
 | IrfanView Thumbnails style (`irfanview-thumbs`) | IrfanView 4.x thumbnail window | File, Edit, Options, View, AI, Help |
-| XnView style (`xnview`) | XnView MP browser and viewer | File, Edit, View, Image, Tools, Create, Window, AI, Help |
-| FastStone style (`faststone`) | FastStone Image Viewer | File, Edit, Colors, Effects, Create, Tools, View, AI, Help |
-| ACDSee style (`acdsee`) | ACDSee (Manage, View and Edit modes) | File, Edit, View, Tools, Modify, AI, Help |
+| XnView style (`xnview`) | XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help) | File, Edit, View, Image, Metadata, Tools, Create, AI, Help |
+| FastStone style (`faststone`) | FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help) | File, Edit, Colors, Effects, View, Create, Tools, Settings, AI, Help |
+| ACDSee style (`acdsee`) | ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help) | File, Edit, View, Panes, Tools, AI, Help |
 | Windows Photo Viewer style (`photoviewer`) | Windows Photo Viewer and Microsoft Photos (toolbar commands as menus) | File, Edit, View, AI, Help |
-| Picasa style (`picasa`) | Picasa 3 | File, Edit, View, Folder, Picture, Create, Tools, AI, Help |
-| Preview style (`preview`) | macOS Preview | File, Edit, View, Go, Tools, Window, AI, Help |
-| digiKam style (`digikam`) | digiKam albums and image editor | Album, Tag, Import, Export, Item, View, Tools, Settings, AI, Help |
-| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | File, Edit, View, Image, Colors, Effects, Create, Organize, Tools, Options, AI, Help |
+| Picasa style (`picasa`) | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help) | File, Edit, View, Folder, Picture, Create, Tools, AI, Help |
+| Preview style (`preview`) | macOS Preview (File, Edit, View, Go, Tools, Window, Help) | File, Edit, View, Go, Tools, Window, AI, Help |
+| digiKam style (`digikam`) | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help) | Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, AI, Help |
+| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | File, Edit, View, Image, Colors, Effects, Create, Organize, Tools, Options, Metadata, Panes, Browse, AI, Help |
 | Anne's Lens complete (`complete`) | the ribbon itself: one menu per tab, one submenu per group, every command | File, Edit, Image, Adjust, Effects, Browse, Metadata, Batch, Create, Pages and Frames, RAW, View, Slideshow, Tools, AI, Developer, Help |
 
 ## IrfanView style
 
-*Modeled on IrfanView 4.x main window (File, Edit, Image, Options, View, Help). 202 commands.*
+*Modeled on IrfanView 4.x main window (File, Edit, Image, Options, View, Help). 208 commands.*
 
 ### File
 
@@ -64,7 +64,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Batch Scanning… — `file.batchScan`
 - Select Scan Source… — `file.selectSource`
 - ───
-- Email… — `file.email`
 - Open and Repair… — `file.openRepair`
 - Exit — `file.exit`
 
@@ -90,8 +89,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - ───
 - Insert Text… — `edit.insertText`
 - Insert Watermark or Overlay… — `edit.insertOverlay`
-- Add Border or Frame… — `edit.border`
-- Change Canvas Size… — `edit.canvasSize`
 - Auto Crop Borders — `edit.autoCrop`
 
 ### Image
@@ -105,7 +102,10 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Flip Horizontal — `image.flipH`
 - ───
 - Resize / Resample… — `image.resize`
+- Change Canvas Size… — `edit.canvasSize`
+- Add Border or Frame… — `edit.border`
 - Histogram — `image.histogram`
+- Show Channel — `image.showChannel`
 - ───
 - Convert to Grayscale — `image.grayscale`
 - Negative — `image.negative`
@@ -147,7 +147,11 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Plug-in Filters (8BF)… — `fx.plugins8bf`
 - ───
 - Join Side by Side… — `create.panoramaJoin`
-- Lossless JPEG Transformations… — `image.losslessJpeg`
+- ───
+- Window / Level… — `image.dicomWindow`
+- DICOM Tags… — `image.dicomTags`
+- FITS Stretch… — `image.fitsStretch`
+- FITS Header… — `image.fitsHeader`
 
 ### Options
 
@@ -158,13 +162,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - ───
 - Sort By — `browse.sort`
 - **Multipage images ▸**
-  - Next Page — `pages.next`
-  - Previous Page — `pages.previous`
-  - Go to Page… — `pages.goto`
-  - Insert Pages… — `pages.insert`
-  - Delete Page — `pages.delete`
-  - Extract Pages… — `pages.extract`
-  - Multipage TIFF or PDF… — `create.multipage`
 - Extract All Frames… — `create.extractFrames`
 - Extract Embedded Pictures… — `create.extractEmbedded`
 - Change Date Taken… — `meta.shiftDate`
@@ -175,6 +172,18 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Comment… — `meta.comment`
 - Plug-ins… — `tools.plugins`
 - Export / Import Settings… — `file.exportSettings`
+- ───
+- **Multipage pictures ▸**
+  - Multipage TIFF or PDF… — `create.multipage`
+  - Insert Pages… — `pages.insert`
+  - Delete Page — `pages.delete`
+  - Extract Pages… — `pages.extract`
+- ───
+- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Lossless Crop — `image.losslessCrop`
+- ───
+- Email… — `file.email`
+- Play / Pause — `view.mediaPlay`
 
 ### View
 
@@ -202,9 +211,14 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Toolbar — `view.toolbar`
 - Status Bar — `view.statusBar`
 - Pixel Information — `view.pixelInfo`
-- Show Channel — `image.showChannel`
 - Background Color… — `view.background`
 - EXIF Information — `meta.exif`
+- ───
+- **Multipage pictures ▸**
+  - Next Page — `pages.next`
+  - Previous Page — `pages.previous`
+  - Go to Page… — `pages.goto`
+- Reload — `file.reload`
 
 ### AI
 
@@ -413,34 +427,34 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## XnView style
 
-*Modeled on XnView MP browser and viewer. 180 commands.*
+*Modeled on XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help). 209 commands.*
 
 ### File
 
 - Open… — `file.open`
 - Open Folder… — `file.openFolder`
+- Open With (system) — `file.openWith`
+- Open with External Editor — `file.openExternal`
 - Recent Files — `file.openRecent`
 - Recent Folders — `file.recentFolders`
 - ───
+- Reload — `file.reload`
 - Save — `file.save`
 - Save As… — `file.saveAs`
+- Save a Copy… — `file.saveCopy`
 - Save for Web… — `file.saveForWeb`
-- Reload — `file.reload`
 - ───
-- New Folder — `browse.newFolder`
-- Rename… — `file.rename`
-- Batch Rename… — `batch.rename`
+- Print… — `file.print`
+- ───
 - Copy To… — `file.copyTo`
 - Move To… — `file.moveTo`
 - Delete — `file.delete`
-- ───
-- Open With (system) — `file.openWith`
-- Open with External Editor — `file.openExternal`
+- Rename… — `file.rename`
 - Show in Folder — `file.revealInFolder`
 - ───
+- Select Scan Source… — `file.selectSource`
 - Scan… — `file.scan`
-- Screen Capture… — `file.capture`
-- Print… — `file.print`
+- ───
 - Exit — `file.exit`
 
 ### Edit
@@ -452,41 +466,31 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Copy — `edit.copy`
 - Paste — `edit.paste`
 - Paste as New Picture — `edit.pasteAsNew`
+- Clear Selection — `edit.clear`
+- ───
+- Crop Selection — `edit.crop`
+- Auto Crop Borders — `edit.autoCrop`
 - ───
 - Select All — `edit.selectAll`
 - Select None — `edit.selectNone`
 - Invert Selection — `edit.selectInvert`
 - Select by Pattern… — `browse.selectPattern`
 - ───
-- Rating — `browse.rate`
-- Color Label — `browse.colorLabel`
-- Keywords… — `meta.keywords`
-- Title and Caption… — `meta.caption`
-- Creator and Copyright… — `meta.copyright`
-- XMP… — `meta.xmp`
-- IPTC Information… — `meta.iptc`
-- Metadata Template… — `meta.template`
-- ───
-- Change Date Taken… — `meta.shiftDate`
-- File Date from EXIF Date — `file.fileTimeFromExif`
-- Strip Metadata… — `meta.strip`
-- Options… — `file.options`
+- Copy To… — `file.copyTo`
+- Move To… — `file.moveTo`
+- New Folder — `browse.newFolder`
+- File Properties (system) — `file.sysProperties`
 
 ### View
 
-- View Mode — `browse.viewMode`
-- Thumbnail Size — `browse.thumbSize`
-- Sort By — `browse.sort`
-- Group By — `browse.groupBy`
-- Filter Bar — `browse.filter`
-- ───
-- Folder Tree — `browse.folderTree`
-- Favorite Folders — `browse.favorites`
-- Info Pane — `view.infoPane`
-- Filmstrip — `view.filmstrip`
-- Navigator — `view.navigator`
-- ───
 - Full Screen — `view.fullScreen`
+- ───
+- View Mode — `browse.viewMode`
+- Sort By — `browse.sort`
+- Filter Bar — `browse.filter`
+- Group By — `browse.groupBy`
+- Thumbnail Size — `browse.thumbSize`
+- ───
 - Zoom In — `view.zoomIn`
 - Zoom Out — `view.zoomOut`
 - Original Size — `view.actualSize`
@@ -494,47 +498,73 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Lock Zoom — `view.zoomLock`
 - Keep Position — `view.keepPosition`
 - ───
-- Information Overlay — `view.osd`
-- Overlay Template… — `view.osdTemplate`
-- Histogram Overlay — `view.histogramOverlay`
 - Transparency Display — `view.alphaDisplay`
+- Show Channel — `image.showChannel`
+- Information Overlay — `view.osd`
+- Histogram Overlay — `view.histogramOverlay`
+- Overlay Template… — `view.osdTemplate`
 - Color-Managed Display — `view.colorManaged`
 - DICOM Overlay Planes — `view.dicomOverlays`
 - Media Player — `view.media`
+- ───
+- Include Subfolders — `browse.recursive`
+- Refresh — `browse.refresh`
+- ───
+- Toolbar — `view.toolbar`
+- Folder Tree — `browse.folderTree`
+- Favorite Folders — `browse.favorites`
+- Info Pane — `view.infoPane`
+- Filmstrip — `view.filmstrip`
+- Navigator — `view.navigator`
 - Map — `browse.map`
+- Status Bar — `view.statusBar`
+- ───
+- Synchronize Windows — `view.syncWindows`
+- Frameless Window — `view.frameless`
+- Always on Top — `view.alwaysOnTop`
 
 ### Image
 
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
-- Custom Rotation… — `image.rotateCustom`
-- Flip Horizontal — `image.flipH`
-- Flip Vertical — `image.flipV`
-- Auto-Rotate by EXIF Orientation — `image.autoRotateExif`
-- Lossless JPEG Transformations… — `image.losslessJpeg`
-- Lossless Crop — `image.losslessCrop`
+- Count Unique Colors — `image.countColors`
+- Decrease Color Depth… — `image.decreaseDepth`
+- Increase Color Depth — `image.increaseDepth`
+- Edit Palette… — `image.paletteEdit`
+- ───
+- **Map ▸**
+  - White Balance… — `adjust.whiteBalance`
+  - Convert to Grayscale — `image.grayscale`
+  - Negative — `image.negative`
+  - Normalize — `adjust.normalize`
+  - Equalize Histogram — `adjust.equalize`
+  - Solarize — `fx.solarize`
+  - Posterize… — `adjust.posterize`
+  - Tint and Sepia… — `adjust.tint`
+  - Vignette… — `adjust.vignette`
+- **Adjust ▸**
+  - Color Corrections… — `adjust.colorCorrections`
+  - Levels… — `adjust.levels`
+  - Curves… — `adjust.curves`
+  - Shadows and Highlights… — `adjust.shadowsHighlights`
+  - Hue, Saturation and Lightness… — `adjust.hsl`
+  - Color Balance… — `adjust.colorBalance`
+  - Channel Mixer… — `adjust.channelMixer`
+  - Auto Levels — `adjust.autoLevels`
+  - Auto Contrast — `adjust.autoContrast`
+  - Auto Color — `adjust.autoColor`
+- **Rotate ▸**
+  - Rotate Left — `image.rotateLeft`
+  - Rotate Right — `image.rotateRight`
+  - Rotate 180° — `image.rotate180`
+  - Custom Rotation… — `image.rotateCustom`
+  - Auto-Rotate by EXIF Orientation — `image.autoRotateExif`
+  - Auto Straighten — `image.autoStraighten`
+- **Mirror ▸**
+  - Flip Horizontal — `image.flipH`
+  - Flip Vertical — `image.flipV`
 - ───
 - Resize / Resample… — `image.resize`
 - Change Canvas Size… — `edit.canvasSize`
-- Crop Selection — `edit.crop`
-- Auto Crop Borders — `edit.autoCrop`
 - ───
-- Auto Levels — `adjust.autoLevels`
-- Auto Contrast — `adjust.autoContrast`
-- Auto Color — `adjust.autoColor`
-- Levels… — `adjust.levels`
-- Curves… — `adjust.curves`
-- Hue, Saturation and Lightness… — `adjust.hsl`
-- Color Balance… — `adjust.colorBalance`
-- Channel Mixer… — `adjust.channelMixer`
-- Equalize Histogram — `adjust.equalize`
-- Normalize — `adjust.normalize`
-- Posterize… — `adjust.posterize`
-- ───
-- Convert to Grayscale — `image.grayscale`
-- Negative — `image.negative`
-- Decrease Color Depth… — `image.decreaseDepth`
-- Increase Color Depth — `image.increaseDepth`
 - Convert to Color Profile… — `image.convertProfile`
 - Assign Color Profile… — `image.assignProfile`
 - ───
@@ -542,36 +572,69 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Custom Filter (Convolution)… — `fx.convolution`
 - Plug-in Filters (8BF)… — `fx.plugins8bf`
 
+### Metadata
+
+- Rating — `browse.rate`
+- Color Label — `browse.colorLabel`
+- Keywords… — `meta.keywords`
+- ───
+- Comment… — `meta.comment`
+- ───
+- IPTC Information… — `meta.iptc`
+- XMP… — `meta.xmp`
+- Set Location… — `meta.geotag`
+- ───
+- Change Date Taken… — `meta.shiftDate`
+- File Date from EXIF Date — `file.fileTimeFromExif`
+- ───
+- Map — `browse.map`
+- ───
+- Region Tags… — `meta.regions`
+- ───
+- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Lossless Crop — `image.losslessCrop`
+- ───
+- Metadata Template… — `meta.template`
+- Copy Metadata From… — `meta.copyFrom`
+- Title and Caption… — `meta.caption`
+- Creator and Copyright… — `meta.copyright`
+- ───
+- Strip Metadata… — `meta.strip`
+
 ### Tools
 
-- Batch Conversion and Rename… — `batch.convert`
-- Recipe Editor… — `batch.recipe`
-- Batch Rename… — `batch.rename`
-- Batch Metadata… — `batch.metadata`
+- Screen Capture… — `file.capture`
+- Set as Wallpaper — `file.wallpaper`
 - ───
-- Find Duplicates… — `browse.findDuplicates`
+- Find Files… — `edit.findFiles`
 - Find Similar Pictures… — `browse.findSimilar`
+- Find Duplicates… — `browse.findDuplicates`
 - Compare Pictures — `view.compare`
 - ───
-- Set as Wallpaper — `file.wallpaper`
+- Batch Conversion and Rename… — `batch.convert`
+- Batch Rename… — `batch.rename`
+- Recipe Editor… — `batch.recipe`
+- Batch Metadata… — `batch.metadata`
+- ───
+- Start Slideshow — `show.start`
+- Slideshow Settings… — `show.settings`
+- ───
+- Share… — `file.share`
+- Email… — `file.email`
+- ───
 - Export Metadata as CSV… — `file.export.metadataCsv`
 - External Tools… — `tools.external`
 - Plug-ins… — `tools.plugins`
+- Options… — `file.options`
 
 ### Create
 
+- Multipage TIFF or PDF… — `create.multipage`
+- Join Side by Side… — `create.panoramaJoin`
 - Contact Sheet… — `create.contactSheet`
 - Image Strip… — `create.imageStrip`
 - Web Gallery… — `create.webGallery`
 - Animation from Pictures… — `create.animation`
-- Multipage TIFF or PDF… — `create.multipage`
-- Join Side by Side… — `create.panoramaJoin`
-
-### Window
-
-- Synchronize Windows — `view.syncWindows`
-- Frameless Window — `view.frameless`
-- Always on Top — `view.alwaysOnTop`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -646,24 +709,35 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ### Help
 
+- About Anne's Lens — `help.about`
+- Plug-ins… — `tools.plugins`
 - Help — `help.contents`
 - Keyboard Shortcuts — `help.shortcuts`
 - Supported Formats — `help.formats`
 - Send a Sample File… — `help.sendSample`
-- About Anne's Lens — `help.about`
+- Check for Updates — `help.checkUpdates`
 
 ## FastStone style
 
-*Modeled on FastStone Image Viewer. 139 commands.*
+*Modeled on FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help). 167 commands.*
 
 ### File
 
 - Open… — `file.open`
 - Open Folder… — `file.openFolder`
 - Recent Files — `file.openRecent`
-- Save — `file.save`
 - Save As… — `file.saveAs`
 - Reload — `file.reload`
+- ───
+- Email… — `file.email`
+- **Print ▸**
+  - Print… — `file.print`
+  - Print Layouts (several per page)… — `file.printLayouts`
+- ───
+- Import from Camera or Phone… — `file.importCamera`
+- **Screen Capture ▸**
+  - Screen Capture… — `file.capture`
+- Scan… — `file.scan`
 - ───
 - Copy To… — `file.copyTo`
 - Move To… — `file.moveTo`
@@ -671,95 +745,147 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Delete — `file.delete`
 - Quick Move to Folder 1–9 — `file.quickMove`
 - ───
-- Email… — `file.email`
-- Print… — `file.print`
-- Print Layouts (several per page)… — `file.printLayouts`
-- Set as Wallpaper — `file.wallpaper`
-- Screen Capture… — `file.capture`
-- Scan… — `file.scan`
 - Exit — `file.exit`
 
 ### Edit
 
 - Undo — `edit.undo`
 - Redo — `edit.redo`
+- ───
+- Open with External Editor — `file.openExternal`
+- ───
+- **Select ▸**
+  - Rectangle Selection — `edit.selectRect`
+  - Ellipse Selection — `edit.selectEllipse`
+  - Lasso and Polygon Selection — `edit.selectLasso`
+  - ───
+  - Select All — `edit.selectAll`
+  - Select None — `edit.selectNone`
+  - Invert Selection — `edit.selectInvert`
+  - ───
+  - Copy — `edit.copy`
+  - Cut — `edit.cut`
+  - Paste — `edit.paste`
+  - Crop Selection — `edit.crop`
+  - Clear Selection — `edit.clear`
+  - ───
+  - Save Selection As… — `file.saveSelection`
 - Copy — `edit.copy`
 - Paste — `edit.paste`
-- Select All — `edit.selectAll`
 - ───
-- Crop Selection — `edit.crop`
-- Crop to Aspect Ratio… — `edit.cropAspect`
+- **Rotate ▸**
+  - Rotate Left — `image.rotateLeft`
+  - Rotate Right — `image.rotateRight`
+  - Flip Horizontal — `image.flipH`
+  - Flip Vertical — `image.flipV`
+  - Custom Rotation… — `image.rotateCustom`
 - Resize / Resample… — `image.resize`
 - Change Canvas Size… — `edit.canvasSize`
-- Custom Rotation… — `image.rotateCustom`
-- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Set Print Resolution (DPI)… — `image.setDpi`
 - ───
+- Crop to Aspect Ratio… — `edit.cropAspect`
 - Markup Board — `edit.markup`
 - Clone Stamp — `paint.clone`
 - Healing Brush — `paint.heal`
-- Insert Text… — `edit.insertText`
-- Insert Watermark or Overlay… — `edit.insertOverlay`
-- Add Border or Frame… — `edit.border`
+- Red-Eye Reduction — `adjust.redEye`
+- ───
+- Comment… — `meta.comment`
 
 ### Colors
 
 - Color Corrections… — `adjust.colorCorrections`
+- Shadows and Highlights… — `adjust.shadowsHighlights`
+- Hue, Saturation and Lightness… — `adjust.hsl`
 - Levels… — `adjust.levels`
 - Curves… — `adjust.curves`
-- Shadows and Highlights… — `adjust.shadowsHighlights`
-- Color Balance… — `adjust.colorBalance`
-- Hue, Saturation and Lightness… — `adjust.hsl`
-- Auto Levels — `adjust.autoLevels`
+- ───
+- Swap Color Channels — `image.swapChannels`
+- Decrease Color Depth… — `image.decreaseDepth`
 - Convert to Grayscale — `image.grayscale`
 - Negative — `image.negative`
-- Red-Eye Reduction — `adjust.redEye`
+- Tint and Sepia… — `adjust.tint`
+- ───
 - Sharpen — `adjust.sharpen`
 - Unsharp Mask… — `adjust.unsharp`
 - Blur… — `adjust.blur`
 - Noise Reduction… — `adjust.denoise`
+- Auto Levels — `adjust.autoLevels`
+- Color Balance… — `adjust.colorBalance`
 
 ### Effects
 
+- Insert Watermark or Overlay… — `edit.insertOverlay`
+- Add Border or Frame… — `edit.border`
+- Oil Paint — `fx.oilPaint`
 - Pencil Sketch — `fx.pencilSketch`
 - Cartoon — `fx.cartoon`
 - Drop Shadow — `fx.dropShadow`
 - Reflection — `fx.reflection`
 - Round Corners — `fx.roundCorners`
 - Vignette Frame — `fx.vignetteFrame`
+- ───
 - Effects Browser… — `fx.browser`
+
+### View
+
+- Full Screen — `view.fullScreen`
+- **Layout ▸**
+  - Browser — `browse.browser`
+  - View Mode — `browse.viewMode`
+- ───
+- Start Slideshow — `show.start`
+- Show in Folder — `file.revealInFolder`
+- Histogram — `image.histogram`
+- Picture Information — `image.info`
+- File Properties (system) — `file.sysProperties`
+- ───
+- Loupe — `view.loupe`
+- Histogram Overlay — `view.histogramOverlay`
+- Information Overlay — `view.osd`
+- **Zoom ▸**
+  - Original Size — `view.actualSize`
+  - Fit to Window — `view.fitWindow`
+  - Fit Width — `view.fitWidth`
+  - Fit Height — `view.fitHeight`
+  - Zoom In — `view.zoomIn`
+  - Zoom Out — `view.zoomOut`
+- ───
+- Folder Tree — `browse.folderTree`
+- Favorite Folders — `browse.favorites`
+- ───
+- Reload — `file.reload`
 
 ### Create
 
 - Contact Sheet… — `create.contactSheet`
-- Image Strip… — `create.imageStrip`
-- Join Side by Side… — `create.panoramaJoin`
 - Multipage TIFF or PDF… — `create.multipage`
+- Extract Pages… — `pages.extract`
+- Image Strip… — `create.imageStrip`
+- ───
 - Slideshow Video… — `create.movie`
-- Export as HTML Slideshow… — `show.exportHtml`
 
 ### Tools
 
 - Batch Conversion and Rename… — `batch.convert`
 - Batch Rename… — `batch.rename`
-- Batch Watermark… — `batch.watermark`
-- Compare Pictures — `view.compare`
-- Light Table — `browse.lightTable`
+- ───
 - Change File Date/Time… — `file.setFileTime`
+- **JPEG Lossless Rotate ▸**
+  - Lossless JPEG Transformations… — `image.losslessJpeg`
+  - Lossless Auto-Rotate by EXIF — `image.losslessAutoRotate`
 - Strip Metadata… — `meta.strip`
+- ───
+- Compare Pictures — `view.compare`
+- **Wallpaper ▸**
+  - Set as Wallpaper — `file.wallpaper`
 
-### View
+### Settings
 
-- Browser — `browse.browser`
-- Folder Tree — `browse.folderTree`
-- Favorite Folders — `browse.favorites`
-- Full Screen — `view.fullScreen`
-- Loupe — `view.loupe`
-- Histogram Overlay — `view.histogramOverlay`
-- Information Overlay — `view.osd`
-- Fit to Window — `view.fitWindow`
-- Original Size — `view.actualSize`
-- Start Slideshow — `show.start`
+- Language… — `view.language`
+- Theme — `view.theme`
+- ───
 - Slideshow Settings… — `show.settings`
+- Options… — `file.options`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -840,37 +966,48 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## ACDSee style
 
-*Modeled on ACDSee (Manage, View and Edit modes). 121 commands.*
+*Modeled on ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help). 144 commands.*
 
 ### File
 
 - Open… — `file.open`
 - Open Folder… — `file.openFolder`
-- Import from Camera or Phone… — `file.importCamera`
-- Import with Rules… — `file.importRules`
-- Scan… — `file.scan`
+- **Import ▸**
+  - Import from Camera or Phone… — `file.importCamera`
+  - Import with Rules… — `file.importRules`
+  - Scan… — `file.scan`
+- **Database ▸**
+  - Use Catalog — `browse.catalog`
+  - Catalog Maintenance… — `browse.maintenance`
+  - Back Up Library… — `tools.backup`
 - ───
 - Save — `file.save`
 - Save As… — `file.saveAs`
 - Save for Web… — `file.saveForWeb`
-- ───
-- Print… — `file.print`
-- Email… — `file.email`
-- Share… — `file.share`
 - Export as PDF… — `file.export.pdf`
 - ───
-- Use Catalog — `browse.catalog`
-- Catalog Maintenance… — `browse.maintenance`
-- Back Up Library… — `tools.backup`
+- **Send ▸**
+  - Email… — `file.email`
+  - Share… — `file.share`
+- Open With (system) — `file.openWith`
+- Open with External Editor — `file.openExternal`
+- ───
+- Print… — `file.print`
+- Print Layouts (several per page)… — `file.printLayouts`
+- ───
 - Exit — `file.exit`
 
 ### Edit
 
 - Undo — `edit.undo`
 - Redo — `edit.redo`
+- ───
 - Cut — `edit.cut`
 - Copy — `edit.copy`
 - Paste — `edit.paste`
+- ───
+- Copy To… — `file.copyTo`
+- Move To… — `file.moveTo`
 - Rename… — `file.rename`
 - Delete — `file.delete`
 - ───
@@ -881,50 +1018,75 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Color Label — `browse.colorLabel`
 - Keywords… — `meta.keywords`
 - Title and Caption… — `meta.caption`
-- Change Date Taken… — `meta.shiftDate`
-- Batch Metadata… — `batch.metadata`
 
 ### View
 
 - Browser — `browse.browser`
-- View Mode — `browse.viewMode`
 - Filter Bar — `browse.filter`
 - Group By — `browse.groupBy`
 - Sort By — `browse.sort`
+- View Mode — `browse.viewMode`
+- ───
 - Timeline — `browse.timeline`
 - People — `browse.people`
 - Map — `browse.map`
 - ───
 - Full Screen — `view.fullScreen`
-- Filmstrip — `view.filmstrip`
+- Information Overlay — `view.osd`
+- Toolbar — `view.toolbar`
+
+### Panes
+
+- Folder Tree — `browse.folderTree`
+- Favorite Folders — `browse.favorites`
 - Info Pane — `view.infoPane`
-- Compare Pictures — `view.compare`
-- Start Slideshow — `show.start`
+- Filmstrip — `view.filmstrip`
+- Navigator — `view.navigator`
+- Histogram Overlay — `view.histogramOverlay`
+- Loupe — `view.loupe`
 
 ### Tools
 
-- Batch Conversion and Rename… — `batch.convert`
-- Batch Rename… — `batch.rename`
-- Recipe Editor… — `batch.recipe`
+- Find Files… — `edit.findFiles`
+- Compare Pictures — `view.compare`
 - Find Duplicates… — `browse.findDuplicates`
-- Contact Sheet… — `create.contactSheet`
+- **Zoom ▸**
+  - Original Size — `view.actualSize`
+  - Fit to Window — `view.fitWindow`
+  - Fit Width — `view.fitWidth`
+  - Fit Height — `view.fitHeight`
+  - Lock Zoom — `view.zoomLock`
+- **Modify ▸**
+  - Rotate Left — `image.rotateLeft`
+  - Rotate Right — `image.rotateRight`
+  - Crop Selection — `edit.crop`
+  - Resize / Resample… — `image.resize`
+  - Exposure… — `adjust.exposure`
+  - Tone Equalizer… — `adjust.toneEqualizer`
+  - White Balance… — `adjust.whiteBalance`
+  - Color Balance… — `adjust.colorBalance`
+  - Noise Reduction… — `adjust.denoise`
+  - Sharpen — `adjust.sharpen`
+  - Red-Eye Reduction — `adjust.redEye`
+  - Erase Object — `ai.erase`
+  - Effects Browser… — `fx.browser`
+  - Decrease Color Depth… — `image.decreaseDepth`
+  - Change Date Taken… — `meta.shiftDate`
+- **Batch ▸**
+  - Batch Conversion and Rename… — `batch.convert`
+  - Batch Rename… — `batch.rename`
+  - Recipe Editor… — `batch.recipe`
+  - Batch Metadata… — `batch.metadata`
+- **Create ▸**
+  - Contact Sheet… — `create.contactSheet`
+  - Export as PDF… — `file.export.pdf`
+  - Web Gallery… — `create.webGallery`
 - Set as Wallpaper — `file.wallpaper`
-
-### Modify
-
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
-- Crop Selection — `edit.crop`
-- Resize / Resample… — `image.resize`
-- Exposure… — `adjust.exposure`
-- Tone Equalizer… — `adjust.toneEqualizer`
-- White Balance… — `adjust.whiteBalance`
-- Color Balance… — `adjust.colorBalance`
-- Noise Reduction… — `adjust.denoise`
-- Sharpen — `adjust.sharpen`
-- Red-Eye Reduction — `adjust.redEye`
-- Erase Object — `ai.erase`
-- Effects Browser… — `fx.browser`
+- Screen Capture… — `file.capture`
+- Start Slideshow — `show.start`
+- ───
+- Customize Keyboard… — `file.customizeKeyboard`
+- Options… — `file.options`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -1136,91 +1298,138 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## Picasa style
 
-*Modeled on Picasa 3. 116 commands.*
+*Modeled on Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help). 138 commands.*
 
 ### File
 
-- Import from Camera or Phone… — `file.importCamera`
+- Albums — `browse.albums`
 - Folder Manager… — `browse.folderManager`
-- New Folder — `browse.newFolder`
+- Open… — `file.open`
+- Import from Camera or Phone… — `file.importCamera`
 - ───
+- Open with External Editor — `file.openExternal`
+- New Folder — `browse.newFolder`
+- Rename… — `file.rename`
+- ───
+- Save — `file.save`
+- Revert to Original — `adjust.revertOriginal`
 - Save As… — `file.saveAs`
-- Export as PDF… — `file.export.pdf`
-- Web Gallery… — `create.webGallery`
+- Save a Copy… — `file.saveCopy`
+- Batch Conversion and Rename… — `batch.convert`
+- ───
+- Show in Folder — `file.revealInFolder`
+- Delete — `file.delete`
+- ───
 - Print… — `file.print`
 - Email… — `file.email`
 - ───
-- Hide Picture — `file.hide`
-- Delete — `file.delete`
-- Show in Folder — `file.revealInFolder`
-- Back Up Library… — `tools.backup`
 - Exit — `file.exit`
 
 ### Edit
 
 - Undo — `edit.undo`
 - Redo — `edit.redo`
+- ───
+- Cut — `edit.cut`
 - Copy — `edit.copy`
 - Paste — `edit.paste`
+- Copy Adjustments — `adjust.copySettings`
+- Paste Adjustments — `adjust.pasteSettings`
+- ───
 - Select All — `edit.selectAll`
-- Title and Caption… — `meta.caption`
-- Keywords… — `meta.keywords`
+- Invert Selection — `edit.selectInvert`
+- Select None — `edit.selectNone`
 
 ### View
 
-- Albums — `browse.albums`
+- Thumbnails — `browse.thumbnails`
+- Thumbnail Size — `browse.thumbSize`
+- ───
+- Picture Information — `image.info`
+- Keywords… — `meta.keywords`
 - People — `browse.people`
 - Map — `browse.map`
-- Timeline — `browse.timeline`
-- Full Screen — `view.fullScreen`
+- ───
 - Start Slideshow — `show.start`
-- Thumbnail Size — `browse.thumbSize`
+- Timeline — `browse.timeline`
+- ───
+- Hide Picture — `file.hide`
+- Color-Managed Display — `view.colorManaged`
+- **Folder View ▸**
+  - Folder Tree — `browse.folderTree`
+  - Sort By — `browse.sort`
 
 ### Folder
 
+- Title and Caption… — `meta.caption`
+- Start Slideshow — `show.start`
 - Refresh — `browse.refresh`
 - Sort By — `browse.sort`
+- ───
+- Contact Sheet… — `create.contactSheet`
+- Web Gallery… — `create.webGallery`
+- ───
 - Show in Folder — `file.revealInFolder`
+- Move To… — `file.moveTo`
+- Delete — `file.delete`
 
 ### Picture
 
-- Favorite — `browse.favorite`
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
-- Crop for Print Size… — `edit.cropPrint`
-- Straighten — `image.straighten`
-- Red-Eye Reduction — `adjust.redEye`
-- One-Click Enhance — `adjust.enhance`
-- Fill Light — `adjust.fillLight`
-- Warmify — `adjust.warmify`
-- Tint and Sepia… — `adjust.tint`
-- Healing Brush — `paint.heal`
-- Insert Text… — `edit.insertText`
-- Revert to Original — `adjust.revertOriginal`
-- **Effects ▸**
-  - Film Grain — `fx.filmGrain`
-  - Soft Focus — `fx.softFocus`
-  - Glow — `fx.glow`
-  - Focal Black and White — `fx.focalBW`
-  - Graduated Tint — `fx.graduatedTint`
-  - Convert to Grayscale — `image.grayscale`
+- Open with External Editor — `file.openExternal`
+- **Batch Edit ▸**
+  - Rotate Right — `image.rotateRight`
+  - Rotate Left — `image.rotateLeft`
+  - Auto Contrast — `adjust.autoContrast`
+  - Auto Color — `adjust.autoColor`
+  - One-Click Enhance — `adjust.enhance`
   - Tint and Sepia… — `adjust.tint`
   - Sharpen — `adjust.sharpen`
+  - Warmify — `adjust.warmify`
+  - Film Grain — `fx.filmGrain`
+  - Convert to Grayscale — `image.grayscale`
+  - Red-Eye Reduction — `adjust.redEye`
+- Revert to Original — `adjust.revertOriginal`
+- ───
+- Favorite — `browse.favorite`
+- Hide Picture — `file.hide`
+- ───
+- Crop for Print Size… — `edit.cropPrint`
+- Straighten — `image.straighten`
+- Fill Light — `adjust.fillLight`
+- Healing Brush — `paint.heal`
+- Insert Text… — `edit.insertText`
+- Soft Focus — `fx.softFocus`
+- Glow — `fx.glow`
+- Focal Black and White — `fx.focalBW`
+- Graduated Tint — `fx.graduatedTint`
+- ───
 - Set Location… — `meta.geotag`
+- Picture Information — `image.info`
 
 ### Create
 
-- Collage… — `create.collage`
-- Slideshow Video… — `create.movie`
-- Contact Sheet… — `create.contactSheet`
-- Web Gallery… — `create.webGallery`
 - Set as Wallpaper — `file.wallpaper`
+- Print Copies and Posters… — `file.copyShop`
+- Collage… — `create.collage`
+- ───
+- Slideshow Video… — `create.movie`
 
 ### Tools
 
-- Batch Conversion and Rename… — `batch.convert`
-- Find Duplicates… — `browse.findDuplicates`
+- Folder Manager… — `browse.folderManager`
 - People — `browse.people`
+- Back Up Library… — `tools.backup`
+- ───
+- Change Date Taken… — `meta.shiftDate`
+- **Geotag ▸**
+  - Set Location… — `meta.geotag`
+  - Map — `browse.map`
+  - Remove Location — `meta.removeGps`
+- **Experimental ▸**
+  - Find Duplicates… — `browse.findDuplicates`
+  - Search by Color — `browse.searchColor`
+- ───
+- Customize Quick Access Bar… — `file.customizeQat`
 - Options… — `file.options`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
@@ -1298,52 +1507,67 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 - Help — `help.contents`
 - Keyboard Shortcuts — `help.shortcuts`
+- What's New — `help.whatsNew`
+- Check for Updates — `help.checkUpdates`
 - About Anne's Lens — `help.about`
 
 ## Preview style
 
-*Modeled on macOS Preview. 104 commands.*
+*Modeled on macOS Preview (File, Edit, View, Go, Tools, Window, Help). 122 commands.*
 
 ### File
 
+- Paste as New Picture — `edit.pasteAsNew`
 - Open… — `file.open`
 - Recent Files — `file.openRecent`
+- Close — `file.close`
+- ───
+- Save — `file.save`
+- Save a Copy… — `file.saveCopy`
+- Rename… — `file.rename`
+- Move To… — `file.moveTo`
+- Reload — `file.reload`
+- ───
+- Save As… — `file.saveAs`
+- Export as PDF… — `file.export.pdf`
+- Share… — `file.share`
+- ───
 - Import from Camera or Phone… — `file.importCamera`
 - Scan… — `file.scan`
 - Screen Capture… — `file.capture`
 - ───
-- Close — `file.close`
-- Save — `file.save`
-- Save a Copy… — `file.saveCopy`
-- Export as PDF… — `file.export.pdf`
-- Save As… — `file.saveAs`
-- Reload — `file.reload`
-- ───
-- Share… — `file.share`
 - Print… — `file.print`
 
 ### Edit
 
 - Undo — `edit.undo`
 - Redo — `edit.redo`
+- ───
 - Cut — `edit.cut`
 - Copy — `edit.copy`
 - Paste — `edit.paste`
+- Clear Selection — `edit.clear`
 - Select All — `edit.selectAll`
-- Invert Selection — `edit.selectInvert`
-- Signature… — `edit.signature`
+- ───
+- Insert Pages… — `pages.insert`
 
 ### View
 
 - Thumbnails — `browse.thumbnails`
 - Contact Sheet… — `create.contactSheet`
-- Original Size — `view.actualSize`
-- Fit to Window — `view.fitWindow`
+- ───
+- Two-Page View — `view.twoPage`
+- ───
 - Zoom In — `view.zoomIn`
 - Zoom Out — `view.zoomOut`
-- Loupe — `view.loupe`
-- Full Screen — `view.fullScreen`
+- Original Size — `view.actualSize`
+- Fit to Window — `view.fitWindow`
+- ───
+- Soft Proof… — `image.softProof`
 - Start Slideshow — `show.start`
+- ───
+- Toolbar — `view.toolbar`
+- Full Screen — `view.fullScreen`
 
 ### Go
 
@@ -1351,26 +1575,46 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Previous Picture — `view.previous`
 - First Picture — `view.first`
 - Last Picture — `view.last`
+- ───
+- Go to Page… — `pages.goto`
 
 ### Tools
 
 - Picture Information — `image.info`
 - EXIF Information — `meta.exif`
-- Markup Board — `edit.markup`
+- Map — `browse.map`
+- Loupe — `view.loupe`
+- ───
 - Color Corrections… — `adjust.colorCorrections`
 - Resize / Resample… — `image.resize`
+- ───
+- Custom Selection… — `edit.customSelection`
+- **Annotate ▸**
+  - Markup Board — `edit.markup`
+  - Rectangle — `paint.rect`
+  - Ellipse — `paint.ellipse`
+  - Line — `paint.line`
+  - Arrow — `paint.arrow`
+  - Text Tool — `paint.text`
+  - Signature… — `edit.signature`
+- ───
 - Rotate Left — `image.rotateLeft`
 - Rotate Right — `image.rotateRight`
 - Flip Horizontal — `image.flipH`
 - Flip Vertical — `image.flipV`
 - Crop Selection — `edit.crop`
+- ───
+- Assign Color Profile… — `image.assignProfile`
+- ───
 - Remove Background — `ai.removeBackground`
 - Select Subject — `ai.selectSubject`
 - Recognize Text (OCR) — `tools.ocr`
 
 ### Window
 
+- Minimize — `view.minimize`
 - Always on Top — `view.alwaysOnTop`
+- Synchronize Windows — `view.syncWindows`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -1450,83 +1694,155 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ## digiKam style
 
-*Modeled on digiKam albums and image editor. 111 commands.*
+*Modeled on digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help). 145 commands.*
+
+### Browse
+
+- Albums — `browse.albums`
+- Keywords… — `meta.keywords`
+- Color Label — `browse.colorLabel`
+- Timeline — `browse.timeline`
+- Find Files… — `edit.findFiles`
+- Find Similar Pictures… — `browse.findSimilar`
+- Map — `browse.map`
+- People — `browse.people`
+- ───
+- Smart Albums — `browse.smartAlbum`
+- ───
+- Exit — `file.exit`
 
 ### Album
 
-- Albums — `browse.albums`
 - New Folder — `browse.newFolder`
+- Rename… — `file.rename`
+- Show in Folder — `file.revealInFolder`
+- Delete — `file.delete`
+- ───
+- Write Sidecar or Embed — `meta.sidecarMode`
 - Refresh — `browse.refresh`
-- Smart Albums — `browse.smartAlbum`
-- Include Subfolders — `browse.recursive`
 
 ### Tag
 
 - Keywords… — `meta.keywords`
 - Region Tags… — `meta.regions`
-- People — `browse.people`
+
+### Item
+
+- Open… — `file.open`
+- Open With (system) — `file.openWith`
+- Rename… — `file.rename`
+- Delete — `file.delete`
+- ───
+- Light Table — `browse.lightTable`
+- Batch Queue — `batch.queue`
+- Find Similar Pictures… — `browse.findSimilar`
+- ───
+- Rating — `browse.rate`
+- Color Label — `browse.colorLabel`
+- Pick — `browse.pick`
+- ───
+- **Rotate ▸**
+  - Rotate Left — `image.rotateLeft`
+  - Rotate Right — `image.rotateRight`
+- **Flip ▸**
+  - Flip Horizontal — `image.flipH`
+  - Flip Vertical — `image.flipV`
+- Auto-Rotate by EXIF Orientation — `image.autoRotateExif`
+- Lossless Auto-Rotate by EXIF — `image.losslessAutoRotate`
+- ───
+- Metadata Template… — `meta.template`
+- Set Location… — `meta.geotag`
+- Geotag from GPS Track… — `meta.geotagGpx`
+- ───
+- Print… — `file.print`
+
+### Edit
+
+- Cut — `edit.cut`
+- Copy — `edit.copy`
+- Paste — `edit.paste`
+- ───
+- Select All — `edit.selectAll`
+- Select None — `edit.selectNone`
+- Invert Selection — `edit.selectInvert`
+
+### View
+
+- View Mode — `browse.viewMode`
+- Map — `browse.map`
+- ───
+- Start Slideshow — `show.start`
+- Start from Current — `show.fromCurrent`
+- Full Screen — `view.fullScreen`
+- ───
+- Zoom In — `view.zoomIn`
+- Zoom Out — `view.zoomOut`
+- Fit to Window — `view.fitWindow`
+- Original Size — `view.actualSize`
+- ───
+- Sort By — `browse.sort`
+- Group By — `browse.groupBy`
+- Filter Bar — `browse.filter`
+- ───
+- Include Subfolders — `browse.recursive`
+- Color-Managed Display — `view.colorManaged`
+
+### Tools
+
+- **Image Editor ▸**
+  - Curves… — `adjust.curves`
+  - Levels… — `adjust.levels`
+  - Channel Mixer… — `adjust.channelMixer`
+  - Lens Correction… — `image.lensCorrection`
+  - Convert to Color Profile… — `image.convertProfile`
+- Light Table — `browse.lightTable`
+- Batch Queue — `batch.queue`
+- Recipe Editor… — `batch.recipe`
+- Batch Rename… — `batch.rename`
+- ───
+- Find Files… — `edit.findFiles`
+- Search by Sketch — `browse.searchSketch`
+- Search by Color — `browse.searchColor`
+- Find Duplicates… — `browse.findDuplicates`
+- Sort by Quality — `browse.qualitySort`
+- ───
+- Catalog Maintenance… — `browse.maintenance`
+- ───
+- Exposure Merge (HDR)… — `create.hdr`
+- Focus Stack… — `create.focusStack`
+- Stitch Panorama… — `create.panoramaStitch`
+- Calendar Page… — `create.calendar`
+- Email… — `file.email`
 
 ### Import
 
 - Import from Camera or Phone… — `file.importCamera`
 - Import with Rules… — `file.importRules`
+- ───
+- Open… — `file.open`
+- Open Folder… — `file.openFolder`
+- ───
 - Scan… — `file.scan`
 
 ### Export
 
 - Web Gallery… — `create.webGallery`
 - Export as PDF… — `file.export.pdf`
-- Email… — `file.email`
+- Batch Conversion and Rename… — `batch.convert`
 - Back Up Library… — `tools.backup`
-
-### Item
-
-- Open… — `file.open`
-- Rename… — `file.rename`
-- Delete — `file.delete`
-- Rating — `browse.rate`
-- Color Label — `browse.colorLabel`
-- Pick — `browse.pick`
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
-- Set Location… — `meta.geotag`
-- Geotag from GPS Track… — `meta.geotagGpx`
-- Metadata Template… — `meta.template`
-
-### View
-
-- View Mode — `browse.viewMode`
-- Sort By — `browse.sort`
-- Group By — `browse.groupBy`
-- Filter Bar — `browse.filter`
-- Map — `browse.map`
-- Timeline — `browse.timeline`
-- Full Screen — `view.fullScreen`
-- Start Slideshow — `show.start`
-- Light Table — `browse.lightTable`
-
-### Tools
-
-- Batch Queue — `batch.queue`
-- Recipe Editor… — `batch.recipe`
-- Batch Rename… — `batch.rename`
-- Find Duplicates… — `browse.findDuplicates`
-- Find Similar Pictures… — `browse.findSimilar`
-- Search by Sketch — `browse.searchSketch`
-- Search by Color — `browse.searchColor`
-- Sort by Quality — `browse.qualitySort`
-- Stitch Panorama… — `create.panoramaStitch`
-- Exposure Merge (HDR)… — `create.hdr`
-- Curves… — `adjust.curves`
-- Levels… — `adjust.levels`
-- Channel Mixer… — `adjust.channelMixer`
-- Lens Correction… — `image.lensCorrection`
-- Convert to Color Profile… — `image.convertProfile`
 
 ### Settings
 
-- Catalog Maintenance… — `browse.maintenance`
-- Write Sidecar or Embed — `meta.sidecarMode`
+- Toolbar — `view.toolbar`
+- Menus — `view.menuMode`
+- Status Bar — `view.statusBar`
+- Filmstrip — `view.filmstrip`
+- Theme — `view.theme`
+- ───
+- Language… — `view.language`
+- Customize Keyboard… — `file.customizeKeyboard`
+- Customize Tabs… — `file.customizeRibbon`
+- ───
 - Options… — `file.options`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
@@ -1603,11 +1919,12 @@ The **AI** menu is the same in every layout and sits just before Help.
 ### Help
 
 - Help — `help.contents`
+- Keyboard Shortcuts — `help.shortcuts`
 - About Anne's Lens — `help.about`
 
 ## All viewers combined
 
-*Modeled on the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options). 342 commands.*
+*Modeled on the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options). 374 commands.*
 
 ### File
 
@@ -1638,7 +1955,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Scan… — `file.scan`
 - Batch Scanning… — `file.batchScan`
 - Select Scan Source… — `file.selectSource`
-- Email… — `file.email`
 - Open and Repair… — `file.openRepair`
 - Exit — `file.exit`
 - ───
@@ -1647,34 +1963,36 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Contact Sheet… — `create.contactSheet`
 - Join Side by Side… — `create.panoramaJoin`
 - Web Gallery… — `create.webGallery`
+- Email… — `file.email`
 - Copy File Name — `file.copyName`
 - ───
 - Open Folder… — `file.openFolder`
-- Recent Folders — `file.recentFolders`
-- New Folder — `browse.newFolder`
-- Batch Rename… — `batch.rename`
 - Open With (system) — `file.openWith`
-- Screen Capture… — `file.capture`
+- Recent Folders — `file.recentFolders`
+- Save a Copy… — `file.saveCopy`
 - ───
-- Quick Move to Folder 1–9 — `file.quickMove`
 - Print Layouts (several per page)… — `file.printLayouts`
-- Set as Wallpaper — `file.wallpaper`
-- ───
 - Import from Camera or Phone… — `file.importCamera`
+- Screen Capture… — `file.capture`
+- Quick Move to Folder 1–9 — `file.quickMove`
+- ───
 - Import with Rules… — `file.importRules`
-- Share… — `file.share`
-- Export as PDF… — `file.export.pdf`
 - Use Catalog — `browse.catalog`
 - Catalog Maintenance… — `browse.maintenance`
 - Back Up Library… — `tools.backup`
+- Export as PDF… — `file.export.pdf`
+- Share… — `file.share`
 - ───
-- Save a Copy… — `file.saveCopy`
+- Set as Wallpaper — `file.wallpaper`
 - Set as Lock Screen — `file.lockScreen`
 - File Properties (system) — `file.sysProperties`
 - ───
+- Albums — `browse.albums`
 - Folder Manager… — `browse.folderManager`
-- Hide Picture — `file.hide`
+- New Folder — `browse.newFolder`
+- Revert to Original — `adjust.revertOriginal`
 - ───
+- Paste as New Picture — `edit.pasteAsNew`
 - Close — `file.close`
 
 ### Edit
@@ -1696,8 +2014,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Clear Selection — `edit.clear`
 - Insert Text… — `edit.insertText`
 - Insert Watermark or Overlay… — `edit.insertOverlay`
-- Add Border or Frame… — `edit.border`
-- Change Canvas Size… — `edit.canvasSize`
 - Auto Crop Borders — `edit.autoCrop`
 - ───
 - Select All — `edit.selectAll`
@@ -1708,36 +2024,42 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Batch Lossless JPEG… — `batch.lossless`
 - IPTC Information… — `meta.iptc`
 - ───
+- Copy To… — `file.copyTo`
+- Move To… — `file.moveTo`
+- New Folder — `browse.newFolder`
+- File Properties (system) — `file.sysProperties`
+- ───
+- Open with External Editor — `file.openExternal`
+- Rectangle Selection — `edit.selectRect`
+- Ellipse Selection — `edit.selectEllipse`
+- Lasso and Polygon Selection — `edit.selectLasso`
+- Save Selection As… — `file.saveSelection`
+- Rotate Left — `image.rotateLeft`
+- Rotate Right — `image.rotateRight`
+- Flip Horizontal — `image.flipH`
+- Flip Vertical — `image.flipV`
+- Custom Rotation… — `image.rotateCustom`
+- Resize / Resample… — `image.resize`
+- Change Canvas Size… — `edit.canvasSize`
+- Set Print Resolution (DPI)… — `image.setDpi`
+- Crop to Aspect Ratio… — `edit.cropAspect`
+- Markup Board — `edit.markup`
+- Clone Stamp — `paint.clone`
+- Healing Brush — `paint.heal`
+- Red-Eye Reduction — `adjust.redEye`
+- Comment… — `meta.comment`
+- ───
+- Rename… — `file.rename`
+- Delete — `file.delete`
 - Rating — `browse.rate`
 - Color Label — `browse.colorLabel`
 - Keywords… — `meta.keywords`
 - Title and Caption… — `meta.caption`
-- Creator and Copyright… — `meta.copyright`
-- XMP… — `meta.xmp`
-- Metadata Template… — `meta.template`
-- Change Date Taken… — `meta.shiftDate`
-- File Date from EXIF Date — `file.fileTimeFromExif`
-- Strip Metadata… — `meta.strip`
-- Options… — `file.options`
 - ───
-- Crop to Aspect Ratio… — `edit.cropAspect`
-- Resize / Resample… — `image.resize`
-- Custom Rotation… — `image.rotateCustom`
-- Markup Board — `edit.markup`
-- Clone Stamp — `paint.clone`
-- Healing Brush — `paint.heal`
-- ───
-- Rename… — `file.rename`
-- Delete — `file.delete`
-- Batch Metadata… — `batch.metadata`
-- ───
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
 - Straighten — `image.straighten`
 - One-Click Enhance — `adjust.enhance`
 - Exposure… — `adjust.exposure`
 - Vibrance… — `adjust.vibrance`
-- Red-Eye Reduction — `adjust.redEye`
 - Erase Object — `ai.erase`
 - Remove Background — `ai.removeBackground`
 - Blur Background — `ai.blurBackground`
@@ -1745,7 +2067,10 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Upscale — `ai.upscale`
 - Revert to Original — `adjust.revertOriginal`
 - ───
-- Signature… — `edit.signature`
+- Copy Adjustments — `adjust.copySettings`
+- Paste Adjustments — `adjust.pasteSettings`
+- ───
+- Insert Pages… — `pages.insert`
 
 ### View
 
@@ -1770,50 +2095,63 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Toolbar — `view.toolbar`
 - Status Bar — `view.statusBar`
 - Pixel Information — `view.pixelInfo`
-- Show Channel — `image.showChannel`
 - Background Color… — `view.background`
 - EXIF Information — `meta.exif`
+- Next Page — `pages.next`
+- Previous Page — `pages.previous`
+- Go to Page… — `pages.goto`
+- Reload — `file.reload`
 - ───
 - Folder Tree — `browse.folderTree`
 - Favorite Folders — `browse.favorites`
 - ───
 - View Mode — `browse.viewMode`
-- Thumbnail Size — `browse.thumbSize`
 - Sort By — `browse.sort`
-- Group By — `browse.groupBy`
 - Filter Bar — `browse.filter`
-- Info Pane — `view.infoPane`
-- Filmstrip — `view.filmstrip`
-- Navigator — `view.navigator`
+- Group By — `browse.groupBy`
+- Thumbnail Size — `browse.thumbSize`
 - Keep Position — `view.keepPosition`
-- Information Overlay — `view.osd`
-- Overlay Template… — `view.osdTemplate`
-- Histogram Overlay — `view.histogramOverlay`
 - Transparency Display — `view.alphaDisplay`
+- Show Channel — `image.showChannel`
+- Information Overlay — `view.osd`
+- Histogram Overlay — `view.histogramOverlay`
+- Overlay Template… — `view.osdTemplate`
 - Color-Managed Display — `view.colorManaged`
 - DICOM Overlay Planes — `view.dicomOverlays`
 - Media Player — `view.media`
+- Include Subfolders — `browse.recursive`
+- Refresh — `browse.refresh`
+- Info Pane — `view.infoPane`
+- Filmstrip — `view.filmstrip`
+- Navigator — `view.navigator`
 - Map — `browse.map`
-- ───
 - Synchronize Windows — `view.syncWindows`
 - Frameless Window — `view.frameless`
 - ───
 - Browser — `browse.browser`
-- Loupe — `view.loupe`
 - Start Slideshow — `show.start`
-- Slideshow Settings… — `show.settings`
+- Show in Folder — `file.revealInFolder`
+- Histogram — `image.histogram`
+- Picture Information — `image.info`
+- File Properties (system) — `file.sysProperties`
+- Loupe — `view.loupe`
 - ───
 - Timeline — `browse.timeline`
 - People — `browse.people`
-- Compare Pictures — `view.compare`
 - ───
+- Compare Pictures — `view.compare`
 - Favorite — `browse.favorite`
 - Albums — `browse.albums`
 - ───
 - Thumbnails — `browse.thumbnails`
-- Contact Sheet… — `create.contactSheet`
+- Keywords… — `meta.keywords`
+- Hide Picture — `file.hide`
 - ───
-- Light Table — `browse.lightTable`
+- Contact Sheet… — `create.contactSheet`
+- Two-Page View — `view.twoPage`
+- Soft Proof… — `image.softProof`
+- ───
+- Start from Current — `show.fromCurrent`
 
 ### Image
 
@@ -1824,7 +2162,10 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Flip Vertical — `image.flipV`
 - Flip Horizontal — `image.flipH`
 - Resize / Resample… — `image.resize`
+- Change Canvas Size… — `edit.canvasSize`
+- Add Border or Frame… — `edit.border`
 - Histogram — `image.histogram`
+- Show Channel — `image.showChannel`
 - Convert to Grayscale — `image.grayscale`
 - Negative — `image.negative`
 - Decrease Color Depth… — `image.decreaseDepth`
@@ -1861,44 +2202,45 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Custom Filter (Convolution)… — `fx.convolution`
 - Plug-in Filters (8BF)… — `fx.plugins8bf`
 - Join Side by Side… — `create.panoramaJoin`
-- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Window / Level… — `image.dicomWindow`
+- DICOM Tags… — `image.dicomTags`
+- FITS Stretch… — `image.fitsStretch`
+- FITS Header… — `image.fitsHeader`
 - ───
-- Auto-Rotate by EXIF Orientation — `image.autoRotateExif`
-- Lossless Crop — `image.losslessCrop`
-- Change Canvas Size… — `edit.canvasSize`
-- Crop Selection — `edit.crop`
-- Auto Crop Borders — `edit.autoCrop`
-- Auto Levels — `adjust.autoLevels`
-- Auto Contrast — `adjust.autoContrast`
-- Auto Color — `adjust.autoColor`
+- Count Unique Colors — `image.countColors`
+- White Balance… — `adjust.whiteBalance`
+- Normalize — `adjust.normalize`
+- Equalize Histogram — `adjust.equalize`
+- Posterize… — `adjust.posterize`
+- Tint and Sepia… — `adjust.tint`
+- Vignette… — `adjust.vignette`
 - Levels… — `adjust.levels`
 - Curves… — `adjust.curves`
+- Shadows and Highlights… — `adjust.shadowsHighlights`
 - Hue, Saturation and Lightness… — `adjust.hsl`
 - Color Balance… — `adjust.colorBalance`
 - Channel Mixer… — `adjust.channelMixer`
-- Equalize Histogram — `adjust.equalize`
-- Normalize — `adjust.normalize`
-- Posterize… — `adjust.posterize`
+- Auto Levels — `adjust.autoLevels`
+- Auto Contrast — `adjust.autoContrast`
+- Auto Color — `adjust.autoColor`
+- Rotate 180° — `image.rotate180`
+- Auto-Rotate by EXIF Orientation — `image.autoRotateExif`
+- Auto Straighten — `image.autoStraighten`
 - Convert to Color Profile… — `image.convertProfile`
 - Assign Color Profile… — `image.assignProfile`
 - ───
-- Exposure… — `adjust.exposure`
-- Tone Equalizer… — `adjust.toneEqualizer`
-- White Balance… — `adjust.whiteBalance`
-- Noise Reduction… — `adjust.denoise`
-- Erase Object — `ai.erase`
-- ───
+- Open with External Editor — `file.openExternal`
+- One-Click Enhance — `adjust.enhance`
+- Warmify — `adjust.warmify`
+- Film Grain — `fx.filmGrain`
+- Revert to Original — `adjust.revertOriginal`
 - Favorite — `browse.favorite`
+- Hide Picture — `file.hide`
 - Crop for Print Size… — `edit.cropPrint`
 - Straighten — `image.straighten`
-- One-Click Enhance — `adjust.enhance`
 - Fill Light — `adjust.fillLight`
-- Warmify — `adjust.warmify`
-- Tint and Sepia… — `adjust.tint`
 - Healing Brush — `paint.heal`
 - Insert Text… — `edit.insertText`
-- Revert to Original — `adjust.revertOriginal`
-- Film Grain — `fx.filmGrain`
 - Soft Focus — `fx.softFocus`
 - Glow — `fx.glow`
 - Focal Black and White — `fx.focalBW`
@@ -1906,33 +2248,44 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Set Location… — `meta.geotag`
 - ───
 - Open… — `file.open`
+- Open With (system) — `file.openWith`
 - Rename… — `file.rename`
 - Delete — `file.delete`
+- Light Table — `browse.lightTable`
+- Batch Queue — `batch.queue`
+- Find Similar Pictures… — `browse.findSimilar`
 - Rating — `browse.rate`
 - Color Label — `browse.colorLabel`
 - Pick — `browse.pick`
-- Geotag from GPS Track… — `meta.geotagGpx`
+- Lossless Auto-Rotate by EXIF — `image.losslessAutoRotate`
 - Metadata Template… — `meta.template`
+- Geotag from GPS Track… — `meta.geotagGpx`
+- Print… — `file.print`
 
 ### Colors
 
 - Color Corrections… — `adjust.colorCorrections`
+- Shadows and Highlights… — `adjust.shadowsHighlights`
+- Hue, Saturation and Lightness… — `adjust.hsl`
 - Levels… — `adjust.levels`
 - Curves… — `adjust.curves`
-- Shadows and Highlights… — `adjust.shadowsHighlights`
-- Color Balance… — `adjust.colorBalance`
-- Hue, Saturation and Lightness… — `adjust.hsl`
-- Auto Levels — `adjust.autoLevels`
+- Swap Color Channels — `image.swapChannels`
+- Decrease Color Depth… — `image.decreaseDepth`
 - Convert to Grayscale — `image.grayscale`
 - Negative — `image.negative`
-- Red-Eye Reduction — `adjust.redEye`
+- Tint and Sepia… — `adjust.tint`
 - Sharpen — `adjust.sharpen`
 - Unsharp Mask… — `adjust.unsharp`
 - Blur… — `adjust.blur`
 - Noise Reduction… — `adjust.denoise`
+- Auto Levels — `adjust.autoLevels`
+- Color Balance… — `adjust.colorBalance`
 
 ### Effects
 
+- Insert Watermark or Overlay… — `edit.insertOverlay`
+- Add Border or Frame… — `edit.border`
+- Oil Paint — `fx.oilPaint`
 - Pencil Sketch — `fx.pencilSketch`
 - Cartoon — `fx.cartoon`
 - Drop Shadow — `fx.dropShadow`
@@ -1943,83 +2296,132 @@ The **AI** menu is the same in every layout and sits just before Help.
 
 ### Create
 
+- Multipage TIFF or PDF… — `create.multipage`
+- Join Side by Side… — `create.panoramaJoin`
 - Contact Sheet… — `create.contactSheet`
 - Image Strip… — `create.imageStrip`
 - Web Gallery… — `create.webGallery`
 - Animation from Pictures… — `create.animation`
-- Multipage TIFF or PDF… — `create.multipage`
-- Join Side by Side… — `create.panoramaJoin`
 - ───
+- Extract Pages… — `pages.extract`
 - Slideshow Video… — `create.movie`
-- Export as HTML Slideshow… — `show.exportHtml`
 - ───
-- Collage… — `create.collage`
 - Set as Wallpaper — `file.wallpaper`
+- Print Copies and Posters… — `file.copyShop`
+- Collage… — `create.collage`
 
 ### Organize
 
+- Title and Caption… — `meta.caption`
+- Start Slideshow — `show.start`
 - Refresh — `browse.refresh`
 - Sort By — `browse.sort`
+- Contact Sheet… — `create.contactSheet`
+- Web Gallery… — `create.webGallery`
 - Show in Folder — `file.revealInFolder`
+- Move To… — `file.moveTo`
+- Delete — `file.delete`
 - ───
-- Albums — `browse.albums`
 - New Folder — `browse.newFolder`
-- Smart Albums — `browse.smartAlbum`
-- Include Subfolders — `browse.recursive`
+- Rename… — `file.rename`
+- Write Sidecar or Embed — `meta.sidecarMode`
 - ───
 - Keywords… — `meta.keywords`
 - Region Tags… — `meta.regions`
-- People — `browse.people`
 
 ### Tools
 
-- Batch Conversion and Rename… — `batch.convert`
-- Recipe Editor… — `batch.recipe`
-- Batch Rename… — `batch.rename`
-- Batch Metadata… — `batch.metadata`
-- Find Duplicates… — `browse.findDuplicates`
-- Find Similar Pictures… — `browse.findSimilar`
-- Compare Pictures — `view.compare`
+- Screen Capture… — `file.capture`
 - Set as Wallpaper — `file.wallpaper`
+- Find Files… — `edit.findFiles`
+- Find Similar Pictures… — `browse.findSimilar`
+- Find Duplicates… — `browse.findDuplicates`
+- Compare Pictures — `view.compare`
+- Batch Conversion and Rename… — `batch.convert`
+- Batch Rename… — `batch.rename`
+- Recipe Editor… — `batch.recipe`
+- Batch Metadata… — `batch.metadata`
+- Start Slideshow — `show.start`
+- Slideshow Settings… — `show.settings`
+- Share… — `file.share`
+- Email… — `file.email`
 - Export Metadata as CSV… — `file.export.metadataCsv`
 - External Tools… — `tools.external`
 - Plug-ins… — `tools.plugins`
+- Options… — `file.options`
 - ───
-- Batch Watermark… — `batch.watermark`
-- Light Table — `browse.lightTable`
 - Change File Date/Time… — `file.setFileTime`
+- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Lossless Auto-Rotate by EXIF — `image.losslessAutoRotate`
 - Strip Metadata… — `meta.strip`
 - ───
+- Original Size — `view.actualSize`
+- Fit to Window — `view.fitWindow`
+- Fit Width — `view.fitWidth`
+- Fit Height — `view.fitHeight`
+- Lock Zoom — `view.zoomLock`
+- Rotate Left — `image.rotateLeft`
+- Rotate Right — `image.rotateRight`
+- Crop Selection — `edit.crop`
+- Resize / Resample… — `image.resize`
+- Exposure… — `adjust.exposure`
+- Tone Equalizer… — `adjust.toneEqualizer`
+- White Balance… — `adjust.whiteBalance`
+- Color Balance… — `adjust.colorBalance`
+- Noise Reduction… — `adjust.denoise`
+- Sharpen — `adjust.sharpen`
+- Red-Eye Reduction — `adjust.redEye`
+- Erase Object — `ai.erase`
+- Effects Browser… — `fx.browser`
+- Decrease Color Depth… — `image.decreaseDepth`
+- Change Date Taken… — `meta.shiftDate`
 - Contact Sheet… — `create.contactSheet`
+- Export as PDF… — `file.export.pdf`
+- Web Gallery… — `create.webGallery`
+- Customize Keyboard… — `file.customizeKeyboard`
 - ───
+- Folder Manager… — `browse.folderManager`
 - People — `browse.people`
-- Options… — `file.options`
+- Back Up Library… — `tools.backup`
+- Set Location… — `meta.geotag`
+- Map — `browse.map`
+- Remove Location — `meta.removeGps`
+- Search by Color — `browse.searchColor`
+- Customize Quick Access Bar… — `file.customizeQat`
 - ───
 - Picture Information — `image.info`
 - EXIF Information — `meta.exif`
-- Markup Board — `edit.markup`
+- Loupe — `view.loupe`
 - Color Corrections… — `adjust.colorCorrections`
-- Resize / Resample… — `image.resize`
-- Rotate Left — `image.rotateLeft`
-- Rotate Right — `image.rotateRight`
+- Custom Selection… — `edit.customSelection`
+- Markup Board — `edit.markup`
+- Rectangle — `paint.rect`
+- Ellipse — `paint.ellipse`
+- Line — `paint.line`
+- Arrow — `paint.arrow`
+- Text Tool — `paint.text`
+- Signature… — `edit.signature`
 - Flip Horizontal — `image.flipH`
 - Flip Vertical — `image.flipV`
-- Crop Selection — `edit.crop`
+- Assign Color Profile… — `image.assignProfile`
 - Remove Background — `ai.removeBackground`
 - Select Subject — `ai.selectSubject`
 - Recognize Text (OCR) — `tools.ocr`
 - ───
-- Batch Queue — `batch.queue`
-- Search by Sketch — `browse.searchSketch`
-- Search by Color — `browse.searchColor`
-- Sort by Quality — `browse.qualitySort`
-- Stitch Panorama… — `create.panoramaStitch`
-- Exposure Merge (HDR)… — `create.hdr`
 - Curves… — `adjust.curves`
 - Levels… — `adjust.levels`
 - Channel Mixer… — `adjust.channelMixer`
 - Lens Correction… — `image.lensCorrection`
 - Convert to Color Profile… — `image.convertProfile`
+- Light Table — `browse.lightTable`
+- Batch Queue — `batch.queue`
+- Search by Sketch — `browse.searchSketch`
+- Sort by Quality — `browse.qualitySort`
+- Catalog Maintenance… — `browse.maintenance`
+- Exposure Merge (HDR)… — `create.hdr`
+- Focus Stack… — `create.focusStack`
+- Stitch Panorama… — `create.panoramaStitch`
+- Calendar Page… — `create.calendar`
 
 ### Options
 
@@ -2028,13 +2430,6 @@ The **AI** menu is the same in every layout and sits just before Help.
 - File Associations… — `file.associations`
 - Language… — `view.language`
 - Sort By — `browse.sort`
-- Next Page — `pages.next`
-- Previous Page — `pages.previous`
-- Go to Page… — `pages.goto`
-- Insert Pages… — `pages.insert`
-- Delete Page — `pages.delete`
-- Extract Pages… — `pages.extract`
-- Multipage TIFF or PDF… — `create.multipage`
 - Extract All Frames… — `create.extractFrames`
 - Extract Embedded Pictures… — `create.extractEmbedded`
 - Change Date Taken… — `meta.shiftDate`
@@ -2044,14 +2439,73 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Comment… — `meta.comment`
 - Plug-ins… — `tools.plugins`
 - Export / Import Settings… — `file.exportSettings`
+- Multipage TIFF or PDF… — `create.multipage`
+- Insert Pages… — `pages.insert`
+- Delete Page — `pages.delete`
+- Extract Pages… — `pages.extract`
+- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Lossless Crop — `image.losslessCrop`
+- Email… — `file.email`
+- Play / Pause — `view.mediaPlay`
 - ───
 - Thumbnail Size — `browse.thumbSize`
 - View Mode — `browse.viewMode`
 - Show All Files — `browse.showAllFiles`
 - Refresh — `browse.refresh`
 - ───
-- Catalog Maintenance… — `browse.maintenance`
-- Write Sidecar or Embed — `meta.sidecarMode`
+- Theme — `view.theme`
+- Slideshow Settings… — `show.settings`
+- ───
+- Toolbar — `view.toolbar`
+- Menus — `view.menuMode`
+- Status Bar — `view.statusBar`
+- Filmstrip — `view.filmstrip`
+- Customize Keyboard… — `file.customizeKeyboard`
+- Customize Tabs… — `file.customizeRibbon`
+
+### Metadata
+
+- Rating — `browse.rate`
+- Color Label — `browse.colorLabel`
+- Keywords… — `meta.keywords`
+- Comment… — `meta.comment`
+- IPTC Information… — `meta.iptc`
+- XMP… — `meta.xmp`
+- Set Location… — `meta.geotag`
+- Change Date Taken… — `meta.shiftDate`
+- File Date from EXIF Date — `file.fileTimeFromExif`
+- Map — `browse.map`
+- Region Tags… — `meta.regions`
+- Lossless JPEG Transformations… — `image.losslessJpeg`
+- Lossless Crop — `image.losslessCrop`
+- Metadata Template… — `meta.template`
+- Copy Metadata From… — `meta.copyFrom`
+- Title and Caption… — `meta.caption`
+- Creator and Copyright… — `meta.copyright`
+- Strip Metadata… — `meta.strip`
+
+### Panes
+
+- Folder Tree — `browse.folderTree`
+- Favorite Folders — `browse.favorites`
+- Info Pane — `view.infoPane`
+- Filmstrip — `view.filmstrip`
+- Navigator — `view.navigator`
+- Histogram Overlay — `view.histogramOverlay`
+- Loupe — `view.loupe`
+
+### Browse
+
+- Albums — `browse.albums`
+- Keywords… — `meta.keywords`
+- Color Label — `browse.colorLabel`
+- Timeline — `browse.timeline`
+- Find Files… — `edit.findFiles`
+- Find Similar Pictures… — `browse.findSimilar`
+- Map — `browse.map`
+- People — `browse.people`
+- Smart Albums — `browse.smartAlbum`
+- Exit — `file.exit`
 
 <details><summary><b>AI</b> (same in every layout)</summary>
 
@@ -2132,10 +2586,14 @@ The **AI** menu is the same in every layout and sits just before Help.
 - Send a Sample File… — `help.sendSample`
 - Check for Updates — `help.checkUpdates`
 - About Anne's Lens — `help.about`
+- ───
+- Plug-ins… — `tools.plugins`
+- ───
+- What's New — `help.whatsNew`
 
 ## Anne's Lens complete
 
-*Modeled on the ribbon itself: one menu per tab, one submenu per group, every command. 560 commands.*
+*Modeled on the ribbon itself: one menu per tab, one submenu per group, every command. 564 commands.*
 
 <details><summary><b>File</b></summary>
 
@@ -2307,6 +2765,11 @@ The **AI** menu is the same in every layout and sits just before Help.
   - Count Unique Colors — `image.countColors`
   - Estimate JPEG Quality — `image.jpegQuality`
   - Show Channel — `image.showChannel`
+- **Scientific pictures ▸**
+  - Window / Level… — `image.dicomWindow`
+  - DICOM Tags… — `image.dicomTags`
+  - FITS Stretch… — `image.fitsStretch`
+  - FITS Header… — `image.fitsHeader`
 - **Rotate and flip ▸**
   - Rotate Left — `image.rotateLeft`
   - Rotate Right — `image.rotateRight`

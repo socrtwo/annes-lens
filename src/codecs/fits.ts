@@ -242,9 +242,38 @@ function decodeTiles(u8: Uint8Array, h: FitsHdu, warnings: string[], hi: number)
 
 const INFO_KEYS: [string, string][] = [['OBJECT', 'object'], ['TELESCOP', 'telescope'], ['INSTRUME', 'instrument'], ['OBSERVER', 'observer'], ['DATE-OBS', 'observed'], ['EXPTIME', 'exposure (s)'], ['FILTER', 'filter'], ['BUNIT', 'unit'], ['ORIGIN', 'origin'], ['DATE', 'written'], ['CTYPE1', 'axis 1'], ['CTYPE2', 'axis 2'], ['RA', 'RA'], ['DEC', 'Dec'], ['EQUINOX', 'equinox']];
 
-export function decodeFits(input: Uint8Array, name = ''): DecodeResult {
+export type FitsStretchMode = 'linear' | 'sqrt' | 'square' | 'log' | 'asinh';
+/** FITS Stretch: the mapping from values to gray and its limits (percentiles of the finite values, or values). */
+export interface FitsStretch { mode?: FitsStretchMode; percentiles?: [number, number]; lo?: number; hi?: number }
+const STRETCH: Record<FitsStretchMode, (t: number) => number> = { linear: (t) => t, sqrt: Math.sqrt, square: (t) => t * t, log: (t) => Math.log10(1 + 1000 * t) / 3, asinh: (t) => Math.asinh(10 * t) / Math.asinh(10) };
+/** The file's bytes with a gzipped file inflated (for the header viewer). */
+export function fitsBytes(input: Uint8Array, name = ''): Uint8Array { return isGzipFits(input, name) ? inflate(input).data : input; }
+/** The 80-character cards of an HDU's header, in order (a gzipped file inflated first). */
+export function fitsCards(input: Uint8Array, hdu: number, name = ''): string[] {
+  const u8 = fitsBytes(input, name), hdus = fitsHdus(u8);
+  let p = 0;
+  for (let i = 0; i < hdus.length && i <= hdu; i++) {
+    if (i === hdu) {
+      const cards: string[] = [];
+      for (let q = p; q + 80 <= u8.length; q += 80) { const c = String.fromCharCode(...u8.subarray(q, q + 80)).replace(/\s+$/, ''); cards.push(c); if (/^END\s*$/.test(c)) break; }
+      return cards;
+    }
+    p = hdus[i].dataStart + Math.ceil(hdus[i].dataLength / 2880) * 2880;
+  }
+  return [];
+}
+/** The HDU each page of the decoded file comes from (image HDUs, a page per plane of a cube). */
+export function fitsPageHdus(input: Uint8Array, name = ''): number[] {
+  const out: number[] = [];
+  fitsHdus(fitsBytes(input, name)).forEach((h, i) => { if ((h.kind === 'image' || h.kind === 'compressed') && h.axes.length >= 2 && h.axes[0] > 0 && h.axes[1] > 0) { const depth = h.axes.slice(2).reduce((a, b) => a * b, 1) || 1; for (let k = 0; k < depth; k++) out.push(i); } });
+  return out;
+}
+export function decodeFits(input: Uint8Array, name = '', st: FitsStretch = {}): DecodeResult {
   let u8 = input;
   if (isGzipFits(u8, name)) u8 = inflate(u8).data;
+  const mode: FitsStretchMode = st.mode && STRETCH[st.mode] ? st.mode : 'linear', f = STRETCH[mode];
+  const pct: [number, number] = st.percentiles && st.percentiles[1] > st.percentiles[0] ? [Math.max(0, st.percentiles[0]), Math.min(100, st.percentiles[1])] : [0.5, 99.5];
+  const fixed = Number.isFinite(st.lo) && Number.isFinite(st.hi) && st.hi! > st.lo!;
   if (!isFits(u8)) throw new Error('This is not a FITS file (no SIMPLE card)');
   const { planes, hdus, warnings } = fitsData(u8);
   if (!planes.length) throw new Error(`This FITS file holds no image${hdus.some((h) => h.kind === 'table') ? ' (tables only)' : ''}${warnings.length ? ` (${warnings.join('; ')})` : ''}`);
@@ -256,14 +285,15 @@ export function decodeFits(input: Uint8Array, name = ''): DecodeResult {
     const step = Math.max(1, Math.floor(values.length / 200000));
     for (let i = 0; i < values.length; i += step) if (Number.isFinite(values[i])) finite.push(values[i]);
     finite.sort((a, b) => a - b);
-    let lo = finite.length ? finite[Math.floor(finite.length * 0.005)] : 0, hi = finite.length ? finite[Math.min(finite.length - 1, Math.floor(finite.length * 0.995))] : 1;
+    let lo = finite.length ? finite[Math.floor(finite.length * (pct[0] / 100))] : 0, hi = finite.length ? finite[Math.min(finite.length - 1, Math.floor(finite.length * (pct[1] / 100)))] : 1;
     if (!(hi > lo)) { lo = finite.length ? finite[0] : 0; hi = finite.length ? finite[finite.length - 1] : 1; if (!(hi > lo)) hi = lo + 1; }
+    if (fixed) { lo = st.lo!; hi = st.hi!; }
     const r = makeRaster(w, h), d = r.data;
     let transparent = false;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const v = values[y * w + x], o = ((h - 1 - y) * w + x) * 4; // the first stored row at the bottom
       if (!Number.isFinite(v)) { d[o + 3] = 0; transparent = true; continue; }
-      const g = Math.round(Math.max(0, Math.min(1, (v - lo) / (hi - lo))) * 255);
+      const g = Math.round(f(Math.max(0, Math.min(1, (v - lo) / (hi - lo)))) * 255);
       d[o] = d[o + 1] = d[o + 2] = g; d[o + 3] = 255;
     }
     const depth = hdu.axes.slice(2).reduce((a, b) => a * b, 1) || 1;
@@ -272,7 +302,7 @@ export function decodeFits(input: Uint8Array, name = ''): DecodeResult {
     const cmp = hdu.kind === 'compressed' ? (hdu.cards.get('ZCMPTYPE') || 'RICE_1').trim() : '';
     const quantiz = hdu.kind === 'compressed' && hdu.bitpix < 0 ? ` (quantized${/DITHER/.test(hdu.cards.get('ZQUANTIZ') || '') ? ' with dither' : ''})` : '';
     const notes = [`FITS ${pl.hdu === 0 ? 'primary image' : `image extension ${pl.hdu}${hdu.cards.get('EXTNAME') ? ` "${hdu.cards.get('EXTNAME')}"` : ''}`}${depth > 1 ? `, plane ${pl.plane + 1} of ${depth}` : ''}, ${kind}${hdu.cards.has('BZERO') || hdu.cards.has('BSCALE') ? ' (BZERO/BSCALE applied)' : ''}${cmp ? `, ${cmp} tiles${quantiz}` : ''}`,
-      `shown stretched linearly from ${fmt(lo)} to ${fmt(hi)}${bunit ? ` ${bunit}` : ''} (the 0.5th and 99.5th percentiles); the first stored row is at the bottom`];
+      `shown stretched ${mode === 'linear' ? 'linearly' : mode === 'sqrt' ? 'by the square root' : mode === 'square' ? 'by the square' : mode === 'log' ? 'logarithmically' : 'by the inverse hyperbolic sine'} from ${fmt(lo)} to ${fmt(hi)}${bunit ? ` ${bunit}` : ''} (${fixed ? 'FITS Stretch limits' : `the ${pctName(pct[0])} and ${pctName(pct[1])} percentiles`}); the first stored row is at the bottom`];
     if (pl.blank) notes.push('undefined (BLANK) pixels are transparent');
     let world: Wcs | null = null;
     try { world = parseWcs(hdu.cards, w, h); } catch { world = null; }
@@ -288,4 +318,5 @@ export function decodeFits(input: Uint8Array, name = ''): DecodeResult {
   if (comments.length) info.comments = comments.slice(0, 20).join(' | ');
   return { pages, info, warnings };
 }
+const pctName = (p: number): string => { const s = +p.toFixed(3) + ''; return s + (/1$/.test(s) && !/11$/.test(s) ? 'st' : /2$/.test(s) && !/12$/.test(s) ? 'nd' : /3$/.test(s) && !/13$/.test(s) ? 'rd' : 'th'); };
 const fmt = (v: number) => (Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(3) : +v.toFixed(3) + '');

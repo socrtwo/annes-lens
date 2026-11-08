@@ -90,7 +90,7 @@ Print Setup… | file.printSetup | | IV | not in tabs
 
 ## Share
 Share… | file.share | | WP,AG,PRV | system share sheet
-Email… | file.email | Ctrl+Shift+M | IV,WPV,PIC,FS | optional resize and metadata stripping before sending; uses Anne's Post when installed
+Email… | file.email | Shift+M | IV,WPV,PIC,FS | optional resize and metadata stripping before sending; uses Anne's Post when installed
 Set as Wallpaper | file.wallpaper | Ctrl+Shift+W | IV,XN,WPV | arguments: center, tile, stretch, fit, fill
 Set as Lock Screen | file.lockScreen | | WP,AG |
 Set as Contact Photo | file.contactPhoto | | AG | Android
@@ -145,7 +145,7 @@ Select by Color Range… | edit.selectColor | | NEW |
 Crop Selection | edit.crop | Ctrl+Y | IV |
 Crop to Aspect Ratio… | edit.cropAspect | | WP,PRV,APH | presets and custom; rule-of-thirds and golden-ratio guides
 Crop for Print Size… | edit.cropPrint | | PIC | 4×6, 5×7, 8×10, passport and ID sizes (with head-height guide)
-Auto Crop Borders | edit.autoCrop | Shift+X | IV | trims uniform borders; tolerance
+Auto Crop Borders | edit.autoCrop | Ctrl+Shift+Y | IV | trims uniform borders; tolerance
 Crop Page from Photo | edit.cropPage | | NEW | finds a document's corners in a phone photo and flattens it
 
 ## Add
@@ -190,6 +190,12 @@ Count Unique Colors | image.countColors | | IV |
 Estimate JPEG Quality | image.jpegQuality | | XN,NEW | from the quantization tables; flags resaved and double-compressed files
 Show Channel | image.showChannel | | IV,XN | arguments: red, green, blue, alpha, luminance; not in tabs
 
+## Scientific pictures
+Window / Level… | image.dicomWindow | | NEW | DICOM: window center and width with CT presets, linear, linear exact or sigmoid; live preview; kept per file
+DICOM Tags… | image.dicomTags | | NEW | every data element with its name from the dictionary, sequences nested; filter, copy
+FITS Stretch… | image.fitsStretch | | NEW | linear, square root, square, logarithmic or asinh between percentiles or fixed values; live preview; kept per file
+FITS Header… | image.fitsHeader | | NEW | the header cards of every HDU, the open page's first; filter, copy
+
 ## Rotate and flip
 Rotate Left | image.rotateLeft | L | IV,ALL |
 Rotate Right | image.rotateRight | R | IV,ALL |
@@ -206,8 +212,8 @@ Deskew Scanned Page | image.deskew | | KI,NEW | finds the text baseline angle
 
 ## Lossless JPEG
 Lossless JPEG Transformations… | image.losslessJpeg | Shift+J | IV,XN,FS | rotate, flip, transpose, grayscale, crop at block boundaries, optimize, progressive, keep or strip metadata
-Lossless Crop | image.losslessCrop | | IV,XN | selection snapped to the 8- or 16-pixel grid
-Lossless Auto-Rotate by EXIF | image.losslessAutoRotate | | XN,FS | resets the Orientation tag
+Lossless Crop | image.losslessCrop | Ctrl+Shift+J | IV,XN | selection snapped to the 8- or 16-pixel grid
+Lossless Auto-Rotate by EXIF | image.losslessAutoRotate | Ctrl+Alt+A | XN,FS | resets the Orientation tag
 
 ## Size
 Resize / Resample… | image.resize | Ctrl+R | IV | pixels, percent, print size and DPI; nearest, bilinear, bicubic, Mitchell, Catmull-Rom, Lanczos 2/3, B-spline; gamma-correct; sharpen after; presets
@@ -367,7 +373,7 @@ Show All Files | browse.showAllFiles | | XN | toggle: non-picture files too
 Open Archive as Folder | browse.openArchive | | HV,XN | ZIP, 7z, TAR, CBZ, CB7, EPUB pictures
 Timeline | browse.timeline | | PIC,DK,ACD | year, month, day
 Map | browse.map | | PIC,DK,XN,APH | geotagged pictures; OpenStreetMap tiles online, offline basemap optional
-People | browse.people | | PIC,DK,APH,GP,ACD,WLPG | on-device face detection and grouping; off until you turn it on
+People | browse.people | Ctrl+F6 | PIC,DK,APH,GP,ACD,WLPG | on-device face detection and grouping; off until you turn it on
 Albums | browse.albums | | PIC,DK,GT,GQ |
 Smart Albums | browse.smartAlbum | | APH,DK,LR | saved searches that update themselves
 Add to Album… | browse.addToAlbum | Ctrl+Shift+K | PIC,DK |
@@ -406,7 +412,7 @@ Refresh | browse.refresh | F5 | XN,IV |
 EXIF Information | meta.exif | E | IV,ALL | grouped, searchable, copyable; maker notes decoded where documented
 IPTC Information… | meta.iptc | | IV,XN | edit and save
 XMP… | meta.xmp | | XN,DK | edit; raw XML view
-Comment… | meta.comment | | IV | JPEG COM and PNG text chunks
+Comment… | meta.comment | Ctrl+Shift+M | IV | JPEG COM and PNG text chunks
 Title and Caption… | meta.caption | Ctrl+Shift+T | PIC,DK,APH |
 Keywords… | meta.keywords | Ctrl+K | DK,XN,LR | hierarchical keywords, autocomplete
 Creator and Copyright… | meta.copyright | | XN,DK |
@@ -523,8 +529,8 @@ Next Picture | view.next | Space, PgDn, Right | IV,ALL |
 Previous Picture | view.previous | Backspace, PgUp, Left | IV,ALL |
 First Picture | view.first | Home | IV |
 Last Picture | view.last | End | IV |
-Random Picture | view.random | | XN,IV |
-Go to Picture Number… | view.gotoIndex | Ctrl+Shift+J | NEW |
+Random Picture | view.random | Ctrl+M | XN,IV |
+Go to Picture Number… | view.gotoIndex | Ctrl+J | NEW |
 Next Folder | view.nextFolder | Ctrl+Right | XN,HV |
 Previous Folder | view.previousFolder | Ctrl+Left | XN,HV |
 Wrap Around at Ends | view.wrap | | IV,XN | toggle
@@ -575,7 +581,7 @@ Right-to-Left Reading | view.rtl | | HV | toggle
 DICOM Overlay Planes | view.dicomOverlays | | NEW | toggle: draw the overlay planes of DICOM files in white; the open file is decoded again
 
 ## Compare
-Compare Pictures | view.compare | Ctrl+Shift+Y | FS,XN,NM,DK | two to four panes, synchronized zoom and pan
+Compare Pictures | view.compare | Ctrl+Alt+Y | FS,XN,NM,DK | two to four panes, synchronized zoom and pan
 Before/After Slider | view.compareSplit | | NEW | one divider over two pictures or two versions
 Difference Overlay | view.diffOverlay | | NEW | highlights changed pixels; threshold
 Synchronize Windows | view.syncWindows | | NM | several windows follow the same zoom, pan and navigation

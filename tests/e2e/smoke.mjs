@@ -593,6 +593,45 @@ try {
     return [withOverlay > 0 && without < withOverlay, noteOn, noteOff, pref, back === withOverlay, qn.prefs.dicomOverlays, pc.pages[0].notes.find((n) => /^presentation state/.test(n)), colored > 100];
   }, ovFiles);
   check('dicom: View ▸ DICOM Overlay Planes decodes the file again without its overlay, and back; a pseudo-color state colors its picture', ovGot, [true, '1 overlay plane drawn in white', '1 overlay plane not drawn (View ▸ DICOM Overlay Planes)', false, true, true, 'presentation state FIXTURE (pseudo-color: window 100/600 through the segmented WINTER palette) applied: window center 100, width 600, pseudo-color palette (256 entries)', true], JSON.stringify(ovGot));
+  // Scientific tools: Window / Level and DICOM Tags on a DICOM file, FITS Stretch and FITS Header on a FITS file.
+  const sciFiles = Object.fromEntries([['ct-window.dcm', 'dicom'], ['extensions.fits', 'fits']].map(([n, d]) => [n, readFileSync(`tests/fixtures/${d}/${n}`).toString('base64')]));
+  const sci = await p.evaluate(async (files) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const list = Object.entries(files).map(([n, b64]) => new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], n));
+    const before = qn.picture;
+    await qn.exec('file.openDropped', list);
+    for (let i = 0; i < 200 && (!qn.picture || qn.picture === before) && !document.querySelector('.ql-toast'); i++) await wait(50);
+    const show = async (name) => { if (qn.picture?.name !== name) { qn.folder.select(qn.folder.entries.findIndex((e) => e.name === name)); await qn.tab.show(); } for (let i = 0; i < 200 && (!qn.picture || qn.picture.name !== name); i++) await wait(50); return qn.picture; };
+    const gray = (pic) => { const c = pic.frameCanvas(), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i]; return Math.round(s / (d.length / 4)); };
+    const out = {};
+    let pic = await show('ct-window.dcm');
+    const g0 = gray(pic), w0 = pic.info.window;
+    await qn.exec('image.dicomWindow', { wc: 100, ww: 600 }); for (let i = 0; i < 100 && qn.picture === pic; i++) await wait(50); pic = qn.picture;
+    out.dicom = [w0, pic.info.window, gray(pic) !== g0, pic.pages[0].notes.includes('window center 100, width 600, after the rescale')];
+    await qn.exec('image.dicomWindow', 'file'); for (let i = 0; i < 100 && qn.picture === pic; i++) await wait(50); pic = qn.picture;
+    out.dicomReset = [pic.info.window, gray(pic) === g0];
+    const tagsDlg = qn.exec('image.dicomTags');
+    let dlg; for (let i = 0; i < 100 && !(dlg = [...document.querySelectorAll('.ql-dialog')].find((d) => /DICOM Tags/.test(d.textContent))); i++) await wait(50);
+    const rows = dlg ? dlg.querySelectorAll('tbody tr').length : 0;
+    const input = dlg?.querySelector('input[type=search]'); if (input) { input.value = 'patient'; input.dispatchEvent(new Event('input')); await wait(50); }
+    const filtered = dlg ? dlg.querySelectorAll('tbody tr').length : 0, hasName = dlg ? /Patient's Name/.test(dlg.textContent) : false;
+    dlg?.querySelector('.ql-dialog-foot button:last-child')?.click(); await tagsDlg; for (let i = 0; i < 40 && document.querySelector('.ql-dialog'); i++) await wait(50);
+    out.tags = [rows > 20, filtered > 0 && filtered < rows, hasName, !document.querySelector('.ql-dialog')];
+    pic = await show('extensions.fits');
+    const f0 = gray(pic);
+    await qn.exec('image.fitsStretch', { mode: 'log' }); for (let i = 0; i < 100 && qn.picture === pic; i++) await wait(50); pic = qn.picture;
+    out.fits = [gray(pic) > f0, pic.pages[0].notes.some((n) => /^shown stretched logarithmically/.test(n))];
+    await qn.exec('image.fitsStretch', 'default'); for (let i = 0; i < 100 && qn.picture === pic; i++) await wait(50); pic = qn.picture;
+    out.fitsReset = gray(pic) === f0;
+    const hdrDlg = qn.exec('image.fitsHeader');
+    for (let i = 0; i < 100 && !(dlg = [...document.querySelectorAll('.ql-dialog')].find((d) => /FITS Header/.test(d.textContent))); i++) await wait(50);
+    out.header = [dlg ? /SIMPLE/.test(dlg.textContent) : false, dlg ? /XTENSION/.test(dlg.textContent) : false, dlg ? /this page/.test(dlg.textContent) : false];
+    dlg?.querySelector('.ql-dialog-foot button:last-child')?.click(); await hdrDlg; for (let i = 0; i < 40 && document.querySelector('.ql-dialog'); i++) await wait(50);
+    out.headerClosed = !document.querySelector('.ql-dialog');
+    return out;
+  }, sciFiles);
+  check('dicom: Window / Level decodes the file again with the user\'s window and back; DICOM Tags lists and filters the elements', [sci.dicom, sci.dicomReset, sci.tags], [['center 40, width 400 (first of 2)', 'center 100, width 600 (Window / Level)', true, true], ['center 40, width 400 (first of 2)', true], [true, true, true, true]], JSON.stringify(sci));
+  check('fits: FITS Stretch applies a logarithmic stretch and back; FITS Header lists the cards of every HDU', [sci.fits, sci.fitsReset, sci.header, sci.headerClosed], [[true, true], true, [true, true, true], true], JSON.stringify([sci.fits, sci.fitsReset, sci.header]));
   check('fits: a world coordinate system is read and described', more.wcs, ['TAN', 'TAN projection: the center is at RA 10:00:24.00 Dec −20:30:00.0 (ICRS J2000); the pixel readout and Measure show sky positions'], JSON.stringify(more.wcs));
   check('fits opens: image extensions as pages; a gzipped file, stretched, the first stored row at the bottom', [more['extensions.fits'], more['extensions.fits:pages'], more['int16-bzero.fits.gz'], more.fitsPx], [['fits', 12, 8, 1], 2, ['fits', 30, 20, 1], [0, 255]], JSON.stringify([more['extensions.fits'], more['extensions.fits:pages'], more['int16-bzero.fits.gz'], more.fitsPx]));
   check('flashpix JPEG tiles (near libjpeg\'s decoding) and a JBIG2 page are decoded', [more.fpxPx && more.fpxPx.every((v, i) => Math.abs(v - [249, 43, 56][i]) <= 32), more.jb2Black > 1000], [true, true], JSON.stringify([more.fpxPx, more.jb2Black])); // input_jpeg.libjpeg.png at (30, 20)

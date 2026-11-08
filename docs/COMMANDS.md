@@ -1,6 +1,6 @@
 # Anne's Lens Command Reference
 
-Anne's Lens has **559 commands** built, out of the **560** in the plan ([COMMANDS-PLAN.md](COMMANDS-PLAN.md)). Every built command can be placed on the Quick Access Bar, added to a custom tab, found in the classic menus, bound to a keyboard shortcut, recorded in a macro, or found with command search (Alt+Q). A command is registered only when it works; the rest of the plan is listed at the end of this file.
+Anne's Lens has **563 commands** built, out of the **564** in the plan ([COMMANDS-PLAN.md](COMMANDS-PLAN.md)). Every built command can be placed on the Quick Access Bar, added to a custom tab, found in the classic menus, bound to a keyboard shortcut, recorded in a macro, or found with command search (Alt+Q). A command is registered only when it works; the rest of the plan is listed at the end of this file.
 
 25 of the built commands are "Commands Not in the Tabs" (reachable through the Quick Access Bar chooser, Customize Tabs, the classic menus and command search), so nothing the app can do is hidden.
 
@@ -13,7 +13,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 - **Home**: Clipboard (4) · Navigate (5) · Rotate (5) · Quick fix (6) · Organize (7) · View (5) · Share (4)
 - **File**: Open (16) · Save (9) · Export (9) · Files (11) · Acquire (7) · Print (6) · Share (6) · Close and options (12)
 - **Edit**: Undo (3) · Clipboard (9) · Select (10) · Crop (5) · Add (5) · Paint and markup (5) · Find (2)
-- **Image**: Information (4) · Rotate and flip (12) · Lossless JPEG (3) · Size (6) · Color depth and palette (12) · Color management (3)
+- **Image**: Information (4) · Scientific pictures (4) · Rotate and flip (12) · Lossless JPEG (3) · Size (6) · Color depth and palette (12) · Color management (3)
 - **Adjust**: Automatic (6) · Tone (14) · Color (11) · Detail and retouch (9) · Presets and history (7)
 - **Effects**: Browse (3) · Artistic (13) · Photographic (11) · Distort (14) · Frames and shadows (5)
 - **Browse**: Views (18) · Rate and label (8) · Find and compare (8) · Catalog (5)
@@ -33,17 +33,17 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 
 | Layout | Modeled on | Built commands on the bar |
 |---|---|---|
-| IrfanView style (`irfanview`) | IrfanView 4.x main window (File, Edit, Image, Options, View, Help) | 201 |
+| IrfanView style (`irfanview`) | IrfanView 4.x main window (File, Edit, Image, Options, View, Help) | 207 |
 | IrfanView Thumbnails style (`irfanview-thumbs`) | IrfanView 4.x thumbnail window | 89 |
-| XnView style (`xnview`) | XnView MP browser and viewer | 179 |
-| FastStone style (`faststone`) | FastStone Image Viewer | 139 |
-| ACDSee style (`acdsee`) | ACDSee (Manage, View and Edit modes) | 121 |
+| XnView style (`xnview`) | XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help) | 208 |
+| FastStone style (`faststone`) | FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help) | 167 |
+| ACDSee style (`acdsee`) | ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help) | 144 |
 | Windows Photo Viewer style (`photoviewer`) | Windows Photo Viewer and Microsoft Photos (toolbar commands as menus) | 95 |
-| Picasa style (`picasa`) | Picasa 3 | 116 |
-| Preview style (`preview`) | macOS Preview | 104 |
-| digiKam style (`digikam`) | digiKam albums and image editor | 111 |
-| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | 341 |
-| Anne's Lens complete (`complete`) | the ribbon itself: one menu per tab, one submenu per group, every command | 559 |
+| Picasa style (`picasa`) | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help) | 138 |
+| Preview style (`preview`) | macOS Preview (File, Edit, View, Go, Tools, Window, Help) | 122 |
+| digiKam style (`digikam`) | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help) | 145 |
+| All viewers combined (`all`) | the union of every layout above, merged menu by menu without duplicates (Picture, Modify and Item merge into Image; Go and Window into View; Album, Tag and Folder into Organize; Import and Export into File; Settings into Options) | 373 |
+| Anne's Lens complete (`complete`) | the ribbon itself: one menu per tab, one submenu per group, every command | 563 |
 
 ## File (82 of 82)
 
@@ -114,7 +114,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Print… | Print | Ctrl+p | `file.print` | from IrfanView, most picture viewers |
 | Quick Print | Print |  | `file.quickPrint` |  |
 | Cast to Display | Share |  | `file.cast` | from Google Photos, Android gallery apps |
-| Email… | Share | Ctrl+Shift+m | `file.email` | from IrfanView, Windows Photo Viewer and Windows Picture and Fax Viewer, Picasa, FastStone Image Viewer |
+| Email… | Share | Shift+m | `file.email` | from IrfanView, Windows Photo Viewer and Windows Picture and Fax Viewer, Picasa, FastStone Image Viewer |
 | Set as Contact Photo | Share |  | `file.contactPhoto` | from Android gallery apps |
 | Set as Lock Screen | Share |  | `file.lockScreen` | from Microsoft Photos, Android gallery apps |
 | Set as Wallpaper | Share | Ctrl+Shift+w | `file.wallpaper` | has options menu; from IrfanView, XnView Classic and XnView MP, Windows Photo Viewer and Windows Picture and Fax Viewer |
@@ -159,7 +159,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Select by Color Range… | Select |  | `edit.selectColor` | from new in Anne's Lens |
 | Select None | Select | Ctrl+d | `edit.selectNone` | from most picture viewers |
 | Selection Information | Select |  | `edit.selectionInfo` | not in tabs; from IrfanView |
-| Auto Crop Borders | Crop | Shift+x | `edit.autoCrop` | from IrfanView |
+| Auto Crop Borders | Crop | Ctrl+Shift+y | `edit.autoCrop` | from IrfanView |
 | Crop for Print Size… | Crop |  | `edit.cropPrint` | from Picasa |
 | Crop Page from Photo | Crop |  | `edit.cropPage` | from new in Anne's Lens |
 | Crop Selection | Crop | Ctrl+y | `edit.crop` | from IrfanView |
@@ -192,7 +192,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Find Files… | Find | Ctrl+f | `edit.findFiles` | from IrfanView, XnView Classic and XnView MP |
 | Go to File by Name | Find | Ctrl+Shift+g | `edit.gotoFile` | from new in Anne's Lens |
 
-## Image (41 of 41)
+## Image (45 of 45)
 
 | Command | Group | Shortcut | ID | Notes |
 |---|---|---|---|---|
@@ -201,6 +201,10 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Histogram | Information | Shift+h | `image.histogram` | from IrfanView, XnView Classic and XnView MP, FastStone Image Viewer |
 | Picture Information | Information | i | `image.info` | from IrfanView, most picture viewers |
 | Show Channel | Information |  | `image.showChannel` | has options menu; not in tabs; from IrfanView, XnView Classic and XnView MP |
+| DICOM Tags… | Scientific pictures |  | `image.dicomTags` | from new in Anne's Lens |
+| FITS Header… | Scientific pictures |  | `image.fitsHeader` | from new in Anne's Lens |
+| FITS Stretch… | Scientific pictures |  | `image.fitsStretch` | from new in Anne's Lens |
+| Window / Level… | Scientific pictures |  | `image.dicomWindow` | from new in Anne's Lens |
 | Auto Straighten | Rotate and flip |  | `image.autoStraighten` | from Lightroom Classic (Library and Develop), new in Anne's Lens |
 | Auto-Rotate by EXIF Orientation | Rotate and flip |  | `image.autoRotateExif` | from IrfanView, XnView Classic and XnView MP |
 | Custom Rotation… | Rotate and flip | Ctrl+u | `image.rotateCustom` | from IrfanView |
@@ -213,8 +217,8 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Rotate Left | Rotate and flip | l | `image.rotateLeft` | from IrfanView, most picture viewers |
 | Rotate Right | Rotate and flip | r | `image.rotateRight` | from IrfanView, most picture viewers |
 | Straighten | Rotate and flip |  | `image.straighten` | from Picasa, Microsoft Photos, Apple Photos and iPhoto |
-| Lossless Auto-Rotate by EXIF | Lossless JPEG |  | `image.losslessAutoRotate` | from XnView Classic and XnView MP, FastStone Image Viewer |
-| Lossless Crop | Lossless JPEG |  | `image.losslessCrop` | from IrfanView, XnView Classic and XnView MP |
+| Lossless Auto-Rotate by EXIF | Lossless JPEG | Ctrl+Alt+a | `image.losslessAutoRotate` | from XnView Classic and XnView MP, FastStone Image Viewer |
+| Lossless Crop | Lossless JPEG | Ctrl+Shift+j | `image.losslessCrop` | from IrfanView, XnView Classic and XnView MP |
 | Lossless JPEG Transformations… | Lossless JPEG | Shift+j | `image.losslessJpeg` | from IrfanView, XnView Classic and XnView MP, FastStone Image Viewer |
 | Content-Aware Resize… | Size |  | `image.seamCarve` | from new in Anne's Lens |
 | Double Size | Size | Shift+= | `image.doubleSize` | from IrfanView |
@@ -355,7 +359,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Include Subfolders | Views |  | `browse.recursive` | from IrfanView, XnView Classic and XnView MP |
 | Map | Views |  | `browse.map` | from Picasa, digiKam, XnView Classic and XnView MP, Apple Photos and iPhoto |
 | Open Archive as Folder | Views |  | `browse.openArchive` | from Honeyview, XnView Classic and XnView MP |
-| People | Views |  | `browse.people` | from Picasa, digiKam, Apple Photos and iPhoto, Google Photos, ACDSee, Windows Live Photo Gallery |
+| People | Views | Ctrl+F6 | `browse.people` | from Picasa, digiKam, Apple Photos and iPhoto, Google Photos, ACDSee, Windows Live Photo Gallery |
 | Show All Files | Views |  | `browse.showAllFiles` | from XnView Classic and XnView MP |
 | Smart Albums | Views |  | `browse.smartAlbum` | from Apple Photos and iPhoto, digiKam, Lightroom Classic (Library and Develop) |
 | Sort By | Views |  | `browse.sort` | has options menu; from IrfanView, XnView Classic and XnView MP |
@@ -390,7 +394,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 
 | Command | Group | Shortcut | ID | Notes |
 |---|---|---|---|---|
-| Comment… | View and edit |  | `meta.comment` | from IrfanView |
+| Comment… | View and edit | Ctrl+Shift+m | `meta.comment` | from IrfanView |
 | Compare Metadata | View and edit |  | `meta.diff` | from new in Anne's Lens |
 | Copy Metadata From… | View and edit |  | `meta.copyFrom` | from XnView Classic and XnView MP |
 | Creator and Copyright… | View and edit |  | `meta.copyright` | from XnView Classic and XnView MP, digiKam |
@@ -503,13 +507,13 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Zoom In | Zoom | = | `view.zoomIn` | from IrfanView, most picture viewers |
 | Zoom Out | Zoom | + | `view.zoomOut` | from IrfanView, most picture viewers |
 | First Picture | Navigate | Home | `view.first` | from IrfanView |
-| Go to Picture Number… | Navigate | Ctrl+Shift+j | `view.gotoIndex` | from new in Anne's Lens |
+| Go to Picture Number… | Navigate | Ctrl+j | `view.gotoIndex` | from new in Anne's Lens |
 | Last Picture | Navigate | End | `view.last` | from IrfanView |
 | Next Folder | Navigate | Ctrl+ArrowRight | `view.nextFolder` | from XnView Classic and XnView MP, Honeyview |
 | Next Picture | Navigate | Space, PageDown, ArrowRight | `view.next` | from IrfanView, most picture viewers |
 | Previous Folder | Navigate | Ctrl+ArrowLeft | `view.previousFolder` | from XnView Classic and XnView MP, Honeyview |
 | Previous Picture | Navigate | Backspace, PageUp, ArrowLeft | `view.previous` | from IrfanView, most picture viewers |
-| Random Picture | Navigate |  | `view.random` | from XnView Classic and XnView MP, IrfanView |
+| Random Picture | Navigate | Ctrl+m | `view.random` | from XnView Classic and XnView MP, IrfanView |
 | Wrap Around at Ends | Navigate |  | `view.wrap` | from IrfanView, XnView Classic and XnView MP |
 | Always on Top | Window |  | `view.alwaysOnTop` | from IrfanView, XnView Classic and XnView MP |
 | Classic Menu Layout | Window |  | `view.menuLayout` | has options menu; from new in Anne's Lens |
@@ -551,7 +555,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Transparency Display | Display |  | `view.alphaDisplay` | has options menu; from XnView Classic and XnView MP, ImageGlass |
 | Two-Page View | Display |  | `view.twoPage` | from Honeyview |
 | Before/After Slider | Compare |  | `view.compareSplit` | has options menu; from new in Anne's Lens |
-| Compare Pictures | Compare | Ctrl+Shift+y | `view.compare` | from FastStone Image Viewer, XnView Classic and XnView MP, nomacs, digiKam |
+| Compare Pictures | Compare | Ctrl+Alt+y | `view.compare` | from FastStone Image Viewer, XnView Classic and XnView MP, nomacs, digiKam |
 | Difference Overlay | Compare |  | `view.diffOverlay` | from new in Anne's Lens |
 | Synchronize Windows | Compare |  | `view.syncWindows` | from nomacs |
 | Media Player | Media |  | `view.media` | from IrfanView, XnView Classic and XnView MP, new in Anne's Lens |

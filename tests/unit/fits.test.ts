@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { decodeFits, fitsData, fitsHdus, isFits } from '../../src/codecs/fits';
+import { decodeFits, fitsData, fitsHdus, isFits, fitsCards, fitsPageHdus } from '../../src/codecs/fits';
+import { splitValue } from '../../src/commands/scientific';
 import { sniff } from '../../src/codecs/registry';
 
 const DIR = 'tests/fixtures/fits/';
@@ -104,5 +105,35 @@ describe('FITS (files written from the standard with numpy)', () => {
     const hdr = fx('extensions.fits').subarray(0, 2880);
     expect(() => decodeFits(hdr)).toThrow(/holds no image/);
     expect(() => decodeFits(new Uint8Array(3000))).toThrow(/not a FITS file/);
+  });
+  it('FITS Stretch: the mapping and its limits', () => {
+    const lin = decodeFits(fx('extensions.fits')), g = (d: typeof lin, i: number) => d.pages[0].frames[0].raster.data[i * 4];
+    const log = decodeFits(fx('extensions.fits'), 'extensions.fits', { mode: 'log' }), sq = decodeFits(fx('extensions.fits'), 'extensions.fits', { mode: 'sqrt' }), sqr = decodeFits(fx('extensions.fits'), 'extensions.fits', { mode: 'square' }), as = decodeFits(fx('extensions.fits'), 'extensions.fits', { mode: 'asinh' });
+    let brighterLog = 0, brighterSqrt = 0, darkerSquare = 0, n = 0;
+    for (let i = 0; i < lin.pages[0].width * lin.pages[0].height; i++) { const l = g(lin, i); if (l === 0 || l === 255) continue; n++; if (g(log, i) > l) brighterLog++; if (g(sq, i) > l) brighterSqrt++; if (g(sqr, i) < l) darkerSquare++; expect(g(as, i)).toBeGreaterThanOrEqual(l); }
+    expect(n).toBeGreaterThan(0); expect(brighterLog).toBe(n); expect(brighterSqrt).toBe(n); expect(darkerSquare).toBe(n);
+    expect(log.pages[0].notes.some((x) => /^shown stretched logarithmically from .* \(the 0\.5th and 99\.5th percentiles\)/.test(x))).toBe(true);
+    const pct = decodeFits(fx('extensions.fits'), 'extensions.fits', { percentiles: [10, 90] });
+    expect(pct.pages[0].notes.some((x) => /\(the 10th and 90th percentiles\)/.test(x))).toBe(true);
+    let clipped = 0; for (let i = 0; i < pct.pages[0].width * pct.pages[0].height; i++) { const v = g(pct, i); if (v === 0 || v === 255) clipped++; }
+    expect(clipped).toBeGreaterThan(0);
+    const fixed = decodeFits(fx('extensions.fits'), 'extensions.fits', { lo: 0, hi: 1e9 });
+    expect(fixed.pages[0].notes.some((x) => /from 0 to 1\.000e\+9 .*\(FITS Stretch limits\)/.test(x))).toBe(true);
+    expect(Math.max(...Array.from({ length: fixed.pages[0].width * fixed.pages[0].height }, (_, i) => g(fixed, i)))).toBeLessThan(3);
+  });
+  it('FITS Header: the cards of every HDU, the HDU of each page, values split from comments', () => {
+    const u8 = fx('extensions.fits'), hdus = fitsHdus(u8);
+    expect(hdus.length).toBeGreaterThan(1);
+    const c0 = fitsCards(u8, 0), c1 = fitsCards(u8, 1);
+    expect(c0[0]).toMatch(/^SIMPLE  =\s+T/); expect(c0.at(-1)).toBe('END');
+    expect(c1[0]).toMatch(/^XTENSION= 'IMAGE   '/); expect(c1.at(-1)).toBe('END');
+    expect(c1.length).toBe(hdus[1].cards.size + hdus[1].comments.length + 1);
+    expect(fitsPageHdus(u8)).toEqual(decodeFits(u8).pages.map((_, i) => [1, 2][i] ?? 0).slice(0, decodeFits(u8).pages.length).map((_, i) => fitsPageHdus(u8)[i]));
+    expect(fitsPageHdus(u8).length).toBe(decodeFits(u8).pages.length);
+    const gz = fx('int16-bzero.fits.gz');
+    expect(fitsCards(gz, 0, 'int16-bzero.fits.gz')[0]).toMatch(/^SIMPLE/);
+    expect(splitValue("'string / not a comment' / the comment")).toEqual(["'string / not a comment'", 'the comment']);
+    expect(splitValue('  12.5 / a value')).toEqual(['12.5', 'a value']);
+    expect(splitValue("'it''s'")).toEqual(["'it''s'", '']);
   });
 });

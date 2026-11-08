@@ -191,3 +191,4 @@ desktop.ini
 .idea/
 *.swp
 __pycache__/
+tests/corpus/

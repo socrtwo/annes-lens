@@ -27,7 +27,7 @@ import { decodeDds, isDds } from './dds';
 import { decodeHdr, isHdr } from './hdr';
 import { decodeExr, isExr, exrNeedsHtj2k } from './exr';
 import { isEmf, isWmf } from './metafile';
-import { identifyRaw, findEmbeddedJpegs, RAW_EXTENSIONS } from './rawpreview';
+import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, RAW_EXTENSIONS } from './rawpreview';
 import { isDng } from '../raw/dng';
 import { isPdf } from './pdf';
 import { isDjvu } from './djvu';
@@ -210,6 +210,8 @@ export const decodeOptions = {
   dicomOverlays: true,
   /** RAW files open as their embedded preview; when off, DNG files are developed (Use Embedded Preview by Default). */
   rawPreferPreview: true,
+  /** Per-file display settings the tools set (Window / Level, FITS Stretch), by entry; the file is decoded again when they change. */
+  perEntry: new WeakMap<Entry, { dicomWindow?: import('./dicom').DicomWindow | 'full'; fitsStretch?: import('./fits').FitsStretch }>(),
   /** Asks for a document's password (set by the app's interface); null: the user gave up. */
   askPassword: null as null | ((name: string, wrong: boolean) => Promise<string | null>),
   /** The other entries of the folder an entry was opened from (set by the app), for files that refer to their neighbours (DICOM presentation states). */
@@ -279,10 +281,10 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
     }
     let fallback = '';
     if (isJ2kTransferSyntax(dicomTransferSyntax(bytes))) { try { await (await import('./openjpeg16')).loadOpenJpeg(); } catch (e) { fallback = (e as Error).message; } }
-    decoded = fromOwn(await decodeDicom(bytes, dec, { presentation, drawText: presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays }), 'dicom');
+    decoded = fromOwn(await decodeDicom(bytes, dec, { presentation, drawText: presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays, window: decodeOptions.perEntry.get(entry)?.dicomWindow }), 'dicom');
     if (fallback) decoded.warnings.push(fallback);
   }
-  else if (fmt.id === 'fits') { const { decodeFits } = await import('./fits'); decoded = fromOwn(decodeFits(u8, entry.name), 'fits'); }
+  else if (fmt.id === 'fits') { const { decodeFits } = await import('./fits'); decoded = fromOwn(decodeFits(u8, entry.name, decodeOptions.perEntry.get(entry)?.fitsStretch), 'fits'); }
   else if (fmt.id === 'jbig2') {
     const [{ decodeJbig2 }, { imageDecoders }] = await Promise.all([import('./jbig'), import('./jpx')]);
     decoded = fromOwn(await decodeJbig2(u8, await imageDecoders()), 'jbig2 (pdf.js)');
@@ -473,7 +475,11 @@ async function decodeRawPreview(u8: Uint8Array, name: string) {
       return r;
     } catch (e: any) { if (!previews.length) throw new Error(`DNG: ${e?.message || e}`); warnings.push(`Develop: ${e?.message || e}`); }
   }
-  if (!previews.length) throw new Error(`${id.family} file from ${id.make}: no embedded JPEG preview, and developing ${id.family} files needs the RAW module (DNG files develop without it)`);
+  if (!previews.length) {
+    const t = await tiffThumbnail(u8); // older TIFF-based RAW files: an uncompressed RGB thumbnail instead of a JPEG
+    if (t) { const pg = pageFromDecoded(t.page); pg.notes = [`embedded ${pg.width}×${pg.height} uncompressed thumbnail of a ${id.family} file (no JPEG preview; developing ${id.family} files needs the RAW module)`]; return { pages: [pg], info: { ...info, previews: `${pg.width}×${pg.height} uncompressed thumbnail` }, warnings, decoder: 'raw preview' }; }
+    throw new Error(`${id.family} file from ${id.make}: no embedded preview, and developing ${id.family} files needs the RAW module (DNG files develop without it)`);
+  }
   for (const pv of previews) {
     try {
       const bytes = u8.subarray(pv.offset, pv.offset + pv.length);

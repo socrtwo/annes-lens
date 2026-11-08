@@ -46,7 +46,6 @@ file.scan
 file.batchScan
 file.selectSource
 ---
-file.email
 file.openRepair
 file.exit
 = Edit
@@ -71,8 +70,6 @@ edit.clear
 ---
 edit.insertText
 edit.insertOverlay
-edit.border
-edit.canvasSize
 edit.autoCrop
 = Image
 image.info
@@ -84,7 +81,10 @@ image.flipV
 image.flipH
 ---
 image.resize
+edit.canvasSize
+edit.border
 image.histogram
+image.showChannel
 ---
 image.grayscale
 image.negative
@@ -128,7 +128,11 @@ fx.convolution
 fx.plugins8bf
 ---
 create.panoramaJoin
-image.losslessJpeg
+---
+image.dicomWindow
+image.dicomTags
+image.fitsStretch
+image.fitsHeader
 = Options
 file.options
 file.wallpaper
@@ -137,13 +141,6 @@ view.language
 ---
 browse.sort
 > Multipage images
-pages.next
-pages.previous
-pages.goto
-pages.insert
-pages.delete
-pages.extract
-create.multipage
 <
 create.extractFrames
 create.extractEmbedded
@@ -155,6 +152,19 @@ meta.iptc
 meta.comment
 tools.plugins
 file.exportSettings
+---
+> Multipage pictures
+create.multipage
+pages.insert
+pages.delete
+pages.extract
+<
+---
+image.losslessJpeg
+image.losslessCrop
+---
+file.email
+view.mediaPlay
 = View
 view.fitWindow
 view.fitLarge
@@ -180,9 +190,15 @@ view.fitWindowToImage
 view.toolbar
 view.statusBar
 view.pixelInfo
-image.showChannel
 view.background
 meta.exif
+---
+> Multipage pictures
+pages.next
+pages.previous
+pages.goto
+<
+file.reload
 = Help
 help.contents
 help.shortcuts
@@ -235,32 +251,32 @@ browse.favorites
 help.contents
 help.about
 
-@layout xnview | XnView style | XnView MP browser and viewer
+@layout xnview | XnView style | XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help)
 = File
 file.open
 file.openFolder
+file.openWith
+file.openExternal
 file.openRecent
 file.recentFolders
 ---
+file.reload
 file.save
 file.saveAs
+file.saveCopy
 file.saveForWeb
-file.reload
 ---
-browse.newFolder
-file.rename
-batch.rename
+file.print
+---
 file.copyTo
 file.moveTo
 file.delete
----
-file.openWith
-file.openExternal
+file.rename
 file.revealInFolder
 ---
+file.selectSource
 file.scan
-file.capture
-file.print
+---
 file.exit
 = Edit
 edit.undo
@@ -270,39 +286,29 @@ edit.cut
 edit.copy
 edit.paste
 edit.pasteAsNew
+edit.clear
+---
+edit.crop
+edit.autoCrop
 ---
 edit.selectAll
 edit.selectNone
 edit.selectInvert
 browse.selectPattern
 ---
-browse.rate
-browse.colorLabel
-meta.keywords
-meta.caption
-meta.copyright
-meta.xmp
-meta.iptc
-meta.template
----
-meta.shiftDate
-file.fileTimeFromExif
-meta.strip
-file.options
+file.copyTo
+file.moveTo
+browse.newFolder
+file.sysProperties
 = View
-browse.viewMode
-browse.thumbSize
-browse.sort
-browse.groupBy
-browse.filter
----
-browse.folderTree
-browse.favorites
-view.infoPane
-view.filmstrip
-view.navigator
----
 view.fullScreen
+---
+browse.viewMode
+browse.sort
+browse.filter
+browse.groupBy
+browse.thumbSize
+---
 view.zoomIn
 view.zoomOut
 view.actualSize
@@ -310,91 +316,167 @@ view.fitWindow
 view.zoomLock
 view.keepPosition
 ---
-view.osd
-view.osdTemplate
-view.histogramOverlay
 view.alphaDisplay
+image.showChannel
+view.osd
+view.histogramOverlay
+view.osdTemplate
 view.colorManaged
 view.dicomOverlays
 view.media
+---
+browse.recursive
+browse.refresh
+---
+view.toolbar
+browse.folderTree
+browse.favorites
+view.infoPane
+view.filmstrip
+view.navigator
 browse.map
+view.statusBar
+---
+view.syncWindows
+view.frameless
+view.alwaysOnTop
 = Image
-image.rotateLeft
-image.rotateRight
-image.rotateCustom
-image.flipH
-image.flipV
-image.autoRotateExif
-image.losslessJpeg
-image.losslessCrop
+image.countColors
+image.decreaseDepth
+image.increaseDepth
+image.paletteEdit
 ---
-image.resize
-edit.canvasSize
-edit.crop
-edit.autoCrop
----
-adjust.autoLevels
-adjust.autoContrast
-adjust.autoColor
+> Map
+adjust.whiteBalance
+image.grayscale
+image.negative
+adjust.normalize
+adjust.equalize
+fx.solarize
+adjust.posterize
+adjust.tint
+adjust.vignette
+<
+> Adjust
+adjust.colorCorrections
 adjust.levels
 adjust.curves
+adjust.shadowsHighlights
 adjust.hsl
 adjust.colorBalance
 adjust.channelMixer
-adjust.equalize
-adjust.normalize
-adjust.posterize
+adjust.autoLevels
+adjust.autoContrast
+adjust.autoColor
+<
+> Rotate
+image.rotateLeft
+image.rotateRight
+image.rotate180
+image.rotateCustom
+image.autoRotateExif
+image.autoStraighten
+<
+> Mirror
+image.flipH
+image.flipV
+<
 ---
-image.grayscale
-image.negative
-image.decreaseDepth
-image.increaseDepth
+image.resize
+edit.canvasSize
+---
 image.convertProfile
 image.assignProfile
 ---
 fx.browser
 fx.convolution
 fx.plugins8bf
-= Tools
-batch.convert
-batch.recipe
-batch.rename
-batch.metadata
+= Metadata
+browse.rate
+browse.colorLabel
+meta.keywords
 ---
-browse.findDuplicates
+meta.comment
+---
+meta.iptc
+meta.xmp
+meta.geotag
+---
+meta.shiftDate
+file.fileTimeFromExif
+---
+browse.map
+---
+meta.regions
+---
+image.losslessJpeg
+image.losslessCrop
+---
+meta.template
+meta.copyFrom
+meta.caption
+meta.copyright
+---
+meta.strip
+= Tools
+file.capture
+file.wallpaper
+---
+edit.findFiles
 browse.findSimilar
+browse.findDuplicates
 view.compare
 ---
-file.wallpaper
+batch.convert
+batch.rename
+batch.recipe
+batch.metadata
+---
+show.start
+show.settings
+---
+file.share
+file.email
+---
 file.export.metadataCsv
 tools.external
 tools.plugins
+file.options
 = Create
+create.multipage
+create.panoramaJoin
 create.contactSheet
 create.imageStrip
 create.webGallery
 create.animation
-create.multipage
-create.panoramaJoin
-= Window
-view.syncWindows
-view.frameless
-view.alwaysOnTop
 = Help
+help.about
+tools.plugins
 help.contents
 help.shortcuts
 help.formats
 help.sendSample
-help.about
+help.checkUpdates
 
-@layout faststone | FastStone style | FastStone Image Viewer
+@layout faststone | FastStone style | FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help)
 = File
 file.open
 file.openFolder
 file.openRecent
-file.save
 file.saveAs
 file.reload
+---
+file.email
+> Print
+file.print
+file.printLayouts
+<
+---
+file.importCamera
+> Screen Capture
+file.capture
+<
+file.scan
 ---
 file.copyTo
 file.moveTo
@@ -402,115 +484,185 @@ file.rename
 file.delete
 file.quickMove
 ---
-file.email
-file.print
-file.printLayouts
-file.wallpaper
-file.capture
-file.scan
 file.exit
 = Edit
 edit.undo
 edit.redo
+---
+file.openExternal
+---
+> Select
+edit.selectRect
+edit.selectEllipse
+edit.selectLasso
+---
+edit.selectAll
+edit.selectNone
+edit.selectInvert
+---
+edit.copy
+edit.cut
+edit.paste
+edit.crop
+edit.clear
+---
+file.saveSelection
+<
 edit.copy
 edit.paste
-edit.selectAll
 ---
-edit.crop
-edit.cropAspect
+> Rotate
+image.rotateLeft
+image.rotateRight
+image.flipH
+image.flipV
+image.rotateCustom
+<
 image.resize
 edit.canvasSize
-image.rotateCustom
-image.losslessJpeg
+image.setDpi
 ---
+edit.cropAspect
 edit.markup
 paint.clone
 paint.heal
-edit.insertText
-edit.insertOverlay
-edit.border
+adjust.redEye
+---
+meta.comment
 = Colors
 adjust.colorCorrections
+adjust.shadowsHighlights
+adjust.hsl
 adjust.levels
 adjust.curves
-adjust.shadowsHighlights
-adjust.colorBalance
-adjust.hsl
-adjust.autoLevels
+---
+image.swapChannels
+image.decreaseDepth
 image.grayscale
 image.negative
-adjust.redEye
+adjust.tint
+---
 adjust.sharpen
 adjust.unsharp
 adjust.blur
 adjust.denoise
+adjust.autoLevels
+adjust.colorBalance
 = Effects
+edit.insertOverlay
+edit.border
+fx.oilPaint
 fx.pencilSketch
 fx.cartoon
 fx.dropShadow
 fx.reflection
 fx.roundCorners
 fx.vignetteFrame
+---
 fx.browser
-= Create
-create.contactSheet
-create.imageStrip
-create.panoramaJoin
-create.multipage
-create.movie
-show.exportHtml
-= Tools
-batch.convert
-batch.rename
-batch.watermark
-view.compare
-browse.lightTable
-file.setFileTime
-meta.strip
 = View
-browse.browser
-browse.folderTree
-browse.favorites
 view.fullScreen
+> Layout
+browse.browser
+browse.viewMode
+<
+---
+show.start
+file.revealInFolder
+image.histogram
+image.info
+file.sysProperties
+---
 view.loupe
 view.histogramOverlay
 view.osd
-view.fitWindow
+> Zoom
 view.actualSize
-show.start
+view.fitWindow
+view.fitWidth
+view.fitHeight
+view.zoomIn
+view.zoomOut
+<
+---
+browse.folderTree
+browse.favorites
+---
+file.reload
+= Create
+create.contactSheet
+create.multipage
+pages.extract
+create.imageStrip
+---
+create.movie
+= Tools
+batch.convert
+batch.rename
+---
+file.setFileTime
+> JPEG Lossless Rotate
+image.losslessJpeg
+image.losslessAutoRotate
+<
+meta.strip
+---
+view.compare
+> Wallpaper
+file.wallpaper
+<
+= Settings
+view.language
+view.theme
+---
 show.settings
+file.options
 = Help
 help.contents
 help.shortcuts
 help.about
 
-@layout acdsee | ACDSee style | ACDSee (Manage, View and Edit modes)
+@layout acdsee | ACDSee style | ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help)
 = File
 file.open
 file.openFolder
+> Import
 file.importCamera
 file.importRules
 file.scan
+<
+> Database
+browse.catalog
+browse.maintenance
+tools.backup
+<
 ---
 file.save
 file.saveAs
 file.saveForWeb
----
-file.print
-file.email
-file.share
 file.export.pdf
 ---
-browse.catalog
-browse.maintenance
-tools.backup
+> Send
+file.email
+file.share
+<
+file.openWith
+file.openExternal
+---
+file.print
+file.printLayouts
+---
 file.exit
 = Edit
 edit.undo
 edit.redo
+---
 edit.cut
 edit.copy
 edit.paste
+---
+file.copyTo
+file.moveTo
 file.rename
 file.delete
 ---
@@ -521,31 +673,40 @@ browse.rate
 browse.colorLabel
 meta.keywords
 meta.caption
-meta.shiftDate
-batch.metadata
 = View
 browse.browser
-browse.viewMode
 browse.filter
 browse.groupBy
 browse.sort
+browse.viewMode
+---
 browse.timeline
 browse.people
 browse.map
 ---
 view.fullScreen
-view.filmstrip
+view.osd
+view.toolbar
+= Panes
+browse.folderTree
+browse.favorites
 view.infoPane
-view.compare
-show.start
+view.filmstrip
+view.navigator
+view.histogramOverlay
+view.loupe
 = Tools
-batch.convert
-batch.rename
-batch.recipe
+edit.findFiles
+view.compare
 browse.findDuplicates
-create.contactSheet
-file.wallpaper
-= Modify
+> Zoom
+view.actualSize
+view.fitWindow
+view.fitWidth
+view.fitHeight
+view.zoomLock
+<
+> Modify
 image.rotateLeft
 image.rotateRight
 edit.crop
@@ -559,6 +720,26 @@ adjust.sharpen
 adjust.redEye
 ai.erase
 fx.browser
+image.decreaseDepth
+meta.shiftDate
+<
+> Batch
+batch.convert
+batch.rename
+batch.recipe
+batch.metadata
+<
+> Create
+create.contactSheet
+file.export.pdf
+create.webGallery
+<
+file.wallpaper
+file.capture
+show.start
+---
+file.customizeKeyboard
+file.options
 = Help
 help.contents
 help.shortcuts
@@ -614,207 +795,366 @@ browse.people
 help.contents
 help.about
 
-@layout picasa | Picasa style | Picasa 3
+@layout picasa | Picasa style | Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help)
 = File
-file.importCamera
+browse.albums
 browse.folderManager
-browse.newFolder
+file.open
+file.importCamera
 ---
+file.openExternal
+browse.newFolder
+file.rename
+---
+file.save
+adjust.revertOriginal
 file.saveAs
-file.export.pdf
-create.webGallery
+file.saveCopy
+batch.convert
+---
+file.revealInFolder
+file.delete
+---
 file.print
 file.email
 ---
-file.hide
-file.delete
-file.revealInFolder
-tools.backup
 file.exit
 = Edit
 edit.undo
 edit.redo
+---
+edit.cut
 edit.copy
 edit.paste
+adjust.copySettings
+adjust.pasteSettings
+---
 edit.selectAll
-meta.caption
-meta.keywords
+edit.selectInvert
+edit.selectNone
 = View
-browse.albums
+browse.thumbnails
+browse.thumbSize
+---
+image.info
+meta.keywords
 browse.people
 browse.map
-browse.timeline
-view.fullScreen
+---
 show.start
-browse.thumbSize
+browse.timeline
+---
+file.hide
+view.colorManaged
+> Folder View
+browse.folderTree
+browse.sort
+<
 = Folder
+meta.caption
+show.start
 browse.refresh
 browse.sort
+---
+create.contactSheet
+create.webGallery
+---
 file.revealInFolder
+file.moveTo
+file.delete
 = Picture
-browse.favorite
-image.rotateLeft
+file.openExternal
+> Batch Edit
 image.rotateRight
+image.rotateLeft
+adjust.autoContrast
+adjust.autoColor
+adjust.enhance
+adjust.tint
+adjust.sharpen
+adjust.warmify
+fx.filmGrain
+image.grayscale
+adjust.redEye
+<
+adjust.revertOriginal
+---
+browse.favorite
+file.hide
+---
 edit.cropPrint
 image.straighten
-adjust.redEye
-adjust.enhance
 adjust.fillLight
-adjust.warmify
-adjust.tint
 paint.heal
 edit.insertText
-adjust.revertOriginal
-> Effects
-fx.filmGrain
 fx.softFocus
 fx.glow
 fx.focalBW
 fx.graduatedTint
-image.grayscale
-adjust.tint
-adjust.sharpen
-<
+---
 meta.geotag
+image.info
 = Create
-create.collage
-create.movie
-create.contactSheet
-create.webGallery
 file.wallpaper
+file.copyShop
+create.collage
+---
+create.movie
 = Tools
-batch.convert
-browse.findDuplicates
+browse.folderManager
 browse.people
+tools.backup
+---
+meta.shiftDate
+> Geotag
+meta.geotag
+browse.map
+meta.removeGps
+<
+> Experimental
+browse.findDuplicates
+browse.searchColor
+<
+---
+file.customizeQat
+file.options
+= Help
+help.contents
+help.shortcuts
+help.whatsNew
+help.checkUpdates
+help.about
+
+@layout preview | Preview style | macOS Preview (File, Edit, View, Go, Tools, Window, Help)
+= File
+edit.pasteAsNew
+file.open
+file.openRecent
+file.close
+---
+file.save
+file.saveCopy
+file.rename
+file.moveTo
+file.reload
+---
+file.saveAs
+file.export.pdf
+file.share
+---
+file.importCamera
+file.scan
+file.capture
+---
+file.print
+= Edit
+edit.undo
+edit.redo
+---
+edit.cut
+edit.copy
+edit.paste
+edit.clear
+edit.selectAll
+---
+pages.insert
+= View
+browse.thumbnails
+create.contactSheet
+---
+view.twoPage
+---
+view.zoomIn
+view.zoomOut
+view.actualSize
+view.fitWindow
+---
+image.softProof
+show.start
+---
+view.toolbar
+view.fullScreen
+= Go
+view.next
+view.previous
+view.first
+view.last
+---
+pages.goto
+= Tools
+image.info
+meta.exif
+browse.map
+view.loupe
+---
+adjust.colorCorrections
+image.resize
+---
+edit.customSelection
+> Annotate
+edit.markup
+paint.rect
+paint.ellipse
+paint.line
+paint.arrow
+paint.text
+edit.signature
+<
+---
+image.rotateLeft
+image.rotateRight
+image.flipH
+image.flipV
+edit.crop
+---
+image.assignProfile
+---
+ai.removeBackground
+ai.selectSubject
+tools.ocr
+= Window
+view.minimize
+view.alwaysOnTop
+view.syncWindows
+= Help
+help.contents
+help.about
+
+@layout digikam | digiKam style | digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help)
+= Browse
+browse.albums
+meta.keywords
+browse.colorLabel
+browse.timeline
+edit.findFiles
+browse.findSimilar
+browse.map
+browse.people
+---
+browse.smartAlbum
+---
+file.exit
+= Album
+browse.newFolder
+file.rename
+file.revealInFolder
+file.delete
+---
+meta.sidecarMode
+browse.refresh
+= Tag
+meta.keywords
+meta.regions
+= Item
+file.open
+file.openWith
+file.rename
+file.delete
+---
+browse.lightTable
+batch.queue
+browse.findSimilar
+---
+browse.rate
+browse.colorLabel
+browse.pick
+---
+> Rotate
+image.rotateLeft
+image.rotateRight
+<
+> Flip
+image.flipH
+image.flipV
+<
+image.autoRotateExif
+image.losslessAutoRotate
+---
+meta.template
+meta.geotag
+meta.geotagGpx
+---
+file.print
+= Edit
+edit.cut
+edit.copy
+edit.paste
+---
+edit.selectAll
+edit.selectNone
+edit.selectInvert
+= View
+browse.viewMode
+browse.map
+---
+show.start
+show.fromCurrent
+view.fullScreen
+---
+view.zoomIn
+view.zoomOut
+view.fitWindow
+view.actualSize
+---
+browse.sort
+browse.groupBy
+browse.filter
+---
+browse.recursive
+view.colorManaged
+= Tools
+> Image Editor
+adjust.curves
+adjust.levels
+adjust.channelMixer
+image.lensCorrection
+image.convertProfile
+<
+browse.lightTable
+batch.queue
+batch.recipe
+batch.rename
+---
+edit.findFiles
+browse.searchSketch
+browse.searchColor
+browse.findDuplicates
+browse.qualitySort
+---
+browse.maintenance
+---
+create.hdr
+create.focusStack
+create.panoramaStitch
+create.calendar
+file.email
+= Import
+file.importCamera
+file.importRules
+---
+file.open
+file.openFolder
+---
+file.scan
+= Export
+create.webGallery
+file.export.pdf
+batch.convert
+tools.backup
+= Settings
+view.toolbar
+view.menuMode
+view.statusBar
+view.filmstrip
+view.theme
+---
+view.language
+file.customizeKeyboard
+file.customizeRibbon
+---
 file.options
 = Help
 help.contents
 help.shortcuts
 help.about
 
-@layout preview | Preview style | macOS Preview
-= File
-file.open
-file.openRecent
-file.importCamera
-file.scan
-file.capture
----
-file.close
-file.save
-file.saveCopy
-file.export.pdf
-file.saveAs
-file.reload
----
-file.share
-file.print
-= Edit
-edit.undo
-edit.redo
-edit.cut
-edit.copy
-edit.paste
-edit.selectAll
-edit.selectInvert
-edit.signature
-= View
-browse.thumbnails
-create.contactSheet
-view.actualSize
-view.fitWindow
-view.zoomIn
-view.zoomOut
-view.loupe
-view.fullScreen
-show.start
-= Go
-view.next
-view.previous
-view.first
-view.last
-= Tools
-image.info
-meta.exif
-edit.markup
-adjust.colorCorrections
-image.resize
-image.rotateLeft
-image.rotateRight
-image.flipH
-image.flipV
-edit.crop
-ai.removeBackground
-ai.selectSubject
-tools.ocr
-= Window
-view.alwaysOnTop
-= Help
-help.contents
-help.about
-
-@layout digikam | digiKam style | digiKam albums and image editor
-= Album
-browse.albums
-browse.newFolder
-browse.refresh
-browse.smartAlbum
-browse.recursive
-= Tag
-meta.keywords
-meta.regions
-browse.people
-= Import
-file.importCamera
-file.importRules
-file.scan
-= Export
-create.webGallery
-file.export.pdf
-file.email
-tools.backup
-= Item
-file.open
-file.rename
-file.delete
-browse.rate
-browse.colorLabel
-browse.pick
-image.rotateLeft
-image.rotateRight
-meta.geotag
-meta.geotagGpx
-meta.template
-= View
-browse.viewMode
-browse.sort
-browse.groupBy
-browse.filter
-browse.map
-browse.timeline
-view.fullScreen
-show.start
-browse.lightTable
-= Tools
-batch.queue
-batch.recipe
-batch.rename
-browse.findDuplicates
-browse.findSimilar
-browse.searchSketch
-browse.searchColor
-browse.qualitySort
-create.panoramaStitch
-create.hdr
-adjust.curves
-adjust.levels
-adjust.channelMixer
-image.lensCorrection
-image.convertProfile
-= Settings
-browse.maintenance
-meta.sidecarMode
-file.options
-= Help
-help.contents
-help.about

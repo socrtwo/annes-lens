@@ -372,6 +372,15 @@
      ]
     },
     {
+     "name": "Scientific pictures",
+     "commands": [
+      "image.dicomWindow",
+      "image.dicomTags",
+      "image.fitsStretch",
+      "image.fitsHeader"
+     ]
+    },
+    {
      "name": "Rotate and flip",
      "commands": [
       "image.rotateLeft",
@@ -2016,7 +2025,7 @@
    "label": "Email…",
    "id": "file.email",
    "shortcuts": [
-    "Ctrl+Shift+M"
+    "Shift+M"
    ],
    "origins": [
     "IV",
@@ -2581,7 +2590,7 @@
    "label": "Auto Crop Borders",
    "id": "edit.autoCrop",
    "shortcuts": [
-    "Shift+X"
+    "Ctrl+Shift+Y"
    ],
    "origins": [
     "IV"
@@ -3019,6 +3028,54 @@
    "tab": "Image",
    "group": "Information"
   },
+  "image.dicomWindow": {
+   "label": "Window / Level…",
+   "id": "image.dicomWindow",
+   "shortcuts": [],
+   "origins": [
+    "NEW"
+   ],
+   "notes": "DICOM: window center and width with CT presets, linear, linear exact or sigmoid; live preview; kept per file",
+   "notInTabs": false,
+   "tab": "Image",
+   "group": "Scientific pictures"
+  },
+  "image.dicomTags": {
+   "label": "DICOM Tags…",
+   "id": "image.dicomTags",
+   "shortcuts": [],
+   "origins": [
+    "NEW"
+   ],
+   "notes": "every data element with its name from the dictionary, sequences nested; filter, copy",
+   "notInTabs": false,
+   "tab": "Image",
+   "group": "Scientific pictures"
+  },
+  "image.fitsStretch": {
+   "label": "FITS Stretch…",
+   "id": "image.fitsStretch",
+   "shortcuts": [],
+   "origins": [
+    "NEW"
+   ],
+   "notes": "linear, square root, square, logarithmic or asinh between percentiles or fixed values; live preview; kept per file",
+   "notInTabs": false,
+   "tab": "Image",
+   "group": "Scientific pictures"
+  },
+  "image.fitsHeader": {
+   "label": "FITS Header…",
+   "id": "image.fitsHeader",
+   "shortcuts": [],
+   "origins": [
+    "NEW"
+   ],
+   "notes": "the header cards of every HDU, the open page's first; filter, copy",
+   "notInTabs": false,
+   "tab": "Image",
+   "group": "Scientific pictures"
+  },
   "image.rotateLeft": {
    "label": "Rotate Left",
    "id": "image.rotateLeft",
@@ -3199,7 +3256,9 @@
   "image.losslessCrop": {
    "label": "Lossless Crop",
    "id": "image.losslessCrop",
-   "shortcuts": [],
+   "shortcuts": [
+    "Ctrl+Shift+J"
+   ],
    "origins": [
     "IV",
     "XN"
@@ -3212,7 +3271,9 @@
   "image.losslessAutoRotate": {
    "label": "Lossless Auto-Rotate by EXIF",
    "id": "image.losslessAutoRotate",
-   "shortcuts": [],
+   "shortcuts": [
+    "Ctrl+Alt+A"
+   ],
    "origins": [
     "XN",
     "FS"
@@ -4863,7 +4924,9 @@
   "browse.people": {
    "label": "People",
    "id": "browse.people",
-   "shortcuts": [],
+   "shortcuts": [
+    "Ctrl+F6"
+   ],
    "origins": [
     "PIC",
     "DK",
@@ -5262,7 +5325,9 @@
   "meta.comment": {
    "label": "Comment…",
    "id": "meta.comment",
-   "shortcuts": [],
+   "shortcuts": [
+    "Ctrl+Shift+M"
+   ],
    "origins": [
     "IV"
    ],
@@ -6414,7 +6479,9 @@
   "view.random": {
    "label": "Random Picture",
    "id": "view.random",
-   "shortcuts": [],
+   "shortcuts": [
+    "Ctrl+M"
+   ],
    "origins": [
     "XN",
     "IV"
@@ -6428,7 +6495,7 @@
    "label": "Go to Picture Number…",
    "id": "view.gotoIndex",
    "shortcuts": [
-    "Ctrl+Shift+J"
+    "Ctrl+J"
    ],
    "origins": [
     "NEW"
@@ -6990,7 +7057,7 @@
    "label": "Compare Pictures",
    "id": "view.compare",
    "shortcuts": [
-    "Ctrl+Shift+Y"
+    "Ctrl+Alt+Y"
    ],
    "origins": [
     "FS",
@@ -8460,7 +8527,6 @@
       "file.batchScan",
       "file.selectSource",
       "---",
-      "file.email",
       "file.openRepair",
       "file.exit"
      ]
@@ -8492,8 +8558,6 @@
       "---",
       "edit.insertText",
       "edit.insertOverlay",
-      "edit.border",
-      "edit.canvasSize",
       "edit.autoCrop"
      ]
     },
@@ -8509,7 +8573,10 @@
       "image.flipH",
       "---",
       "image.resize",
+      "edit.canvasSize",
+      "edit.border",
       "image.histogram",
+      "image.showChannel",
       "---",
       "image.grayscale",
       "image.negative",
@@ -8559,7 +8626,11 @@
       "fx.plugins8bf",
       "---",
       "create.panoramaJoin",
-      "image.losslessJpeg"
+      "---",
+      "image.dicomWindow",
+      "image.dicomTags",
+      "image.fitsStretch",
+      "image.fitsHeader"
      ]
     },
     {
@@ -8573,15 +8644,7 @@
       "browse.sort",
       {
        "submenu": "Multipage images",
-       "items": [
-        "pages.next",
-        "pages.previous",
-        "pages.goto",
-        "pages.insert",
-        "pages.delete",
-        "pages.extract",
-        "create.multipage"
-       ]
+       "items": []
       },
       "create.extractFrames",
       "create.extractEmbedded",
@@ -8592,7 +8655,23 @@
       "meta.iptc",
       "meta.comment",
       "tools.plugins",
-      "file.exportSettings"
+      "file.exportSettings",
+      "---",
+      {
+       "submenu": "Multipage pictures",
+       "items": [
+        "create.multipage",
+        "pages.insert",
+        "pages.delete",
+        "pages.extract"
+       ]
+      },
+      "---",
+      "image.losslessJpeg",
+      "image.losslessCrop",
+      "---",
+      "file.email",
+      "view.mediaPlay"
      ]
     },
     {
@@ -8622,9 +8701,18 @@
       "view.toolbar",
       "view.statusBar",
       "view.pixelInfo",
-      "image.showChannel",
       "view.background",
-      "meta.exif"
+      "meta.exif",
+      "---",
+      {
+       "submenu": "Multipage pictures",
+       "items": [
+        "pages.next",
+        "pages.previous",
+        "pages.goto"
+       ]
+      },
+      "file.reload"
      ]
     },
     {
@@ -8892,35 +8980,35 @@
   },
   "xnview": {
    "name": "XnView style",
-   "modeledOn": "XnView MP browser and viewer",
+   "modeledOn": "XnView MP browser and viewer (File, Edit, View, Image, Metadata, Tools, Create, Help)",
    "menus": [
     {
      "name": "File",
      "items": [
       "file.open",
       "file.openFolder",
+      "file.openWith",
+      "file.openExternal",
       "file.openRecent",
       "file.recentFolders",
       "---",
+      "file.reload",
       "file.save",
       "file.saveAs",
+      "file.saveCopy",
       "file.saveForWeb",
-      "file.reload",
       "---",
-      "browse.newFolder",
-      "file.rename",
-      "batch.rename",
+      "file.print",
+      "---",
       "file.copyTo",
       "file.moveTo",
       "file.delete",
-      "---",
-      "file.openWith",
-      "file.openExternal",
+      "file.rename",
       "file.revealInFolder",
       "---",
+      "file.selectSource",
       "file.scan",
-      "file.capture",
-      "file.print",
+      "---",
       "file.exit"
      ]
     },
@@ -8934,43 +9022,33 @@
       "edit.copy",
       "edit.paste",
       "edit.pasteAsNew",
+      "edit.clear",
+      "---",
+      "edit.crop",
+      "edit.autoCrop",
       "---",
       "edit.selectAll",
       "edit.selectNone",
       "edit.selectInvert",
       "browse.selectPattern",
       "---",
-      "browse.rate",
-      "browse.colorLabel",
-      "meta.keywords",
-      "meta.caption",
-      "meta.copyright",
-      "meta.xmp",
-      "meta.iptc",
-      "meta.template",
-      "---",
-      "meta.shiftDate",
-      "file.fileTimeFromExif",
-      "meta.strip",
-      "file.options"
+      "file.copyTo",
+      "file.moveTo",
+      "browse.newFolder",
+      "file.sysProperties"
      ]
     },
     {
      "name": "View",
      "items": [
-      "browse.viewMode",
-      "browse.thumbSize",
-      "browse.sort",
-      "browse.groupBy",
-      "browse.filter",
-      "---",
-      "browse.folderTree",
-      "browse.favorites",
-      "view.infoPane",
-      "view.filmstrip",
-      "view.navigator",
-      "---",
       "view.fullScreen",
+      "---",
+      "browse.viewMode",
+      "browse.sort",
+      "browse.filter",
+      "browse.groupBy",
+      "browse.thumbSize",
+      "---",
       "view.zoomIn",
       "view.zoomOut",
       "view.actualSize",
@@ -8978,49 +9056,91 @@
       "view.zoomLock",
       "view.keepPosition",
       "---",
-      "view.osd",
-      "view.osdTemplate",
-      "view.histogramOverlay",
       "view.alphaDisplay",
+      "image.showChannel",
+      "view.osd",
+      "view.histogramOverlay",
+      "view.osdTemplate",
       "view.colorManaged",
       "view.dicomOverlays",
       "view.media",
-      "browse.map"
+      "---",
+      "browse.recursive",
+      "browse.refresh",
+      "---",
+      "view.toolbar",
+      "browse.folderTree",
+      "browse.favorites",
+      "view.infoPane",
+      "view.filmstrip",
+      "view.navigator",
+      "browse.map",
+      "view.statusBar",
+      "---",
+      "view.syncWindows",
+      "view.frameless",
+      "view.alwaysOnTop"
      ]
     },
     {
      "name": "Image",
      "items": [
-      "image.rotateLeft",
-      "image.rotateRight",
-      "image.rotateCustom",
-      "image.flipH",
-      "image.flipV",
-      "image.autoRotateExif",
-      "image.losslessJpeg",
-      "image.losslessCrop",
+      "image.countColors",
+      "image.decreaseDepth",
+      "image.increaseDepth",
+      "image.paletteEdit",
+      "---",
+      {
+       "submenu": "Map",
+       "items": [
+        "adjust.whiteBalance",
+        "image.grayscale",
+        "image.negative",
+        "adjust.normalize",
+        "adjust.equalize",
+        "fx.solarize",
+        "adjust.posterize",
+        "adjust.tint",
+        "adjust.vignette"
+       ]
+      },
+      {
+       "submenu": "Adjust",
+       "items": [
+        "adjust.colorCorrections",
+        "adjust.levels",
+        "adjust.curves",
+        "adjust.shadowsHighlights",
+        "adjust.hsl",
+        "adjust.colorBalance",
+        "adjust.channelMixer",
+        "adjust.autoLevels",
+        "adjust.autoContrast",
+        "adjust.autoColor"
+       ]
+      },
+      {
+       "submenu": "Rotate",
+       "items": [
+        "image.rotateLeft",
+        "image.rotateRight",
+        "image.rotate180",
+        "image.rotateCustom",
+        "image.autoRotateExif",
+        "image.autoStraighten"
+       ]
+      },
+      {
+       "submenu": "Mirror",
+       "items": [
+        "image.flipH",
+        "image.flipV"
+       ]
+      },
       "---",
       "image.resize",
       "edit.canvasSize",
-      "edit.crop",
-      "edit.autoCrop",
       "---",
-      "adjust.autoLevels",
-      "adjust.autoContrast",
-      "adjust.autoColor",
-      "adjust.levels",
-      "adjust.curves",
-      "adjust.hsl",
-      "adjust.colorBalance",
-      "adjust.channelMixer",
-      "adjust.equalize",
-      "adjust.normalize",
-      "adjust.posterize",
-      "---",
-      "image.grayscale",
-      "image.negative",
-      "image.decreaseDepth",
-      "image.increaseDepth",
       "image.convertProfile",
       "image.assignProfile",
       "---",
@@ -9030,40 +9150,73 @@
      ]
     },
     {
+     "name": "Metadata",
+     "items": [
+      "browse.rate",
+      "browse.colorLabel",
+      "meta.keywords",
+      "---",
+      "meta.comment",
+      "---",
+      "meta.iptc",
+      "meta.xmp",
+      "meta.geotag",
+      "---",
+      "meta.shiftDate",
+      "file.fileTimeFromExif",
+      "---",
+      "browse.map",
+      "---",
+      "meta.regions",
+      "---",
+      "image.losslessJpeg",
+      "image.losslessCrop",
+      "---",
+      "meta.template",
+      "meta.copyFrom",
+      "meta.caption",
+      "meta.copyright",
+      "---",
+      "meta.strip"
+     ]
+    },
+    {
      "name": "Tools",
      "items": [
-      "batch.convert",
-      "batch.recipe",
-      "batch.rename",
-      "batch.metadata",
+      "file.capture",
+      "file.wallpaper",
       "---",
-      "browse.findDuplicates",
+      "edit.findFiles",
       "browse.findSimilar",
+      "browse.findDuplicates",
       "view.compare",
       "---",
-      "file.wallpaper",
+      "batch.convert",
+      "batch.rename",
+      "batch.recipe",
+      "batch.metadata",
+      "---",
+      "show.start",
+      "show.settings",
+      "---",
+      "file.share",
+      "file.email",
+      "---",
       "file.export.metadataCsv",
       "tools.external",
-      "tools.plugins"
+      "tools.plugins",
+      "file.options"
      ]
     },
     {
      "name": "Create",
      "items": [
+      "create.multipage",
+      "create.panoramaJoin",
       "create.contactSheet",
       "create.imageStrip",
       "create.webGallery",
-      "create.animation",
-      "create.multipage",
-      "create.panoramaJoin"
-     ]
-    },
-    {
-     "name": "Window",
-     "items": [
-      "view.syncWindows",
-      "view.frameless",
-      "view.alwaysOnTop"
+      "create.animation"
      ]
     },
     {
@@ -9160,18 +9313,20 @@
     {
      "name": "Help",
      "items": [
+      "help.about",
+      "tools.plugins",
       "help.contents",
       "help.shortcuts",
       "help.formats",
       "help.sendSample",
-      "help.about"
+      "help.checkUpdates"
      ]
     }
    ]
   },
   "faststone": {
    "name": "FastStone style",
-   "modeledOn": "FastStone Image Viewer",
+   "modeledOn": "FastStone Image Viewer (File, Edit, Colors, Effects, View, Create, Tools, Settings, Help)",
    "menus": [
     {
      "name": "File",
@@ -9179,9 +9334,26 @@
       "file.open",
       "file.openFolder",
       "file.openRecent",
-      "file.save",
       "file.saveAs",
       "file.reload",
+      "---",
+      "file.email",
+      {
+       "submenu": "Print",
+       "items": [
+        "file.print",
+        "file.printLayouts"
+       ]
+      },
+      "---",
+      "file.importCamera",
+      {
+       "submenu": "Screen Capture",
+       "items": [
+        "file.capture"
+       ]
+      },
+      "file.scan",
       "---",
       "file.copyTo",
       "file.moveTo",
@@ -9189,12 +9361,6 @@
       "file.delete",
       "file.quickMove",
       "---",
-      "file.email",
-      "file.print",
-      "file.printLayouts",
-      "file.wallpaper",
-      "file.capture",
-      "file.scan",
       "file.exit"
      ]
     },
@@ -9203,65 +9369,142 @@
      "items": [
       "edit.undo",
       "edit.redo",
+      "---",
+      "file.openExternal",
+      "---",
+      {
+       "submenu": "Select",
+       "items": [
+        "edit.selectRect",
+        "edit.selectEllipse",
+        "edit.selectLasso",
+        "---",
+        "edit.selectAll",
+        "edit.selectNone",
+        "edit.selectInvert",
+        "---",
+        "edit.copy",
+        "edit.cut",
+        "edit.paste",
+        "edit.crop",
+        "edit.clear",
+        "---",
+        "file.saveSelection"
+       ]
+      },
       "edit.copy",
       "edit.paste",
-      "edit.selectAll",
       "---",
-      "edit.crop",
-      "edit.cropAspect",
+      {
+       "submenu": "Rotate",
+       "items": [
+        "image.rotateLeft",
+        "image.rotateRight",
+        "image.flipH",
+        "image.flipV",
+        "image.rotateCustom"
+       ]
+      },
       "image.resize",
       "edit.canvasSize",
-      "image.rotateCustom",
-      "image.losslessJpeg",
+      "image.setDpi",
       "---",
+      "edit.cropAspect",
       "edit.markup",
       "paint.clone",
       "paint.heal",
-      "edit.insertText",
-      "edit.insertOverlay",
-      "edit.border"
+      "adjust.redEye",
+      "---",
+      "meta.comment"
      ]
     },
     {
      "name": "Colors",
      "items": [
       "adjust.colorCorrections",
+      "adjust.shadowsHighlights",
+      "adjust.hsl",
       "adjust.levels",
       "adjust.curves",
-      "adjust.shadowsHighlights",
-      "adjust.colorBalance",
-      "adjust.hsl",
-      "adjust.autoLevels",
+      "---",
+      "image.swapChannels",
+      "image.decreaseDepth",
       "image.grayscale",
       "image.negative",
-      "adjust.redEye",
+      "adjust.tint",
+      "---",
       "adjust.sharpen",
       "adjust.unsharp",
       "adjust.blur",
-      "adjust.denoise"
+      "adjust.denoise",
+      "adjust.autoLevels",
+      "adjust.colorBalance"
      ]
     },
     {
      "name": "Effects",
      "items": [
+      "edit.insertOverlay",
+      "edit.border",
+      "fx.oilPaint",
       "fx.pencilSketch",
       "fx.cartoon",
       "fx.dropShadow",
       "fx.reflection",
       "fx.roundCorners",
       "fx.vignetteFrame",
+      "---",
       "fx.browser"
+     ]
+    },
+    {
+     "name": "View",
+     "items": [
+      "view.fullScreen",
+      {
+       "submenu": "Layout",
+       "items": [
+        "browse.browser",
+        "browse.viewMode"
+       ]
+      },
+      "---",
+      "show.start",
+      "file.revealInFolder",
+      "image.histogram",
+      "image.info",
+      "file.sysProperties",
+      "---",
+      "view.loupe",
+      "view.histogramOverlay",
+      "view.osd",
+      {
+       "submenu": "Zoom",
+       "items": [
+        "view.actualSize",
+        "view.fitWindow",
+        "view.fitWidth",
+        "view.fitHeight",
+        "view.zoomIn",
+        "view.zoomOut"
+       ]
+      },
+      "---",
+      "browse.folderTree",
+      "browse.favorites",
+      "---",
+      "file.reload"
      ]
     },
     {
      "name": "Create",
      "items": [
       "create.contactSheet",
-      "create.imageStrip",
-      "create.panoramaJoin",
       "create.multipage",
-      "create.movie",
-      "show.exportHtml"
+      "pages.extract",
+      "create.imageStrip",
+      "---",
+      "create.movie"
      ]
     },
     {
@@ -9269,27 +9512,34 @@
      "items": [
       "batch.convert",
       "batch.rename",
-      "batch.watermark",
-      "view.compare",
-      "browse.lightTable",
+      "---",
       "file.setFileTime",
-      "meta.strip"
+      {
+       "submenu": "JPEG Lossless Rotate",
+       "items": [
+        "image.losslessJpeg",
+        "image.losslessAutoRotate"
+       ]
+      },
+      "meta.strip",
+      "---",
+      "view.compare",
+      {
+       "submenu": "Wallpaper",
+       "items": [
+        "file.wallpaper"
+       ]
+      }
      ]
     },
     {
-     "name": "View",
+     "name": "Settings",
      "items": [
-      "browse.browser",
-      "browse.folderTree",
-      "browse.favorites",
-      "view.fullScreen",
-      "view.loupe",
-      "view.histogramOverlay",
-      "view.osd",
-      "view.fitWindow",
-      "view.actualSize",
-      "show.start",
-      "show.settings"
+      "view.language",
+      "view.theme",
+      "---",
+      "show.settings",
+      "file.options"
      ]
     },
     {
@@ -9395,29 +9645,48 @@
   },
   "acdsee": {
    "name": "ACDSee style",
-   "modeledOn": "ACDSee (Manage, View and Edit modes)",
+   "modeledOn": "ACDSee Photo Studio (Manage and View modes: File, Edit, View, Panes, Tools, Help)",
    "menus": [
     {
      "name": "File",
      "items": [
       "file.open",
       "file.openFolder",
-      "file.importCamera",
-      "file.importRules",
-      "file.scan",
+      {
+       "submenu": "Import",
+       "items": [
+        "file.importCamera",
+        "file.importRules",
+        "file.scan"
+       ]
+      },
+      {
+       "submenu": "Database",
+       "items": [
+        "browse.catalog",
+        "browse.maintenance",
+        "tools.backup"
+       ]
+      },
       "---",
       "file.save",
       "file.saveAs",
       "file.saveForWeb",
-      "---",
-      "file.print",
-      "file.email",
-      "file.share",
       "file.export.pdf",
       "---",
-      "browse.catalog",
-      "browse.maintenance",
-      "tools.backup",
+      {
+       "submenu": "Send",
+       "items": [
+        "file.email",
+        "file.share"
+       ]
+      },
+      "file.openWith",
+      "file.openExternal",
+      "---",
+      "file.print",
+      "file.printLayouts",
+      "---",
       "file.exit"
      ]
     },
@@ -9426,9 +9695,13 @@
      "items": [
       "edit.undo",
       "edit.redo",
+      "---",
       "edit.cut",
       "edit.copy",
       "edit.paste",
+      "---",
+      "file.copyTo",
+      "file.moveTo",
       "file.rename",
       "file.delete",
       "---",
@@ -9438,57 +9711,98 @@
       "browse.rate",
       "browse.colorLabel",
       "meta.keywords",
-      "meta.caption",
-      "meta.shiftDate",
-      "batch.metadata"
+      "meta.caption"
      ]
     },
     {
      "name": "View",
      "items": [
       "browse.browser",
-      "browse.viewMode",
       "browse.filter",
       "browse.groupBy",
       "browse.sort",
+      "browse.viewMode",
+      "---",
       "browse.timeline",
       "browse.people",
       "browse.map",
       "---",
       "view.fullScreen",
-      "view.filmstrip",
+      "view.osd",
+      "view.toolbar"
+     ]
+    },
+    {
+     "name": "Panes",
+     "items": [
+      "browse.folderTree",
+      "browse.favorites",
       "view.infoPane",
-      "view.compare",
-      "show.start"
+      "view.filmstrip",
+      "view.navigator",
+      "view.histogramOverlay",
+      "view.loupe"
      ]
     },
     {
      "name": "Tools",
      "items": [
-      "batch.convert",
-      "batch.rename",
-      "batch.recipe",
+      "edit.findFiles",
+      "view.compare",
       "browse.findDuplicates",
-      "create.contactSheet",
-      "file.wallpaper"
-     ]
-    },
-    {
-     "name": "Modify",
-     "items": [
-      "image.rotateLeft",
-      "image.rotateRight",
-      "edit.crop",
-      "image.resize",
-      "adjust.exposure",
-      "adjust.toneEqualizer",
-      "adjust.whiteBalance",
-      "adjust.colorBalance",
-      "adjust.denoise",
-      "adjust.sharpen",
-      "adjust.redEye",
-      "ai.erase",
-      "fx.browser"
+      {
+       "submenu": "Zoom",
+       "items": [
+        "view.actualSize",
+        "view.fitWindow",
+        "view.fitWidth",
+        "view.fitHeight",
+        "view.zoomLock"
+       ]
+      },
+      {
+       "submenu": "Modify",
+       "items": [
+        "image.rotateLeft",
+        "image.rotateRight",
+        "edit.crop",
+        "image.resize",
+        "adjust.exposure",
+        "adjust.toneEqualizer",
+        "adjust.whiteBalance",
+        "adjust.colorBalance",
+        "adjust.denoise",
+        "adjust.sharpen",
+        "adjust.redEye",
+        "ai.erase",
+        "fx.browser",
+        "image.decreaseDepth",
+        "meta.shiftDate"
+       ]
+      },
+      {
+       "submenu": "Batch",
+       "items": [
+        "batch.convert",
+        "batch.rename",
+        "batch.recipe",
+        "batch.metadata"
+       ]
+      },
+      {
+       "submenu": "Create",
+       "items": [
+        "create.contactSheet",
+        "file.export.pdf",
+        "create.webGallery"
+       ]
+      },
+      "file.wallpaper",
+      "file.capture",
+      "show.start",
+      "---",
+      "file.customizeKeyboard",
+      "file.options"
      ]
     },
     {
@@ -9755,25 +10069,32 @@
   },
   "picasa": {
    "name": "Picasa style",
-   "modeledOn": "Picasa 3",
+   "modeledOn": "Picasa 3 (File, Edit, View, Folder, Picture, Create, Tools, Help)",
    "menus": [
     {
      "name": "File",
      "items": [
-      "file.importCamera",
+      "browse.albums",
       "browse.folderManager",
-      "browse.newFolder",
+      "file.open",
+      "file.importCamera",
       "---",
+      "file.openExternal",
+      "browse.newFolder",
+      "file.rename",
+      "---",
+      "file.save",
+      "adjust.revertOriginal",
       "file.saveAs",
-      "file.export.pdf",
-      "create.webGallery",
+      "file.saveCopy",
+      "batch.convert",
+      "---",
+      "file.revealInFolder",
+      "file.delete",
+      "---",
       "file.print",
       "file.email",
       "---",
-      "file.hide",
-      "file.delete",
-      "file.revealInFolder",
-      "tools.backup",
       "file.exit"
      ]
     },
@@ -9782,81 +10103,133 @@
      "items": [
       "edit.undo",
       "edit.redo",
+      "---",
+      "edit.cut",
       "edit.copy",
       "edit.paste",
+      "adjust.copySettings",
+      "adjust.pasteSettings",
+      "---",
       "edit.selectAll",
-      "meta.caption",
-      "meta.keywords"
+      "edit.selectInvert",
+      "edit.selectNone"
      ]
     },
     {
      "name": "View",
      "items": [
-      "browse.albums",
+      "browse.thumbnails",
+      "browse.thumbSize",
+      "---",
+      "image.info",
+      "meta.keywords",
       "browse.people",
       "browse.map",
-      "browse.timeline",
-      "view.fullScreen",
+      "---",
       "show.start",
-      "browse.thumbSize"
+      "browse.timeline",
+      "---",
+      "file.hide",
+      "view.colorManaged",
+      {
+       "submenu": "Folder View",
+       "items": [
+        "browse.folderTree",
+        "browse.sort"
+       ]
+      }
      ]
     },
     {
      "name": "Folder",
      "items": [
+      "meta.caption",
+      "show.start",
       "browse.refresh",
       "browse.sort",
-      "file.revealInFolder"
+      "---",
+      "create.contactSheet",
+      "create.webGallery",
+      "---",
+      "file.revealInFolder",
+      "file.moveTo",
+      "file.delete"
      ]
     },
     {
      "name": "Picture",
      "items": [
-      "browse.favorite",
-      "image.rotateLeft",
-      "image.rotateRight",
-      "edit.cropPrint",
-      "image.straighten",
-      "adjust.redEye",
-      "adjust.enhance",
-      "adjust.fillLight",
-      "adjust.warmify",
-      "adjust.tint",
-      "paint.heal",
-      "edit.insertText",
-      "adjust.revertOriginal",
+      "file.openExternal",
       {
-       "submenu": "Effects",
+       "submenu": "Batch Edit",
        "items": [
-        "fx.filmGrain",
-        "fx.softFocus",
-        "fx.glow",
-        "fx.focalBW",
-        "fx.graduatedTint",
-        "image.grayscale",
+        "image.rotateRight",
+        "image.rotateLeft",
+        "adjust.autoContrast",
+        "adjust.autoColor",
+        "adjust.enhance",
         "adjust.tint",
-        "adjust.sharpen"
+        "adjust.sharpen",
+        "adjust.warmify",
+        "fx.filmGrain",
+        "image.grayscale",
+        "adjust.redEye"
        ]
       },
-      "meta.geotag"
+      "adjust.revertOriginal",
+      "---",
+      "browse.favorite",
+      "file.hide",
+      "---",
+      "edit.cropPrint",
+      "image.straighten",
+      "adjust.fillLight",
+      "paint.heal",
+      "edit.insertText",
+      "fx.softFocus",
+      "fx.glow",
+      "fx.focalBW",
+      "fx.graduatedTint",
+      "---",
+      "meta.geotag",
+      "image.info"
      ]
     },
     {
      "name": "Create",
      "items": [
+      "file.wallpaper",
+      "file.copyShop",
       "create.collage",
-      "create.movie",
-      "create.contactSheet",
-      "create.webGallery",
-      "file.wallpaper"
+      "---",
+      "create.movie"
      ]
     },
     {
      "name": "Tools",
      "items": [
-      "batch.convert",
-      "browse.findDuplicates",
+      "browse.folderManager",
       "browse.people",
+      "tools.backup",
+      "---",
+      "meta.shiftDate",
+      {
+       "submenu": "Geotag",
+       "items": [
+        "meta.geotag",
+        "browse.map",
+        "meta.removeGps"
+       ]
+      },
+      {
+       "submenu": "Experimental",
+       "items": [
+        "browse.findDuplicates",
+        "browse.searchColor"
+       ]
+      },
+      "---",
+      "file.customizeQat",
       "file.options"
      ]
     },
@@ -9956,6 +10329,8 @@
      "items": [
       "help.contents",
       "help.shortcuts",
+      "help.whatsNew",
+      "help.checkUpdates",
       "help.about"
      ]
     }
@@ -9963,25 +10338,30 @@
   },
   "preview": {
    "name": "Preview style",
-   "modeledOn": "macOS Preview",
+   "modeledOn": "macOS Preview (File, Edit, View, Go, Tools, Window, Help)",
    "menus": [
     {
      "name": "File",
      "items": [
+      "edit.pasteAsNew",
       "file.open",
       "file.openRecent",
+      "file.close",
+      "---",
+      "file.save",
+      "file.saveCopy",
+      "file.rename",
+      "file.moveTo",
+      "file.reload",
+      "---",
+      "file.saveAs",
+      "file.export.pdf",
+      "file.share",
+      "---",
       "file.importCamera",
       "file.scan",
       "file.capture",
       "---",
-      "file.close",
-      "file.save",
-      "file.saveCopy",
-      "file.export.pdf",
-      "file.saveAs",
-      "file.reload",
-      "---",
-      "file.share",
       "file.print"
      ]
     },
@@ -9990,12 +10370,14 @@
      "items": [
       "edit.undo",
       "edit.redo",
+      "---",
       "edit.cut",
       "edit.copy",
       "edit.paste",
+      "edit.clear",
       "edit.selectAll",
-      "edit.selectInvert",
-      "edit.signature"
+      "---",
+      "pages.insert"
      ]
     },
     {
@@ -10003,13 +10385,19 @@
      "items": [
       "browse.thumbnails",
       "create.contactSheet",
-      "view.actualSize",
-      "view.fitWindow",
+      "---",
+      "view.twoPage",
+      "---",
       "view.zoomIn",
       "view.zoomOut",
-      "view.loupe",
-      "view.fullScreen",
-      "show.start"
+      "view.actualSize",
+      "view.fitWindow",
+      "---",
+      "image.softProof",
+      "show.start",
+      "---",
+      "view.toolbar",
+      "view.fullScreen"
      ]
     },
     {
@@ -10018,7 +10406,9 @@
       "view.next",
       "view.previous",
       "view.first",
-      "view.last"
+      "view.last",
+      "---",
+      "pages.goto"
      ]
     },
     {
@@ -10026,14 +10416,34 @@
      "items": [
       "image.info",
       "meta.exif",
-      "edit.markup",
+      "browse.map",
+      "view.loupe",
+      "---",
       "adjust.colorCorrections",
       "image.resize",
+      "---",
+      "edit.customSelection",
+      {
+       "submenu": "Annotate",
+       "items": [
+        "edit.markup",
+        "paint.rect",
+        "paint.ellipse",
+        "paint.line",
+        "paint.arrow",
+        "paint.text",
+        "edit.signature"
+       ]
+      },
+      "---",
       "image.rotateLeft",
       "image.rotateRight",
       "image.flipH",
       "image.flipV",
       "edit.crop",
+      "---",
+      "image.assignProfile",
+      "---",
       "ai.removeBackground",
       "ai.selectSubject",
       "tools.ocr"
@@ -10042,7 +10452,9 @@
     {
      "name": "Window",
      "items": [
-      "view.alwaysOnTop"
+      "view.minimize",
+      "view.alwaysOnTop",
+      "view.syncWindows"
      ]
     },
     {
@@ -10147,24 +10559,150 @@
   },
   "digikam": {
    "name": "digiKam style",
-   "modeledOn": "digiKam albums and image editor",
+   "modeledOn": "digiKam 8 main window (Browse, Album, Tag, Item, Edit, View, Tools, Import, Export, Settings, Help)",
    "menus": [
+    {
+     "name": "Browse",
+     "items": [
+      "browse.albums",
+      "meta.keywords",
+      "browse.colorLabel",
+      "browse.timeline",
+      "edit.findFiles",
+      "browse.findSimilar",
+      "browse.map",
+      "browse.people",
+      "---",
+      "browse.smartAlbum",
+      "---",
+      "file.exit"
+     ]
+    },
     {
      "name": "Album",
      "items": [
-      "browse.albums",
       "browse.newFolder",
-      "browse.refresh",
-      "browse.smartAlbum",
-      "browse.recursive"
+      "file.rename",
+      "file.revealInFolder",
+      "file.delete",
+      "---",
+      "meta.sidecarMode",
+      "browse.refresh"
      ]
     },
     {
      "name": "Tag",
      "items": [
       "meta.keywords",
-      "meta.regions",
-      "browse.people"
+      "meta.regions"
+     ]
+    },
+    {
+     "name": "Item",
+     "items": [
+      "file.open",
+      "file.openWith",
+      "file.rename",
+      "file.delete",
+      "---",
+      "browse.lightTable",
+      "batch.queue",
+      "browse.findSimilar",
+      "---",
+      "browse.rate",
+      "browse.colorLabel",
+      "browse.pick",
+      "---",
+      {
+       "submenu": "Rotate",
+       "items": [
+        "image.rotateLeft",
+        "image.rotateRight"
+       ]
+      },
+      {
+       "submenu": "Flip",
+       "items": [
+        "image.flipH",
+        "image.flipV"
+       ]
+      },
+      "image.autoRotateExif",
+      "image.losslessAutoRotate",
+      "---",
+      "meta.template",
+      "meta.geotag",
+      "meta.geotagGpx",
+      "---",
+      "file.print"
+     ]
+    },
+    {
+     "name": "Edit",
+     "items": [
+      "edit.cut",
+      "edit.copy",
+      "edit.paste",
+      "---",
+      "edit.selectAll",
+      "edit.selectNone",
+      "edit.selectInvert"
+     ]
+    },
+    {
+     "name": "View",
+     "items": [
+      "browse.viewMode",
+      "browse.map",
+      "---",
+      "show.start",
+      "show.fromCurrent",
+      "view.fullScreen",
+      "---",
+      "view.zoomIn",
+      "view.zoomOut",
+      "view.fitWindow",
+      "view.actualSize",
+      "---",
+      "browse.sort",
+      "browse.groupBy",
+      "browse.filter",
+      "---",
+      "browse.recursive",
+      "view.colorManaged"
+     ]
+    },
+    {
+     "name": "Tools",
+     "items": [
+      {
+       "submenu": "Image Editor",
+       "items": [
+        "adjust.curves",
+        "adjust.levels",
+        "adjust.channelMixer",
+        "image.lensCorrection",
+        "image.convertProfile"
+       ]
+      },
+      "browse.lightTable",
+      "batch.queue",
+      "batch.recipe",
+      "batch.rename",
+      "---",
+      "edit.findFiles",
+      "browse.searchSketch",
+      "browse.searchColor",
+      "browse.findDuplicates",
+      "browse.qualitySort",
+      "---",
+      "browse.maintenance",
+      "---",
+      "create.hdr",
+      "create.focusStack",
+      "create.panoramaStitch",
+      "create.calendar",
+      "file.email"
      ]
     },
     {
@@ -10172,6 +10710,10 @@
      "items": [
       "file.importCamera",
       "file.importRules",
+      "---",
+      "file.open",
+      "file.openFolder",
+      "---",
       "file.scan"
      ]
     },
@@ -10180,65 +10722,23 @@
      "items": [
       "create.webGallery",
       "file.export.pdf",
-      "file.email",
+      "batch.convert",
       "tools.backup"
-     ]
-    },
-    {
-     "name": "Item",
-     "items": [
-      "file.open",
-      "file.rename",
-      "file.delete",
-      "browse.rate",
-      "browse.colorLabel",
-      "browse.pick",
-      "image.rotateLeft",
-      "image.rotateRight",
-      "meta.geotag",
-      "meta.geotagGpx",
-      "meta.template"
-     ]
-    },
-    {
-     "name": "View",
-     "items": [
-      "browse.viewMode",
-      "browse.sort",
-      "browse.groupBy",
-      "browse.filter",
-      "browse.map",
-      "browse.timeline",
-      "view.fullScreen",
-      "show.start",
-      "browse.lightTable"
-     ]
-    },
-    {
-     "name": "Tools",
-     "items": [
-      "batch.queue",
-      "batch.recipe",
-      "batch.rename",
-      "browse.findDuplicates",
-      "browse.findSimilar",
-      "browse.searchSketch",
-      "browse.searchColor",
-      "browse.qualitySort",
-      "create.panoramaStitch",
-      "create.hdr",
-      "adjust.curves",
-      "adjust.levels",
-      "adjust.channelMixer",
-      "image.lensCorrection",
-      "image.convertProfile"
      ]
     },
     {
      "name": "Settings",
      "items": [
-      "browse.maintenance",
-      "meta.sidecarMode",
+      "view.toolbar",
+      "view.menuMode",
+      "view.statusBar",
+      "view.filmstrip",
+      "view.theme",
+      "---",
+      "view.language",
+      "file.customizeKeyboard",
+      "file.customizeRibbon",
+      "---",
       "file.options"
      ]
     },
@@ -10337,6 +10837,7 @@
      "name": "Help",
      "items": [
       "help.contents",
+      "help.shortcuts",
       "help.about"
      ]
     }
@@ -10376,7 +10877,6 @@
       "file.scan",
       "file.batchScan",
       "file.selectSource",
-      "file.email",
       "file.openRepair",
       "file.exit",
       "---",
@@ -10385,34 +10885,36 @@
       "create.contactSheet",
       "create.panoramaJoin",
       "create.webGallery",
+      "file.email",
       "file.copyName",
       "---",
       "file.openFolder",
-      "file.recentFolders",
-      "browse.newFolder",
-      "batch.rename",
       "file.openWith",
-      "file.capture",
+      "file.recentFolders",
+      "file.saveCopy",
       "---",
-      "file.quickMove",
       "file.printLayouts",
-      "file.wallpaper",
-      "---",
       "file.importCamera",
+      "file.capture",
+      "file.quickMove",
+      "---",
       "file.importRules",
-      "file.share",
-      "file.export.pdf",
       "browse.catalog",
       "browse.maintenance",
       "tools.backup",
+      "file.export.pdf",
+      "file.share",
       "---",
-      "file.saveCopy",
+      "file.wallpaper",
       "file.lockScreen",
       "file.sysProperties",
       "---",
+      "browse.albums",
       "browse.folderManager",
-      "file.hide",
+      "browse.newFolder",
+      "adjust.revertOriginal",
       "---",
+      "edit.pasteAsNew",
       "file.close"
      ]
     },
@@ -10436,8 +10938,6 @@
       "edit.clear",
       "edit.insertText",
       "edit.insertOverlay",
-      "edit.border",
-      "edit.canvasSize",
       "edit.autoCrop",
       "---",
       "edit.selectAll",
@@ -10448,36 +10948,42 @@
       "batch.lossless",
       "meta.iptc",
       "---",
+      "file.copyTo",
+      "file.moveTo",
+      "browse.newFolder",
+      "file.sysProperties",
+      "---",
+      "file.openExternal",
+      "edit.selectRect",
+      "edit.selectEllipse",
+      "edit.selectLasso",
+      "file.saveSelection",
+      "image.rotateLeft",
+      "image.rotateRight",
+      "image.flipH",
+      "image.flipV",
+      "image.rotateCustom",
+      "image.resize",
+      "edit.canvasSize",
+      "image.setDpi",
+      "edit.cropAspect",
+      "edit.markup",
+      "paint.clone",
+      "paint.heal",
+      "adjust.redEye",
+      "meta.comment",
+      "---",
+      "file.rename",
+      "file.delete",
       "browse.rate",
       "browse.colorLabel",
       "meta.keywords",
       "meta.caption",
-      "meta.copyright",
-      "meta.xmp",
-      "meta.template",
-      "meta.shiftDate",
-      "file.fileTimeFromExif",
-      "meta.strip",
-      "file.options",
       "---",
-      "edit.cropAspect",
-      "image.resize",
-      "image.rotateCustom",
-      "edit.markup",
-      "paint.clone",
-      "paint.heal",
-      "---",
-      "file.rename",
-      "file.delete",
-      "batch.metadata",
-      "---",
-      "image.rotateLeft",
-      "image.rotateRight",
       "image.straighten",
       "adjust.enhance",
       "adjust.exposure",
       "adjust.vibrance",
-      "adjust.redEye",
       "ai.erase",
       "ai.removeBackground",
       "ai.blurBackground",
@@ -10485,7 +10991,10 @@
       "ai.upscale",
       "adjust.revertOriginal",
       "---",
-      "edit.signature"
+      "adjust.copySettings",
+      "adjust.pasteSettings",
+      "---",
+      "pages.insert"
      ]
     },
     {
@@ -10512,50 +11021,63 @@
       "view.toolbar",
       "view.statusBar",
       "view.pixelInfo",
-      "image.showChannel",
       "view.background",
       "meta.exif",
+      "pages.next",
+      "pages.previous",
+      "pages.goto",
+      "file.reload",
       "---",
       "browse.folderTree",
       "browse.favorites",
       "---",
       "browse.viewMode",
-      "browse.thumbSize",
       "browse.sort",
-      "browse.groupBy",
       "browse.filter",
-      "view.infoPane",
-      "view.filmstrip",
-      "view.navigator",
+      "browse.groupBy",
+      "browse.thumbSize",
       "view.keepPosition",
-      "view.osd",
-      "view.osdTemplate",
-      "view.histogramOverlay",
       "view.alphaDisplay",
+      "image.showChannel",
+      "view.osd",
+      "view.histogramOverlay",
+      "view.osdTemplate",
       "view.colorManaged",
       "view.dicomOverlays",
       "view.media",
+      "browse.recursive",
+      "browse.refresh",
+      "view.infoPane",
+      "view.filmstrip",
+      "view.navigator",
       "browse.map",
-      "---",
       "view.syncWindows",
       "view.frameless",
       "---",
       "browse.browser",
-      "view.loupe",
       "show.start",
-      "show.settings",
+      "file.revealInFolder",
+      "image.histogram",
+      "image.info",
+      "file.sysProperties",
+      "view.loupe",
       "---",
       "browse.timeline",
       "browse.people",
-      "view.compare",
       "---",
+      "view.compare",
       "browse.favorite",
       "browse.albums",
       "---",
       "browse.thumbnails",
-      "create.contactSheet",
+      "meta.keywords",
+      "file.hide",
       "---",
-      "browse.lightTable"
+      "create.contactSheet",
+      "view.twoPage",
+      "image.softProof",
+      "---",
+      "show.fromCurrent"
      ]
     },
     {
@@ -10568,7 +11090,10 @@
       "image.flipV",
       "image.flipH",
       "image.resize",
+      "edit.canvasSize",
+      "edit.border",
       "image.histogram",
+      "image.showChannel",
       "image.grayscale",
       "image.negative",
       "image.decreaseDepth",
@@ -10605,44 +11130,45 @@
       "fx.convolution",
       "fx.plugins8bf",
       "create.panoramaJoin",
-      "image.losslessJpeg",
+      "image.dicomWindow",
+      "image.dicomTags",
+      "image.fitsStretch",
+      "image.fitsHeader",
       "---",
-      "image.autoRotateExif",
-      "image.losslessCrop",
-      "edit.canvasSize",
-      "edit.crop",
-      "edit.autoCrop",
-      "adjust.autoLevels",
-      "adjust.autoContrast",
-      "adjust.autoColor",
+      "image.countColors",
+      "adjust.whiteBalance",
+      "adjust.normalize",
+      "adjust.equalize",
+      "adjust.posterize",
+      "adjust.tint",
+      "adjust.vignette",
       "adjust.levels",
       "adjust.curves",
+      "adjust.shadowsHighlights",
       "adjust.hsl",
       "adjust.colorBalance",
       "adjust.channelMixer",
-      "adjust.equalize",
-      "adjust.normalize",
-      "adjust.posterize",
+      "adjust.autoLevels",
+      "adjust.autoContrast",
+      "adjust.autoColor",
+      "image.rotate180",
+      "image.autoRotateExif",
+      "image.autoStraighten",
       "image.convertProfile",
       "image.assignProfile",
       "---",
-      "adjust.exposure",
-      "adjust.toneEqualizer",
-      "adjust.whiteBalance",
-      "adjust.denoise",
-      "ai.erase",
-      "---",
+      "file.openExternal",
+      "adjust.enhance",
+      "adjust.warmify",
+      "fx.filmGrain",
+      "adjust.revertOriginal",
       "browse.favorite",
+      "file.hide",
       "edit.cropPrint",
       "image.straighten",
-      "adjust.enhance",
       "adjust.fillLight",
-      "adjust.warmify",
-      "adjust.tint",
       "paint.heal",
       "edit.insertText",
-      "adjust.revertOriginal",
-      "fx.filmGrain",
       "fx.softFocus",
       "fx.glow",
       "fx.focalBW",
@@ -10650,37 +11176,48 @@
       "meta.geotag",
       "---",
       "file.open",
+      "file.openWith",
       "file.rename",
       "file.delete",
+      "browse.lightTable",
+      "batch.queue",
+      "browse.findSimilar",
       "browse.rate",
       "browse.colorLabel",
       "browse.pick",
+      "image.losslessAutoRotate",
+      "meta.template",
       "meta.geotagGpx",
-      "meta.template"
+      "file.print"
      ]
     },
     {
      "name": "Colors",
      "items": [
       "adjust.colorCorrections",
+      "adjust.shadowsHighlights",
+      "adjust.hsl",
       "adjust.levels",
       "adjust.curves",
-      "adjust.shadowsHighlights",
-      "adjust.colorBalance",
-      "adjust.hsl",
-      "adjust.autoLevels",
+      "image.swapChannels",
+      "image.decreaseDepth",
       "image.grayscale",
       "image.negative",
-      "adjust.redEye",
+      "adjust.tint",
       "adjust.sharpen",
       "adjust.unsharp",
       "adjust.blur",
-      "adjust.denoise"
+      "adjust.denoise",
+      "adjust.autoLevels",
+      "adjust.colorBalance"
      ]
     },
     {
      "name": "Effects",
      "items": [
+      "edit.insertOverlay",
+      "edit.border",
+      "fx.oilPaint",
       "fx.pencilSketch",
       "fx.cartoon",
       "fx.dropShadow",
@@ -10693,87 +11230,136 @@
     {
      "name": "Create",
      "items": [
+      "create.multipage",
+      "create.panoramaJoin",
       "create.contactSheet",
       "create.imageStrip",
       "create.webGallery",
       "create.animation",
-      "create.multipage",
-      "create.panoramaJoin",
       "---",
+      "pages.extract",
       "create.movie",
-      "show.exportHtml",
       "---",
-      "create.collage",
-      "file.wallpaper"
+      "file.wallpaper",
+      "file.copyShop",
+      "create.collage"
      ]
     },
     {
      "name": "Organize",
      "items": [
+      "meta.caption",
+      "show.start",
       "browse.refresh",
       "browse.sort",
+      "create.contactSheet",
+      "create.webGallery",
       "file.revealInFolder",
+      "file.moveTo",
+      "file.delete",
       "---",
-      "browse.albums",
       "browse.newFolder",
-      "browse.smartAlbum",
-      "browse.recursive",
+      "file.rename",
+      "meta.sidecarMode",
       "---",
       "meta.keywords",
-      "meta.regions",
-      "browse.people"
+      "meta.regions"
      ]
     },
     {
      "name": "Tools",
      "items": [
-      "batch.convert",
-      "batch.recipe",
-      "batch.rename",
-      "batch.metadata",
-      "browse.findDuplicates",
-      "browse.findSimilar",
-      "view.compare",
+      "file.capture",
       "file.wallpaper",
+      "edit.findFiles",
+      "browse.findSimilar",
+      "browse.findDuplicates",
+      "view.compare",
+      "batch.convert",
+      "batch.rename",
+      "batch.recipe",
+      "batch.metadata",
+      "show.start",
+      "show.settings",
+      "file.share",
+      "file.email",
       "file.export.metadataCsv",
       "tools.external",
       "tools.plugins",
+      "file.options",
       "---",
-      "batch.watermark",
-      "browse.lightTable",
       "file.setFileTime",
+      "image.losslessJpeg",
+      "image.losslessAutoRotate",
       "meta.strip",
       "---",
+      "view.actualSize",
+      "view.fitWindow",
+      "view.fitWidth",
+      "view.fitHeight",
+      "view.zoomLock",
+      "image.rotateLeft",
+      "image.rotateRight",
+      "edit.crop",
+      "image.resize",
+      "adjust.exposure",
+      "adjust.toneEqualizer",
+      "adjust.whiteBalance",
+      "adjust.colorBalance",
+      "adjust.denoise",
+      "adjust.sharpen",
+      "adjust.redEye",
+      "ai.erase",
+      "fx.browser",
+      "image.decreaseDepth",
+      "meta.shiftDate",
       "create.contactSheet",
+      "file.export.pdf",
+      "create.webGallery",
+      "file.customizeKeyboard",
       "---",
+      "browse.folderManager",
       "browse.people",
-      "file.options",
+      "tools.backup",
+      "meta.geotag",
+      "browse.map",
+      "meta.removeGps",
+      "browse.searchColor",
+      "file.customizeQat",
       "---",
       "image.info",
       "meta.exif",
-      "edit.markup",
+      "view.loupe",
       "adjust.colorCorrections",
-      "image.resize",
-      "image.rotateLeft",
-      "image.rotateRight",
+      "edit.customSelection",
+      "edit.markup",
+      "paint.rect",
+      "paint.ellipse",
+      "paint.line",
+      "paint.arrow",
+      "paint.text",
+      "edit.signature",
       "image.flipH",
       "image.flipV",
-      "edit.crop",
+      "image.assignProfile",
       "ai.removeBackground",
       "ai.selectSubject",
       "tools.ocr",
       "---",
-      "batch.queue",
-      "browse.searchSketch",
-      "browse.searchColor",
-      "browse.qualitySort",
-      "create.panoramaStitch",
-      "create.hdr",
       "adjust.curves",
       "adjust.levels",
       "adjust.channelMixer",
       "image.lensCorrection",
-      "image.convertProfile"
+      "image.convertProfile",
+      "browse.lightTable",
+      "batch.queue",
+      "browse.searchSketch",
+      "browse.qualitySort",
+      "browse.maintenance",
+      "create.hdr",
+      "create.focusStack",
+      "create.panoramaStitch",
+      "create.calendar"
      ]
     },
     {
@@ -10784,13 +11370,6 @@
       "file.associations",
       "view.language",
       "browse.sort",
-      "pages.next",
-      "pages.previous",
-      "pages.goto",
-      "pages.insert",
-      "pages.delete",
-      "pages.extract",
-      "create.multipage",
       "create.extractFrames",
       "create.extractEmbedded",
       "meta.shiftDate",
@@ -10800,14 +11379,79 @@
       "meta.comment",
       "tools.plugins",
       "file.exportSettings",
+      "create.multipage",
+      "pages.insert",
+      "pages.delete",
+      "pages.extract",
+      "image.losslessJpeg",
+      "image.losslessCrop",
+      "file.email",
+      "view.mediaPlay",
       "---",
       "browse.thumbSize",
       "browse.viewMode",
       "browse.showAllFiles",
       "browse.refresh",
       "---",
-      "browse.maintenance",
-      "meta.sidecarMode"
+      "view.theme",
+      "show.settings",
+      "---",
+      "view.toolbar",
+      "view.menuMode",
+      "view.statusBar",
+      "view.filmstrip",
+      "file.customizeKeyboard",
+      "file.customizeRibbon"
+     ]
+    },
+    {
+     "name": "Metadata",
+     "items": [
+      "browse.rate",
+      "browse.colorLabel",
+      "meta.keywords",
+      "meta.comment",
+      "meta.iptc",
+      "meta.xmp",
+      "meta.geotag",
+      "meta.shiftDate",
+      "file.fileTimeFromExif",
+      "browse.map",
+      "meta.regions",
+      "image.losslessJpeg",
+      "image.losslessCrop",
+      "meta.template",
+      "meta.copyFrom",
+      "meta.caption",
+      "meta.copyright",
+      "meta.strip"
+     ]
+    },
+    {
+     "name": "Panes",
+     "items": [
+      "browse.folderTree",
+      "browse.favorites",
+      "view.infoPane",
+      "view.filmstrip",
+      "view.navigator",
+      "view.histogramOverlay",
+      "view.loupe"
+     ]
+    },
+    {
+     "name": "Browse",
+     "items": [
+      "browse.albums",
+      "meta.keywords",
+      "browse.colorLabel",
+      "browse.timeline",
+      "edit.findFiles",
+      "browse.findSimilar",
+      "browse.map",
+      "browse.people",
+      "browse.smartAlbum",
+      "file.exit"
      ]
     },
     {
@@ -10909,7 +11553,11 @@
       "help.formats",
       "help.sendSample",
       "help.checkUpdates",
-      "help.about"
+      "help.about",
+      "---",
+      "tools.plugins",
+      "---",
+      "help.whatsNew"
      ]
     }
    ]
@@ -11151,6 +11799,15 @@
         "image.countColors",
         "image.jpegQuality",
         "image.showChannel"
+       ]
+      },
+      {
+       "submenu": "Scientific pictures",
+       "items": [
+        "image.dicomWindow",
+        "image.dicomTags",
+        "image.fitsStretch",
+        "image.fitsHeader"
        ]
       },
       {

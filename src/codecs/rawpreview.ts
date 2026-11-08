@@ -107,3 +107,19 @@ function scanJpeg(u8: Uint8Array, start: number): EmbeddedJpeg | null {
   }
   return null;
 }
+
+/**
+ * TIFF-based RAW files of older cameras (Kodak DCR/KDC, Epson ERF, Hasselblad 3FR/FFF, Phase One IIQ…) carry no JPEG
+ * preview, only an uncompressed RGB thumbnail in a TIFF directory: the largest such directory, decoded by the TIFF
+ * reader, or null when there is none the reader can show.
+ */
+export async function tiffThumbnail(u8: Uint8Array): Promise<{ page: import('./raster').DecodedPage; count: number } | null> {
+  const { isTiff, decodeTiff } = await import('./tiff');
+  if (!isTiff(u8)) return null;
+  let r: Awaited<ReturnType<typeof decodeTiff>>;
+  try { r = await decodeTiff(u8); } catch { return null; }
+  const rgb = r.pages.filter((p) => p.width > 0 && p.height > 0 && !p.notes.some((n) => /CFA|color filter|unknown photometric/i.test(n)));
+  if (!rgb.length) return null;
+  const best = rgb.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
+  return { page: best, count: rgb.length };
+}
