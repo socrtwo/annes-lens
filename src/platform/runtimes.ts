@@ -5,7 +5,7 @@
  * address. The desktop app's Content Security Policy only allows scripts from the app itself, so
  * the local copies are what make the on-device AI, OCR and barcode reading work there.
  */
-export interface RuntimeManifest { ort?: string; ocr?: string; zxing?: string; pdf?: string; jxl?: string; avif?: string; openjph?: string; openjpeg?: string; djvu?: string; ocrLangs?: string[] }
+export interface RuntimeManifest { ort?: string; ocr?: string; zxing?: string; pdf?: string; jxl?: string; avif?: string; openjph?: string; openjpeg?: string; djvu?: string; transformers?: string; ocrLangs?: string[] }
 
 let manifest: Promise<RuntimeManifest> | null = null;
 export function localRuntimes(): Promise<RuntimeManifest> {
@@ -24,7 +24,7 @@ export function localRuntimes(): Promise<RuntimeManifest> {
 export const resetRuntimes = (): void => { manifest = null; };
 const abs = (u: string) => new URL(u, typeof document !== 'undefined' ? document.baseURI : 'http://localhost/').href;
 /** The base URL (with a trailing slash) for a runtime: the local copy when the build has one, else the CDN. */
-export async function runtimeBase(key: 'ort' | 'ocr' | 'zxing' | 'pdf' | 'jxl' | 'avif' | 'openjph' | 'openjpeg' | 'djvu', cdn: string): Promise<string> {
+export async function runtimeBase(key: 'ort' | 'ocr' | 'zxing' | 'pdf' | 'jxl' | 'avif' | 'openjph' | 'openjpeg' | 'djvu' | 'transformers', cdn: string): Promise<string> {
   const m = await localRuntimes();
   const local = m[key];
   return abs(typeof local === 'string' && local ? local.replace(/\/?$/, '/') : cdn);

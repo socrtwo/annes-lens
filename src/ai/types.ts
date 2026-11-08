@@ -9,7 +9,8 @@
  */
 
 /** The HTTP dialect a hosted service speaks. */
-export type ServiceApi = 'openai' | 'anthropic' | 'gemini';
+/** 'device': the on-device picture generator (Transformers.js), no server at all. */
+export type ServiceApi = 'openai' | 'anthropic' | 'gemini' | 'device';
 
 export interface AiService {
   id: string;

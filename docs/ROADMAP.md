@@ -104,7 +104,7 @@
 - [x] Generate Vector: the picture service draws in a flat vector style and the on-device tracer (Trace to Vector) turns it into SVG with AI provenance in its metadata.
 - [x] Keys in platform secure storage: the desktop OS credential store (safeStorage), the Android Keystore (EncryptedSharedPreferences), a passphrase-encrypted store on the web and iOS; never in settings exports, macros or AI History (iOS Keychain still to do).
 - [x] C2PA manifests on AI results saved as JPEG, PNG or WebP: assertions, claim and ES256 signature written by the app's own code, signed with a self-signed certificate made on the device (valid hashes and signature; untrusted signer, as it must be); edits carry their ingredient with a thumbnail and the original's own manifests; manifests read back, verified (ingredients too) and shown in the details.
-- [ ] On-device generation.
+- [x] On-device generation: Generate Picture runs entirely on the device through Transformers.js with DeepSeek's Janus-Pro-1B (ONNX, about 2 GB downloaded once; WebGPU recommended, so the desktop app or Chrome/Edge; 384 × 384 pictures from a prompt). Set Up AI offers it as the picture service "This device"; the download dialog names the model's real license (MIT code, weights under the DeepSeek Model License, which has use restrictions) and asks for acceptance; nothing leaves the device. Edits, masks, sizes and seeds still need a picture service.
 
 ## M8 — Stretch goals
 

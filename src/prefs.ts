@@ -277,7 +277,7 @@ export function sanitizePrefs(raw: unknown): Partial<Prefs> {
 function sanitizeAi(raw: any): AiPrefs {
   const d = defaultAiPrefs();
   const out: any = { ...d };
-  if (Array.isArray(raw.services)) out.services = raw.services.filter((s: any) => isObj(s) && typeof s.id === 'string' && ['openai', 'anthropic', 'gemini'].includes(s.api))
+  if (Array.isArray(raw.services)) out.services = raw.services.filter((s: any) => isObj(s) && typeof s.id === 'string' && ['openai', 'anthropic', 'gemini', 'device'].includes(s.api))
     .map((s: any) => ({ id: s.id, name: String(s.name ?? s.id), api: s.api, baseUrl: String(s.baseUrl ?? ''), key: String(s.key ?? ''), textModel: String(s.textModel ?? ''), imageModel: String(s.imageModel ?? ''), preset: typeof s.preset === 'string' ? s.preset : undefined })).slice(0, 40);
   for (const k of ['textService', 'imageService', 'runtimeUrl']) if (typeof raw[k] === 'string') out[k] = raw[k];
   if (['device', 'service'].includes(raw.prefer)) out.prefer = raw.prefer;

@@ -73,7 +73,7 @@ The final list will be generated from `package.json` and the WASM build manifest
 | world-atlas (Natural Earth country outlines for the offline map) | ISC; Natural Earth data public domain |
 | OpenStreetMap map tiles (online, Browse ▸ Map) | map data © OpenStreetMap contributors, ODbL; credited on the map; tile usage policy followed (identifying User-Agent on the desktop, no bulk downloading) |
 | Capacitor, Electron, electron-builder | MIT |
-| On-device models | each model's own license, shown before download; permissive only (see AI-PLAN.md) |
+| On-device models | each model's own license, shown before download; permissive for the built-in jobs (MODNet, Depth Anything V2 Small, LaMa, Swin2SR: Apache-2.0; CLIP, YuNet: MIT; SFace: Apache-2.0). The optional picture generator, DeepSeek's Janus-Pro-1B (ONNX from onnx-community), is MIT code with weights under the DeepSeek Model License, which has use restrictions (its Attachment A); it is never bundled or fetched on its own, and the download dialog shows the license for the user to accept. Transformers.js (Apache-2.0) is the runtime, loaded on demand |
 | YuNet face detection, SFace face recognition (Browse ▸ People; OpenCV Zoo via huggingface.co/opencv) | MIT; Apache 2.0 |
 
 **Optional modules** (separate downloads, dynamically loaded, license shown first, never required): RAW development (LibRaw, LGPL-2.1 or CDDL-1.0), HEIC decoding where the platform lacks it (libheif LGPL-3.0 with an HEVC decoder; patent notice). Their source and license texts are linked from Help ▸ About, and they can be replaced by the user, as the LGPL requires.

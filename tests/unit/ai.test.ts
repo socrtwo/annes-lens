@@ -79,7 +79,7 @@ describe('hosted adapters', () => {
   it('extracts JSON from prose and fences', () => {
     expect(extractJson('```json\n{"a":1}\n```')).toEqual({ a: 1 }); expect(extractJson('Sure: {"keywords": ["x"]} done')).toEqual({ keywords: ['x'] }); expect(extractJson('[1,2]')).toEqual([1, 2]); expect(() => extractJson('nothing')).toThrow();
   });
-  it('has presets with addresses and key links', () => { expect(PRESETS.length).toBeGreaterThan(5); for (const p of PRESETS) { expect(p.baseUrl).toMatch(/^https?:\/\//); if (p.group !== 'computer') expect(p.keyUrl).toMatch(/^https:/); } });
+  it('has presets with addresses and key links', () => { expect(PRESETS.length).toBeGreaterThan(5); for (const p of PRESETS) { expect(p.baseUrl).toMatch(p.api === 'device' ? /^device:/ : /^https?:\/\//); if (p.group !== 'computer') expect(p.keyUrl).toMatch(/^https:/); } });
 });
 
 describe('transport', () => {

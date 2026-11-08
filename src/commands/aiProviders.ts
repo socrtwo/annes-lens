@@ -10,6 +10,7 @@ import { h } from '../ui/dom';
 import { aiBusy, aiStop, serviceById } from '../ai';
 import { PRESETS, listModels, testService, hasImages } from '../ai/hosted';
 import { MODELS, deleteModels, downloadedModels, runtimeStatus } from '../ai/device';
+import { GEN_MODELS, deviceGenDownloaded, deleteDeviceGenCache, gpuAvailable } from '../ai/deviceGenerate';
 import { readHistory, clearHistory } from '../ai/history';
 import { keyBackend, setPassphrase, forgetStoredKeys } from '../ai/keystore';
 import type { AiService } from '../ai/types';
@@ -24,7 +25,8 @@ export async function serviceDialog(app: App, existing?: AiService): Promise<AiS
   const backend = await keyBackend();
   const presetOptions = PRESETS.map((p) => ({ value: p.id, label: `${GROUPS[p.group]} — ${p.name}` }));
   const presetOf = (id: string) => PRESETS.find((p) => p.id === id);
-  const start = existing ? presetOf(existing.preset || '') : PRESETS[0];
+  const start = existing ? presetOf(existing.preset || '') : PRESETS.find((p) => p.id === 'ollama') || PRESETS[0];
+  const notDevice = (v: Record<string, any>) => v.api !== 'device';
   const noteHtml = (id: string) => { const p = presetOf(id); if (!p) return ''; return `<p>${p.note || ''} ${p.keyUrl ? `<a href="${p.keyUrl}" target="_blank" rel="noopener">Get a key</a>` : 'No key needed.'}${p.priceUrl ? ` · <a href="${p.priceUrl}" target="_blank" rel="noopener">Prices and free tier</a>` : ''}</p>`; };
   let models: string[] = [];
   const fields: Field[] = [
@@ -32,17 +34,18 @@ export async function serviceDialog(app: App, existing?: AiService): Promise<AiS
     { key: 'preset', label: 'Service', type: 'select', options: presetOptions, value: start?.id || 'custom' },
     { key: 'note', type: 'info', html: noteHtml(start?.id || 'custom') },
     { key: 'name', label: 'Name', type: 'text', value: existing?.name || start?.name || '', half: true },
-    { key: 'api', label: 'API dialect', type: 'select', options: [{ value: 'openai', label: 'OpenAI-compatible' }, { value: 'anthropic', label: 'Anthropic' }, { value: 'gemini', label: 'Google Gemini' }], value: existing?.api || start?.api || 'openai', half: true },
-    { key: 'baseUrl', label: 'Address', type: 'text', value: existing?.baseUrl || start?.baseUrl || '', placeholder: 'https://…/v1' },
-    { key: 'key', label: 'API key', type: 'password', value: existing?.key || '', help: `Kept in ${backend.label}; never in settings exports, macros or AI History; sent only to this address.` },
-    { key: 'textModel', label: 'Text and vision model', type: 'combo', options: [], value: existing?.textModel || start?.textModel || '', half: true },
-    { key: 'fetch', label: 'Fetch model list', type: 'button', half: true, onClick: async (v, ctl) => {
+    { key: 'api', label: 'API dialect', type: 'select', options: [{ value: 'openai', label: 'OpenAI-compatible' }, { value: 'anthropic', label: 'Anthropic' }, { value: 'gemini', label: 'Google Gemini' }, { value: 'device', label: 'On this device (Transformers.js, pictures only)' }], value: existing?.api || start?.api || 'openai', half: true },
+    { visibleIf: notDevice, key: 'baseUrl', label: 'Address', type: 'text', value: existing?.baseUrl || start?.baseUrl || '', placeholder: 'https://…/v1' },
+    { visibleIf: notDevice, key: 'key', label: 'API key', type: 'password', value: existing?.key || '', help: `Kept in ${backend.label}; never in settings exports, macros or AI History; sent only to this address.` },
+    { visibleIf: notDevice, key: 'textModel', label: 'Text and vision model', type: 'combo', options: [], value: existing?.textModel || start?.textModel || '', half: true },
+    { visibleIf: notDevice, key: 'fetch', label: 'Fetch model list', type: 'button', half: true, onClick: async (v, ctl) => {
       try { models = await listModels({ id: 'tmp', name: v.name, api: v.api, baseUrl: v.baseUrl, key: v.key, textModel: '', imageModel: '' }); ctl.rebuild(fields.map((f) => f.key === 'textModel' || f.key === 'imageModel' ? { ...f, options: models, value: v[f.key] } : f.key === 'models' ? { ...f, html: `<p>${models.length} models listed by the service.</p>` } : { ...f, value: v[f.key] ?? f.value })); toast(`${models.length} models listed.`); }
       catch (e) { toast(`Could not list models: ${(e as Error).message}`, { ms: 8000 }); }
     } },
-    { key: 'models', type: 'info', html: '' },
-    { key: 'imageModel', label: 'Picture model (optional)', type: 'combo', options: [], value: existing?.imageModel || start?.imageModel || '', help: 'Generation and edits: OpenAI-compatible images endpoints (gpt-image-1, dall-e-3, FLUX on Together…) or a Gemini image model.' },
-    { key: 'test', label: 'Test the key and text model', type: 'button', onClick: async (v) => {
+    { key: 'models', type: 'info', html: '', visibleIf: notDevice },
+    { key: 'deviceNote', type: 'info', visibleIf: (v) => v.api === 'device', html: `<p><b>${GEN_MODELS[0].title}</b>, ${GEN_MODELS[0].params}, about ${(GEN_MODELS[0].bytes / 1e9).toFixed(1)} GB downloaded once into the browser's cache; pictures of ${GEN_MODELS[0].size} × ${GEN_MODELS[0].size}. ${gpuAvailable() ? 'WebGPU is available here.' : 'No WebGPU in this browser: it would run on WebAssembly, slowly; the desktop app or Chrome/Edge is recommended.'}</p><p><b>License:</b> ${GEN_MODELS[0].license} (<a href="${GEN_MODELS[0].licenseUrl}" target="_blank" rel="noopener">read it</a>). ${GEN_MODELS[0].licenseNote}</p>` },
+    { visibleIf: notDevice, key: 'imageModel', label: 'Picture model (optional)', type: 'combo', options: [], value: existing?.imageModel || start?.imageModel || '', help: 'Generation and edits: OpenAI-compatible images endpoints (gpt-image-1, dall-e-3, FLUX on Together…) or a Gemini image model.' },
+    { visibleIf: notDevice, key: 'test', label: 'Test the key and text model', type: 'button', onClick: async (v) => {
       try { toast(await testService({ id: 'tmp', name: v.name || 'Service', api: v.api, baseUrl: v.baseUrl, key: v.key, textModel: v.textModel, imageModel: '' }), { ms: 6000 }); }
       catch (e) { toast(`Test failed: ${(e as Error).message}`, { ms: 9000 }); }
     } },
@@ -52,8 +55,9 @@ export async function serviceDialog(app: App, existing?: AiService): Promise<AiS
     const p = presetOf(v.preset); if (!p) return;
     ctl.set('name', p.name); ctl.set('api', p.api); ctl.set('baseUrl', p.baseUrl); ctl.set('textModel', p.textModel); ctl.set('imageModel', p.imageModel);
     ctl.rebuild(fields.map((f) => f.key === 'note' ? { ...f, html: noteHtml(p.id) } : { ...f, value: f.key === 'preset' ? v.preset : f.key in { name: 1, api: 1, baseUrl: 1, textModel: 1, imageModel: 1 } ? (p as any)[f.key] : v[f.key] ?? f.value }));
-  }, validate: (v) => (!/^https?:\/\//i.test(String(v.baseUrl || '')) ? 'The address must start with http:// or https://' : !String(v.textModel || '').trim() && !String(v.imageModel || '').trim() ? 'Enter a text model or a picture model' : null) });
+  }, validate: (v) => (v.api === 'device' ? null : !/^https?:\/\//i.test(String(v.baseUrl || '')) ? 'The address must start with http:// or https://' : !String(v.textModel || '').trim() && !String(v.imageModel || '').trim() ? 'Enter a text model or a picture model' : null) });
   if (!r) return null;
+  if (r.api === 'device') { r.baseUrl = 'device://local'; r.key = ''; r.textModel = ''; r.imageModel = r.imageModel || GEN_MODELS[0].id; r.name = r.name || presetOf('device')!.name; }
   const svc: AiService = { id: existing?.id || newId(), name: String(r.name || presetOf(r.preset)?.name || 'Service').trim(), api: r.api, baseUrl: String(r.baseUrl).trim().replace(/\/+$/, ''), key: String(r.key || '').trim(), textModel: String(r.textModel || '').trim(), imageModel: String(r.imageModel || '').trim(), preset: r.preset };
   const list = app.prefs.ai.services;
   const i = list.findIndex((s) => s.id === svc.id);
@@ -73,10 +77,12 @@ async function providersDialog(app: App): Promise<void> {
       ' ', h('button', { class: 'ql-btn', type: 'button', onclick: async () => { try { toast(await testService(s), { ms: 6000 }); } catch (e) { toast(`Test failed: ${(e as Error).message}`, { ms: 9000 }); } } }, 'Test'),
       ' ', h('button', { class: 'ql-btn', type: 'button', onclick: async () => { if (!(await confirmDialog('Remove service?', `${s.name} and its key will be removed from this device.`, 'Remove'))) return; app.prefs.ai.services = app.prefs.ai.services.filter((x) => x.id !== s.id); if (app.prefs.ai.textService === s.id) app.prefs.ai.textService = ''; if (app.prefs.ai.imageService === s.id) app.prefs.ai.imageService = ''; app.savePrefs(); ctl?.close(); providersDialog(app); } }, 'Remove'))));
   const models = await downloadedModels();
+  const genDown = await deviceGenDownloaded(GEN_MODELS[0]);
   const content = h('div', null,
     h('h3', null, 'Services'),
     ...(app.prefs.ai.services.length ? rows() : [h('p', { class: 'ql-help' }, 'No service yet. Add one, or use the on-device models below without any service.')]),
     h('h3', null, 'On-device models'),
+    ...GEN_MODELS.map((m) => h('div', { class: 'qn-ai-model' }, h('span', null, h('b', null, m.title), ` · ${m.license} · about ${(m.bytes / 1e9).toFixed(1)} GB · picture generation (Transformers.js)`, h('br'), h('span', { class: 'qn-ai-label' }, genDown ? 'downloaded' : 'not downloaded; Set Up AI ▸ This device, then Generate Picture')))),
     ...MODELS.map((m) => { const d = models.find((x) => x.spec.id === m.id); return h('div', { class: 'qn-ai-model' }, h('span', null, h('b', null, m.title), ` · ${m.license} · ${mb(m.sizes.quantized)}${m.sizes.fp32 !== m.sizes.quantized ? ` (full ${mb(m.sizes.fp32)})` : ''}`, h('br'), h('span', { class: 'qn-ai-label' }, m.note)), h('span', { class: 'qn-ai-label' }, d ? `downloaded (${d.dtypes.join(', ')})` : 'not downloaded')); }),
     h('p', { class: 'ql-help' }, `Runtime: ONNX Runtime Web${runtimeStatus.loaded ? ` loaded (${runtimeStatus.provider})` : ' (loads with the first on-device command)'}; ${(navigator as any).gpu ? 'WebGPU available' : 'WebAssembly only (no WebGPU in this browser)'}.`));
   let ctl: DialogControl | null = null;
@@ -152,10 +158,11 @@ def([
   {
     id: 'ai.deleteModels', icon: 'delete_sweep', noRecord: true, tip: 'Removes every downloaded on-device model from the browser cache',
     run: async (app) => {
-      const d = await downloadedModels();
-      if (!d.length) { toast('No models are downloaded.'); return; }
-      if (!(await confirmDialog('Delete downloaded models?', `${d.map((x) => `${x.spec.title} (${mb(x.bytes)})`).join(', ')} — ${mb(d.reduce((n, x) => n + x.bytes, 0))} in all. They download again when a command needs them.`, 'Delete'))) return;
-      await deleteModels(); toast('Downloaded models deleted.'); app.refresh();
+      const d = await downloadedModels(), gen = await deviceGenDownloaded(GEN_MODELS[0]);
+      if (!d.length && !gen) { toast('No models are downloaded.'); return; }
+      const names = [...d.map((x) => `${x.spec.title} (${mb(x.bytes)})`), ...(gen ? [`${GEN_MODELS[0].title} (about ${(GEN_MODELS[0].bytes / 1e9).toFixed(1)} GB)`] : [])];
+      if (!(await confirmDialog('Delete downloaded models?', `${names.join(', ')} — they download again when a command needs them.`, 'Delete'))) return;
+      await deleteModels(); await deleteDeviceGenCache(); toast('Downloaded models deleted.'); app.refresh();
     },
   },
   {

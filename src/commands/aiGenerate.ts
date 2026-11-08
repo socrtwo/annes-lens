@@ -49,7 +49,7 @@ def([
     id: 'ai.generate', icon: 'auto_awesome', noRecord: true, popular: true, isEnabled: hasImage, tip: 'Prompt, size, count, seed and negative prompt where the service supports them',
     run: async (app, arg?: { prompt?: string; negative?: string }) => {
       const s = imageService(app)!;
-      const v = await openDialog({ title: 'Generate Picture', ok: 'Generate', wide: true, help: `${s.name} (${s.imageModel}). Sizes are rounded to what the service offers.`, fields: genFields(app, arg, false) });
+      const v = await openDialog({ title: 'Generate Picture', ok: 'Generate', wide: true, help: s.api === 'device' ? 'Runs on this device (Janus-Pro-1B through Transformers.js): 384 × 384 pictures from the prompt; size, seed and negative prompt do not apply.' : `${s.name} (${s.imageModel}). Sizes are rounded to what the service offers.`, fields: genFields(app, arg, false) });
       if (!v || !String(v.prompt).trim()) return;
       savePrompt(app, v, 'generate');
       const r = await withJob(app, 'ai.generate', (status, signal) => makePictures(app, { command: 'ai.generate', prompt: String(v.prompt).trim(), negative: String(v.negative || '').trim() || undefined, ...sizeOf(v.size, app), n: +v.n || 1, seed: v.seed === '' ? undefined : +v.seed }, status, signal));

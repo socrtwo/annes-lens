@@ -32,10 +32,14 @@ export const LOCAL_RUNTIMES: { from: string; to: string; files: string[]; dirs?:
   { from: 'node_modules/@cornerstonejs/codec-openjph', to: 'openjph', files: ['dist/openjphjs.js', 'dist/openjphjs.wasm', 'LICENSE'] },
   // OpenJPEG (decode-only build) for JPEG 2000 pixel data at full precision in DICOM files.
   { from: 'node_modules/@cornerstonejs/codec-openjpeg', to: 'openjpeg', files: ['dist/openjpegjs_decode.js', 'dist/openjpegwasm_decode.wasm', 'LICENSE'] },
+  // Transformers.js (on-device picture generation) with the ONNX Runtime Web build it bundles (its own version, beside the app's).
+  { from: 'node_modules/@huggingface/transformers/dist', to: 'transformers', files: ['transformers.min.js', 'ort-wasm-simd-threaded.jsep.mjs'] },
+  { from: 'node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist', to: 'transformers', files: ['ort-wasm-simd-threaded.jsep.wasm', 'ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.jspi.wasm'] },
+  { from: 'node_modules/@huggingface/transformers', to: 'transformers', files: ['LICENSE'] },
   // djvu-rs (DjVu): its loader picks the SIMD or the scalar WebAssembly build.
   { from: 'node_modules/djvu-rs', to: 'djvu', files: ['djvu_rs.js', 'scalar/djvu_rs.js', 'scalar/djvu_rs_bg.wasm', 'simd128/djvu_rs.js', 'simd128/djvu_rs_bg.wasm', 'LICENSE', 'THIRD_PARTY_NOTICES'] },
 ];
-export const RUNTIME_MANIFEST = { ort: 'ort/', ocr: 'ocr/', zxing: 'zxing/', pdf: 'pdf/', jxl: 'jxl/', avif: 'avif/', openjph: 'openjph/', openjpeg: 'openjpeg/', djvu: 'djvu/', ocrLangs: ['eng'] };
+export const RUNTIME_MANIFEST = { ort: 'ort/', ocr: 'ocr/', zxing: 'zxing/', pdf: 'pdf/', jxl: 'jxl/', avif: 'avif/', openjph: 'openjph/', openjpeg: 'openjpeg/', djvu: 'djvu/', transformers: 'transformers/', ocrLangs: ['eng'] };
 export function stageRuntimes(dist: string): void {
   for (const r of LOCAL_RUNTIMES) {
     const out = join(dist, r.to); mkdirSync(out, { recursive: true });

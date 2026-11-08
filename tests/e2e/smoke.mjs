@@ -2058,6 +2058,19 @@ try {
       const m = saved.value ? await M.c2pa.readManifest(saved.value) : null;
       out.c2pa = m ? { checks: m.checks, action: m.actions[0]?.action, source: m.actions[0]?.digitalSourceType?.replace(/^.*\//, ''), prompt: m.actions[0]?.parameters?.prompt, signer: m.signer?.subject, selfSigned: m.signer?.selfSigned, info: qn.picture.info['Content Credentials'] } : { saved: !!saved.value, toasts: seen.slice(-3) }; }
     await back();
+    // Generate on this device: a fake generator stands in for the 2 GB model; the download dialog shows the license first.
+    { const DG = A.deviceGenerate; const loads = [];
+      DG.deviceGenHooks.loader = async (spec, progress) => { loads.push(spec.id); progress?.('loading the fake'); return { model: spec, device: 'wasm', release() {}, generate: async (req) => { out.devicePrompt = req.prompt; return [{ width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4).map((_, i) => (i % 4 === 3 ? 255 : i % 4 === 2 ? 40 : 200)) }]; } }; };
+      qn.prefs.ai.services.push({ id: 'device', name: 'This device', api: 'device', baseUrl: 'device://local', key: '', textModel: '', imageModel: 'janus-pro-1b' }); qn.prefs.ai.imageService = 'device'; qn.savePrefs();
+      const tabs1 = qn.tabs.length;
+      const dialogWith = async (re) => { for (let i = 0; i < 100; i++) { const x = [...document.querySelectorAll('.ql-dialog')].find((e) => re.test(e.textContent)); if (x) return x; await wait(50); } return null; };
+      run = qn.exec('ai.generate'); d = await dialogWith(/Generate Picture/); out.deviceHelp = d.textContent.includes('Runs on this device'); setField(d, 'prompt', 'a lighthouse'); d.querySelector('.ql-primary').click();
+      d = await dialogWith(/Download the picture model/); out.deviceLicense = [/Download the picture model/.test(d.textContent), /DeepSeek Model License/.test(d.textContent), /not a permissive license/.test(d.textContent), d.querySelector('.ql-primary')?.textContent]; d.querySelector('.ql-primary').click();
+      await done(run); await wait(800);
+      out.deviceGen = { loads, tabs: qn.tabs.length - tabs1, w: qn.picture.width, center: pixel(32, 32).slice(0, 3), xmp: (M.extractMeta(qn.picture.bytes).xmp ? new TextDecoder().decode(M.extractMeta(qn.picture.bytes).xmp) : '') };
+      out.deviceProv = { provider: /AiProvider>this device</.test(out.deviceGen.xmp), model: /Janus-Pro-1B/.test(out.deviceGen.xmp) }; delete out.deviceGen.xmp;
+      if (qn.tabs.length > tabs1) qn.closeTab(qn.tab); await back();
+      qn.prefs.ai.services = qn.prefs.ai.services.filter((x) => x.id !== 'device'); qn.prefs.ai.imageService = 'mock'; qn.savePrefs(); }
     // Generative Fill: the service's blue answer is blended inside the selection only.
     qn.tab.setSelection({ x: 50, y: 40, w: 30, h: 20 });
     run = qn.exec('ai.fill'); d = await dialog(); setField(d, 'prompt', 'a pond'); d.querySelector('.ql-primary').click(); await done(run); await wait(800);
@@ -2108,6 +2121,7 @@ try {
   check('ai keywords', ai.tags, ['sunset', 'beach', 'sea']);
   check('ai select by description', ai.box, [40, 30, 80, 60]);
   check('ai generate opens a labeled picture', [ai.gen.tabs, ai.gen.w, ai.gen.center, ai.genProv], [1, 64, [255, 220, 0], { source: true, prompt: true, provider: true }]);
+  check('ai generate on this device: the license is shown before the download, the fake generator makes the picture, provenance names the device and the model', [ai.deviceHelp, ai.deviceLicense, ai.deviceGen, ai.devicePrompt, ai.deviceProv], [true, [true, true, true, 'Download and accept the license'], { loads: ['janus-pro-1b'], tabs: 1, w: 64, center: [200, 200, 40] }, 'a lighthouse', { provider: true, model: true }], JSON.stringify([ai.deviceHelp, ai.deviceLicense, ai.deviceGen, ai.devicePrompt, ai.deviceProv]));
   check('ai fill blends inside the selection', [ai.fill.size, ai.fill.inside, ai.fill.outsideWhite, ai.fill.outsideBlack, /AI edit/.test(ai.fill.name)], [[160, 120], [0, 0, 255], [255, 255, 255], [0, 0, 0], true]);
   check('ai remove background on the device', [ai.rb.subjectA, ai.rb.cornerA, ai.rb.provider], [255, 0, 'wasm']);
   check('ai erase on the device', [Math.abs(ai.erase.inside - 128) < 6, ai.erase.outside, ai.erase.black], [true, 255, 0]);

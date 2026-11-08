@@ -19,6 +19,7 @@ import { chat, generateImage, hasImages } from './hosted';
 import { runEnsemble } from './ensemble';
 import { addHistory } from './history';
 import * as device from './device';
+import { deviceGenerator, genModelById, deviceGenDownloaded, gpuAvailable as genGpu, isPhone as genPhone, type GenModelSpec } from './deviceGenerate';
 import { AiStopped, type AiService, type ChatImage, type ChatRequest, type ImageRequest } from './types';
 
 // Services ---------------------------------------------------------------------------------------
@@ -185,6 +186,7 @@ export interface ImageJob { command: string; prompt: string; negative?: string; 
 /** Generates or edits pictures with the picture service. Returns rasters (null when stopped or refused). */
 export async function makePictures(app: App, job: ImageJob, status?: (t: string) => void, signal?: AbortSignal): Promise<{ rasters: Raster[]; service: string; model: string; ms: number; text?: string; scale: number } | null> {
   const s = job.service || imageService(app); if (!s) throw new Error(needImage(app)!);
+  if (s.api === 'device') return deviceMakePictures(app, job, s, status, signal);
   const req: ImageRequest = { prompt: job.prompt, negative: job.negative, width: job.width, height: job.height, n: job.n, seed: job.seed, transparent: job.transparent };
   let scale = 1;
   if (job.images?.length) { req.images = []; for (const r of job.images) { const b = await pictureBlob(app, r, 'png'); scale = b.scale; req.images.push(b.blob); } }
@@ -201,6 +203,27 @@ export async function makePictures(app: App, job: ImageJob, status?: (t: string)
 }
 
 // On-device models -------------------------------------------------------------------------------
+
+/** Generate Picture on this device (Transformers.js): a prompt in, pictures out; nothing is sent anywhere. */
+async function deviceMakePictures(app: App, job: ImageJob, s: AiService, status?: (t: string) => void, signal?: AbortSignal): Promise<{ rasters: Raster[]; service: string; model: string; ms: number; text?: string; scale: number } | null> {
+  if (job.images?.length || job.mask) throw new Error('On-device generation makes pictures from a prompt only; edits, variations and references need a picture service (AI ▸ Set Up AI).');
+  const spec: GenModelSpec = genModelById(s.imageModel || 'janus-pro-1b');
+  if (!(await deviceGenDownloaded(spec))) {
+    const gb = (spec.bytes / 1e9).toFixed(1);
+    const r = await openDialog({ title: 'Download the picture model?', ok: 'Download and accept the license', wide: true, fields: [
+      { key: 'i', type: 'info', html: `<p><b>${spec.title}</b> (${spec.params}, about ${gb} GB, from huggingface.co/${spec.repo}) runs on this device; nothing leaves it. The download is kept in the browser's cache (AI ▸ Delete Downloaded Models removes it).</p><p><b>License:</b> ${spec.license} (<a href="${spec.licenseUrl}" target="_blank" rel="noopener">read it</a>). ${spec.licenseNote}</p><p>${genGpu() ? 'WebGPU is available here.' : `No WebGPU in this ${genPhone() ? 'device' : 'browser'}: the model would run on WebAssembly, slowly and with more than 4 GB of memory; a desktop browser with WebGPU, or a picture service, is the better choice.`}</p>` },
+    ] });
+    if (!r) return null;
+  }
+  const gen = await deviceGenerator(spec, status, signal);
+  checkStop();
+  const t0 = performance.now();
+  const rasters = await gen.generate({ prompt: job.prompt + (job.negative ? '' : ''), n: Math.max(1, Math.min(4, job.n || 1)), signal }, status);
+  checkStop();
+  const ms = Math.round(performance.now() - t0);
+  addHistory({ command: job.command, service: 'this device', model: spec.title, prompt: job.prompt.slice(0, 500), result: `${rasters.length} picture${rasters.length === 1 ? '' : 's'}, ${spec.size} × ${spec.size}`, ms });
+  return { rasters, service: 'this device', model: spec.title, ms, text: job.negative ? 'The on-device model has no negative prompt; it was left out.' : undefined, scale: 1 };
+}
 
 let backend: device.Backend | null = null; let backendBase = '';
 /** An explicit runtime address (a setting, or a test), or '' to use the build's local copy or the CDN. */

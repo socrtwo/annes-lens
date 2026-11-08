@@ -17,6 +17,7 @@ export interface Preset { id: string; name: string; api: ServiceApi; baseUrl: st
 
 /** Known services. Terms, free tiers and prices change: the wizard links to each service's pages instead of stating them. */
 export const PRESETS: Preset[] = [
+  { id: 'device', name: 'This device (Janus-Pro-1B, pictures only)', api: 'device', baseUrl: 'device://local', group: 'computer', textModel: '', imageModel: 'janus-pro-1b', note: 'Generate Picture runs entirely on this device through Transformers.js: a 2 GB model downloaded once, WebGPU recommended (the desktop app, Chrome or Edge); nothing leaves the device. Pictures are 384 × 384; edits, masks, sizes and seeds need a picture service. The model\'s weights are under the DeepSeek Model License, shown before the download.' },
   { id: 'ollama', name: 'Ollama (your computer)', api: 'openai', baseUrl: 'http://localhost:11434/v1', group: 'computer', textModel: 'llava', imageModel: '', note: 'Install from ollama.com, then "ollama pull llava" (or another vision model). In a browser, start it with OLLAMA_ORIGINS set.' },
   { id: 'lmstudio', name: 'LM Studio (your computer)', api: 'openai', baseUrl: 'http://localhost:1234/v1', group: 'computer', textModel: '', imageModel: '', note: 'Start the local server in LM Studio and load a vision model.' },
   { id: 'custom', name: 'Any OpenAI-compatible server', api: 'openai', baseUrl: 'http://localhost:8000/v1', group: 'computer', textModel: '', imageModel: '', note: 'ComfyUI, SD.Next, LocalAI and others through their OpenAI-compatible endpoints.' },
@@ -156,7 +157,8 @@ export function openaiSize(model: string, w = 1024, h = 1024): string {
   return best;
 }
 
-export const hasImages = (s: AiService | undefined | null): boolean => !!s && !!s.imageModel && (s.api === 'openai' || s.api === 'gemini');
+export const hasImages = (s: AiService | undefined | null): boolean => !!s && !!s.imageModel && (s.api === 'openai' || s.api === 'gemini' || s.api === 'device');
+export const isDevice = (s: AiService | undefined | null): boolean => !!s && s.api === 'device';
 export const canMask = (s: AiService): boolean => s.api === 'openai';
 
 export async function buildImage(s: AiService, r: ImageRequest): Promise<AiHttpRequest> {
@@ -215,6 +217,7 @@ export async function parseImage(api: ServiceApi, res: AiHttpResponse): Promise<
 }
 
 export async function generateImage(s: AiService, r: ImageRequest, signal?: AbortSignal): Promise<{ blobs: Blob[]; text?: string }> {
+  if (s.api === 'device') throw new Error('On-device generation runs through makePictures, not a service request');
   await keysReady();
   if (!hasImages(s)) throw new Error(`${s.name} has no picture model set (AI ▸ Providers and Models).`);
   const req = await buildImage(s, r);
