@@ -176,7 +176,7 @@ export function lzma2Decode(u8: Uint8Array, dictProp: number, sizeHint = 0, pos 
   return { data: out.done(), end: pos };
 }
 
-const readVli = (u8: Uint8Array, p: number): [number, number] => { let v = 0, m = 1; for (let i = 0; i < 9; i++) { const b = u8[p++]; v += (b & 0x7f) * m; m *= 128; if (!(b & 0x80)) return [v, p]; } throw new Error('Bad .xz number'); };
+const readVli = (u8: Uint8Array, p: number): [number, number] => { let v = 0, m = 1; for (let i = 0; i < 9; i++) { if (p >= u8.length) throw new Error('The .xz file is cut off'); const b = u8[p++]; v += (b & 0x7f) * m; m *= 128; if (!(b & 0x80)) return [v, p]; } throw new Error('Bad .xz number'); };
 export const isXz = (u8: Uint8Array): boolean => u8.length > 12 && u8[0] === 0xfd && u8[1] === 0x37 && u8[2] === 0x7a && u8[3] === 0x58 && u8[4] === 0x5a && u8[5] === 0;
 /** An .xz file (one or more streams of LZMA2 blocks; delta and branch filters are refused). */
 export function xzDecode(u8: Uint8Array): Uint8Array {
@@ -188,6 +188,7 @@ export function xzDecode(u8: Uint8Array): Uint8Array {
     const check = u8[p + 7] & 0x0f, checkSize = check === 0 ? 0 : check <= 3 ? 4 : check <= 6 ? 8 : check <= 9 ? 16 : check <= 12 ? 32 : 64;
     p += 12;
     for (;;) {
+      if (p >= u8.length) throw new Error('The .xz file is cut off');
       const hs = u8[p];
       if (hs === 0) break; // the index
       const hEnd = p + (hs + 1) * 4, flags = u8[p + 1], nf = (flags & 3) + 1; let q = p + 2;
@@ -206,6 +207,7 @@ export function xzDecode(u8: Uint8Array): Uint8Array {
     }
     // Skip the index and the stream footer.
     let q = p + 1, n; [n, q] = readVli(u8, q);
+    if (n > (u8.length - q) / 2) throw new Error('Corrupt .xz index'); // each record takes at least two bytes
     for (let i = 0; i < n; i++) { [, q] = readVli(u8, q); [, q] = readVli(u8, q); }
     while (q & 3) q++;
     p = q + 4 + 12;

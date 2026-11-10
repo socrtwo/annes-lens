@@ -604,6 +604,8 @@ public class QuillNativePlugin extends Plugin {
         final String name = call.getString("name");
         final String mime = call.getString("mime", "application/octet-stream");
         final String data = call.getString("data");
+        // "rename": never replace a file of the same name (the provider then appends " (1)"); otherwise replace it.
+        final boolean keepExisting = "rename".equals(call.getString("ifExists", "overwrite"));
         if (dirUri == null || dirUri.isEmpty() || name == null || name.trim().isEmpty() || data == null) {
             call.reject("createInFolder requires 'dirUri', 'name' and 'data'");
             return;
@@ -612,11 +614,15 @@ public class QuillNativePlugin extends Plugin {
             try {
                 Uri tree = Uri.parse(dirUri);
                 ContentResolver resolver = getContext().getContentResolver();
-                Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
-                // Replace a file of the same name rather than letting the provider append " (1)".
-                Uri existing = findChild(resolver, tree, name.trim());
-                if (existing != null) {
-                    DocumentsContract.deleteDocument(resolver, existing);
+                // The picked tree's root, or a folder inside it (createSubfolder and listSubfolders hand those back).
+                String folderId = folderDocumentId(tree);
+                Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, folderId);
+                if (!keepExisting) {
+                    // Replace a file of the same name rather than letting the provider append " (1)".
+                    Uri existing = findChild(resolver, tree, folderId, name.trim());
+                    if (existing != null) {
+                        DocumentsContract.deleteDocument(resolver, existing);
+                    }
                 }
                 Uri created = DocumentsContract.createDocument(resolver, parent, mime == null || mime.isEmpty() ? "application/octet-stream" : mime, name.trim());
                 if (created == null) {
@@ -634,9 +640,9 @@ public class QuillNativePlugin extends Plugin {
         });
     }
 
-    private static Uri findChild(ContentResolver resolver, Uri tree, String name) {
+    private static Uri findChild(ContentResolver resolver, Uri tree, String folderId, String name) {
         try {
-            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, folderId);
             String[] columns = { DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME };
             try (Cursor cursor = resolver.query(children, columns, null, null, null)) {
                 while (cursor != null && cursor.moveToNext()) {

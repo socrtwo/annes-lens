@@ -29,7 +29,7 @@ export async function openCatalogView(app: App, quiet = false): Promise<boolean>
   if (unreachable.length) toast(`Not reachable now: ${unreachable.join(', ')}.`, { ms: 3000 });
   return true;
 }
-const scanText = (name: string, r: ScanReport) => `${name}: ${r.added} added, ${r.updated} updated, ${r.removed} removed, ${r.unchanged} unchanged${r.failed ? `, ${r.failed} unreadable` : ''}`;
+const scanText = (name: string, r: ScanReport) => `${name}: ${r.added} added, ${r.updated} updated, ${r.removed} removed, ${r.unchanged} unchanged${r.failed ? `, ${r.failed} unreadable` : ''}${r.unlisted ? `, ${r.unlisted} kept from subfolders that could not be listed` : ''}`;
 
 /** What a watch does with the pictures that appeared. */
 async function act(app: App, w: Watch, fresh: Entry[], uri: string): Promise<void> {
@@ -51,7 +51,7 @@ async function act(app: App, w: Watch, fresh: Entry[], uri: string): Promise<voi
     else {
       const rec = app.prefs.batchRecipes.find((r) => r.name === w.recipe); if (!rec) throw new Error(`The recipe "${w.recipe}" no longer exists`);
       const job: BatchJob = { inputs: fresh, format: rec.format as EncodeFormat | 'keep', quality: rec.quality, keepMeta: rec.keepMeta, steps: { actions: rec.actions }, names: { pattern: rec.pattern } };
-      const r = await runBatch(app, job, async (res) => writeIntoFolder(dest, res.name, res.data.buffer.slice(res.data.byteOffset, res.data.byteOffset + res.data.byteLength) as ArrayBuffer), { silent: true });
+      const r = await runBatch(app, job, async (res) => writeIntoFolder(dest, res.name, res.data.buffer.slice(res.data.byteOffset, res.data.byteOffset + res.data.byteLength) as ArrayBuffer, 'rename'), { silent: true });
       toast(`Watch: "${rec.name}" made ${r.done.length} file${r.done.length === 1 ? '' : 's'} in ${w.dest.name} from the new pictures in ${w.folder.name}${r.failed.length ? `; ${r.failed.length} failed` : ''}.`, { ms: 5000 });
     }
   }

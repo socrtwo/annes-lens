@@ -20,6 +20,7 @@ class Bits {
 
 /** RICE_1: `n` samples of `bytepix` bytes each, as signed values (unsigned for bytepix 1). */
 export function decodeRice(src: Uint8Array, n: number, bytepix: number, blocksize = 32): Int32Array {
+  if (!Number.isInteger(blocksize) || blocksize < 1) throw new Error(`Rice: bad block size ${blocksize}`); // 0 would never advance
   const fsbits = bytepix === 1 ? 3 : bytepix === 2 ? 4 : 5, fsmax = bytepix === 1 ? 6 : bytepix === 2 ? 14 : 25, bbits = bytepix * 8;
   const wrap = 2 ** bbits, out = new Int32Array(n);
   let last = 0;

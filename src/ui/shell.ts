@@ -3,7 +3,7 @@ import { pixelToWorld, formatWorld, type Wcs } from '../codecs/wcs';
 import type { App, PictureTab } from '../app';
 import { getCommand, allCommands, searchCommands, plannedLabel, type Command, type MenuEntry } from '../commands/registry';
 import { h, icon, clear, isPhone } from './dom';
-import { showMenu, closeMenus, openDialog, toast } from './dialog';
+import { showMenu, closeMenus, openDialog, toast, menuOpen, focusMenu } from './dialog';
 import { DEFAULT_TABS, tabsFor, type RibbonTab } from './ribbonLayout';
 import { prettyKey, canonicalKey, keyName } from '../util/keys';
 import { customizeQat, customizeRibbon, customizeKeyboard } from './customize';
@@ -41,6 +41,9 @@ export class Shell {
     this.root = app.host;
     this.build();
     this.applyPrefs();
+    // Whether focus is being moved with the keyboard: Tab sets it, a pointer press clears it (see controlOwnsKey).
+    document.addEventListener('keydown', (e) => { if (e.key === 'Tab') this.keyNav = true; }, true);
+    for (const n of ['pointerdown', 'mousedown', 'touchstart']) document.addEventListener(n, () => { this.keyNav = false; }, true);
     document.addEventListener('keydown', (e) => this.globalKey(e), true);
   }
 
@@ -552,6 +555,23 @@ export class Shell {
     this.refresh();
   }
 
+  /** Whether focus was last moved with Tab; a pointer press clears it. */
+  keyNav = false;
+
+  /**
+   * Whether the widget the key was pressed in handles it itself, so that the shortcuts stand aside. This listener runs in
+   * the capture phase, ahead of every widget, so without this check Enter on a focused button ran Full Screen as well,
+   * and the arrows in the thumbnail list moved two pictures.
+   */
+  private widgetOwnsKey(e: KeyboardEvent, t: HTMLElement | null): boolean {
+    if (!t || !t.closest) return false;
+    // A control reached with Tab is pressed by Enter and Space. After a click the keys go back to the picture (Space is Next), as they always did.
+    if (this.keyNav && (e.key === 'Enter' || e.key === ' ') && t.closest('button, a[href], summary, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="switch"]')) return true;
+    // Lists, the map and other widgets that move with the keyboard say which keys are theirs.
+    for (let n: any = t; n && n !== document.body; n = n.parentElement) if (typeof n.__ownsKey === 'function' && n.__ownsKey(e)) return true;
+    return false;
+  }
+
   globalKey(e: KeyboardEvent): void {
     const k = keyName(e);
     if (!k) return;
@@ -562,6 +582,15 @@ export class Shell {
     }
     if (document.querySelector('.ql-overlay')) return;
     const t = e.target as HTMLElement;
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    // An open menu owns the plain keys: arrows, Home and End move in it, Enter and Space pick, and nothing runs behind it.
+    if (plain && !/^F\d+$/.test(e.key) && menuOpen()) {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && focusMenu(e.key === 'ArrowUp')) e.preventDefault();
+      return;
+    }
+    if (plain && this.widgetOwnsKey(e, t)) return;
+    // A picture larger than the window is moved by the arrow keys (they are Next and Previous only when it fits).
+    if (plain && !e.shiftKey && this.app.tabs.length && (!t || t === document.body || this.app.viewer.el.contains(t)) && this.app.viewer.panKey(e)) return;
     const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     const id = this.app.commandForKey(canonicalKey(k));
     if (!id) {
@@ -577,6 +606,8 @@ export class Shell {
     const c = getCommand(id);
     if (c?.isEnabled && !c.isEnabled(this.app)) return;
     e.preventDefault();
+    // Esc leaves full screen; it closes the app only where that option is on (File ▸ Options). Exit from a menu, and Alt+F4, always exit.
+    if (id === 'file.exit' && e.key === 'Escape') { this.app.exec('file.exit', 'esc'); return; }
     this.app.exec(id);
   }
 

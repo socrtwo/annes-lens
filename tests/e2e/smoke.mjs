@@ -149,6 +149,20 @@ try {
   await p.waitForTimeout(400);
   check('backspace', await p.evaluate(() => qn.picture.name), 'a.jpg');
 
+  // The shortcuts stand aside for a control reached with Tab (Enter and Space press it; they do not run Full Screen or
+  // Next behind it). After a click on the control the keys belong to the picture again.
+  await p.evaluate(() => { const b = document.createElement('button'); b.id = 'qn-key-probe'; b.textContent = 'probe'; b.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:99999'; b.onclick = () => { window.__probeClicks = (window.__probeClicks || 0) + 1; }; document.body.appendChild(b); });
+  await p.keyboard.press('Tab');
+  await p.evaluate(() => document.getElementById('qn-key-probe').focus());
+  await p.keyboard.press('Enter'); await p.keyboard.press('Space'); await p.waitForTimeout(300);
+  check('keys on a tabbed control press it', await p.evaluate(() => ({ clicks: window.__probeClicks, full: document.body.classList.contains('ql-fullscreen'), name: qn.picture.name })), { clicks: 2, full: false, name: 'a.jpg' });
+  await p.click('#qn-key-probe');
+  await p.keyboard.press('Space'); await p.waitForTimeout(400);
+  check('after a click Space is Next again', await p.evaluate(() => ({ clicks: window.__probeClicks, name: qn.picture.name })), { clicks: 3, name: 'b.png' });
+  await p.evaluate(() => { document.getElementById('qn-key-probe').remove(); qn.focus(); });
+  await p.keyboard.press('Backspace'); await p.waitForTimeout(400);
+  check('back on the first picture', await p.evaluate(() => qn.picture.name), 'a.jpg');
+
   // Save a copy through the download path (no file picker in headless Chromium): the encoder runs.
   const encoded = await p.evaluate(async () => { const { encodeCanvas } = await window.__qnCodecs(); const b = await encodeCanvas(qn.picture.frameCanvas(), 'webp', 0.8); return [b.type, b.size > 100]; });
   check('encode webp', encoded, ['image/webp', true]);
@@ -2506,6 +2520,42 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
   check('script plug-in runs as a command (one Undo step) and is gone when disabled', [tools.plugin[0][1] > 100, tools.plugin[1][1] === tools.plugin[0][1] >> 1, tools.plugin[2], tools.disabled], [true, true, 'Halve green', true], JSON.stringify(tools.plugin));
   check('plug-ins lists the components with their versions', tools.comps, [4, true, true, true]);
   check('back up library: pictures and sidecars of the catalog, the library JSON, nothing twice', [tools.backup, tools.tree, tools.lib], [[5, 0, 0, 5, true], ["Anne's Lens backup/Library 2/Kids/b.png", "Anne's Lens backup/Library 2/Kids/b.xmp", "Anne's Lens backup/Library 2/c.png", "Anne's Lens backup/Library 2/d.png", "Anne's Lens backup/Library 2/gone.xmp", "Anne's Lens backup/annes-lens-library.json"], ['library-backup', 1, 3, true, true, 2]], JSON.stringify(tools));
+
+  // Saving goes to the right file with the right pixels: Save while Before / After shows the original writes the edit;
+  // Save from the "Save changes?" prompt after Next keeps the folder list and moves on; and saving a window that is not
+  // the active one writes that window's own picture (it used to take the active window's).
+  const sv = await pa.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const root = await navigator.storage.getDirectory(), dir = await root.getDirectoryHandle('Trip 2024');
+    const pixel = async (name) => { const bmp = await createImageBitmap(await (await dir.getFileHandle(name)).getFile()); const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; const x = c.getContext('2d'); x.drawImage(bmp, 0, 0); return [...x.getImageData(5, 5, 1, 1).data].slice(0, 3); };
+    const clickSave = async () => { let b; for (let i = 0; i < 80 && !(b = [...document.querySelectorAll('.ql-dialog button')].find((x) => x.textContent.trim() === 'Save')); i++) await wait(50); b?.click(); return !!b; };
+    const openTrip = async () => { const picker = window.showDirectoryPicker; window.showDirectoryPicker = async () => dir; await qn.exec('file.openFolder'); window.showDirectoryPicker = picker; for (let i = 0; i < 60 && !(qn.folder.name === 'Trip 2024' && qn.picture); i++) await wait(50); await wait(200); };
+    for (const t of [...qn.tabs].slice(1)) qn.closeTab(t);
+    await openTrip();
+    const out = { before: await pixel('a-landscape.png') };
+    // 1. Edit, show "Before", save: the file gets the edit.
+    await qn.exec('image.negative', 'all'); qn.tab.showOriginal(true);
+    out.showingBefore = qn.tab.showingOriginal;
+    await qn.exec('file.save'); for (let i = 0; i < 60 && qn.tab.dirty; i++) await wait(50); await wait(200);
+    out.afterBeforeSave = [await pixel('a-landscape.png'), qn.tab.dirty, qn.tab.showingOriginal];
+    // 2. Edit again (back to the first colors), Next, "Save": the list is intact and the window is on the next picture.
+    await qn.exec('image.negative', 'all');
+    const nav = qn.exec('view.next'); out.prompted = await clickSave(); await nav; for (let i = 0; i < 60 && qn.picture?.name !== 'b-beach.png'; i++) await wait(50); await wait(200);
+    out.afterPrompt = [qn.folder.entries.map((e) => e.name), qn.picture?.name, qn.tab.dirty, await pixel('a-landscape.png')];
+    // 3. Window 1 has an unsaved edit on a-landscape; window 2 (active) shows c-night. Window 1 moves on and saves.
+    await qn.exec('view.first'); for (let i = 0; i < 60 && qn.picture?.name !== 'a-landscape.png'; i++) await wait(50);
+    await qn.exec('image.negative', 'all');
+    await openTrip(); // the first window is dirty, so the folder opens in a second one
+    qn.folder.select(2); await qn.tab.show(); await wait(200);
+    const first = qn.tabs[0]; out.windows = [qn.tabs.length, qn.tab !== first, qn.picture?.name, first.picture?.name, first.dirty];
+    first.folder.select(1); const moved = first.show(); out.prompted2 = await clickSave(); await moved; await wait(300);
+    out.afterOther = [await pixel('a-landscape.png'), await pixel('c-night.png'), first.picture?.name, first.dirty];
+    qn.closeTab(qn.tab);
+    return out;
+  });
+  check('save: the edit is written while Before / After shows the original', [sv.before, sv.showingBefore, sv.afterBeforeSave], [[70, 130, 220], true, [[185, 125, 35], false, false]], JSON.stringify(sv));
+  check('save from the "Save changes?" prompt: the folder list is intact and the window moves on', [sv.prompted, sv.afterPrompt], [true, [['a-landscape.png', 'b-beach.png', 'c-night.png'], 'b-beach.png', false, [70, 130, 220]]], JSON.stringify(sv));
+  check('saving a window that is not the active one writes its own picture', [sv.windows, sv.prompted2, sv.afterOther], [[2, true, 'c-night.png', 'a-landscape.png', true], true, [[185, 125, 35], [15, 15, 30], 'b-beach.png', false]], JSON.stringify(sv));
 
   // Network sharing through the relay (the web app has no server of its own): the album page hosts a view and an
   // album; a second browser follows the view (picture, zoom and pan) and opens the album (thumbnails through a relay).

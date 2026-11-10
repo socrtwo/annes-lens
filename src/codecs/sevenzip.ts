@@ -30,7 +30,9 @@ class Reader {
   u32(): number { const v = (this.u8[this.p] | (this.u8[this.p + 1] << 8) | (this.u8[this.p + 2] << 16) | (this.u8[this.p + 3] << 24)) >>> 0; this.p += 4; return v; }
   u64(): number { const lo = this.u32(), hi = this.u32(); return hi * 4294967296 + lo; }
   bits(n: number): boolean[] { const out: boolean[] = []; let b = 0, m = 0; for (let i = 0; i < n; i++) { if (!m) { b = this.byte(); m = 0x80; } out.push(!!(b & m)); m >>= 1; } return out; }
-  defined(n: number): boolean[] { const all = this.byte(); return all ? new Array(n).fill(true) : this.bits(n); }
+  /** A count the rest of the header could not describe (each item takes at least a bit of it) means a damaged or crafted file: refused before anything is allocated for it. */
+  count(n: number): number { if (!(n >= 0) || n > (this.u8.length - this.p) * 8 + 8) throw new Error('Bad 7z header: a count larger than the header itself'); return n; }
+  defined(n: number): boolean[] { this.count(n); const all = this.byte(); return all ? new Array(n).fill(true) : this.bits(n); }
 }
 
 function readFolder(r: Reader): Folder {
@@ -137,7 +139,8 @@ export class SevenZip {
     if (32 + off + size > u8.length) throw new Error('The 7z archive is cut off');
     let r = new Reader(u8.subarray(32 + off, 32 + off + size));
     let id = r.byte();
-    while (id === 0x17) { // the header is itself packed
+    for (let depth = 0; id === 0x17; depth++) { // the header is itself packed
+      if (depth >= 4) throw new Error('Bad 7z archive: its packed header unpacks to another packed header, again and again');
       const s = readStreams(r); this.streams = s;
       const data = await this.decodeFolder(0, s); // the header's own folder: not cached with the files'
       r = new Reader(data); id = r.byte();
@@ -152,7 +155,7 @@ export class SevenZip {
     const names: string[] = [], mtimes: number[] = [];
     let empty: boolean[] = [], emptyFile: boolean[] = [], n = 0;
     if (t === 0x05) {
-      n = r.num();
+      n = r.count(r.num());
       for (;;) {
         const pid = r.byte(); if (pid === 0) break;
         const psize = r.num(), end = r.p + psize;

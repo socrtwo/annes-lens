@@ -219,7 +219,10 @@ function registerIpc() {
     if (typeof uri !== 'string' || !uri.startsWith('file:')) throw new Error('Not a file address');
     let p = path.resolve(fileURLToPath(uri));
     let dir = p;
-    try { if (!fs.statSync(p).isDirectory()) dir = path.dirname(p); } catch { dir = path.dirname(p); }
+    // A file's address lists the folder it is in; a folder that is gone (an unplugged drive) is an error, never its parent's listing.
+    let st = null; try { st = fs.statSync(p); } catch { st = null; }
+    if (st ? !st.isDirectory() : grants.has(p)) dir = path.dirname(p); // also a granted file that is gone now
+    else if (!st) throw new Error('This folder is not available (a drive that is not connected?).');
     if (!grantedDirs.has(dir) && !grants.has(p)) throw new Error('Anne\'s Lens has no permission for this folder; open a picture in it first.');
     grantDir(dir);
     return { uri: pathToFileURL(dir).href, name: path.basename(dir) || dir, entries: listDir(dir, !!all) };
@@ -372,10 +375,11 @@ function registerIpc() {
     throw new Error('No free file name');
   };
   const done = (p) => { grant(p); grantDir(path.dirname(p)); return { uri: pathToFileURL(p).href, name: path.basename(p) }; };
+  const sameFile = (a, b) => { try { const x = fs.statSync(a), y = fs.statSync(b); return x.ino === y.ino && x.dev === y.dev && (x.ino !== 0 || a.toLowerCase() === b.toLowerCase()); } catch { return false; } };
   handle('renameDocument', async ({ uri, name }) => {
     const p = grantedPath(uri, true);
     const target = path.join(path.dirname(p), safeName(name));
-    if (target !== p && fs.existsSync(target) && target.toLowerCase() !== p.toLowerCase()) throw new Error(`A file named "${path.basename(target)}" already exists.`);
+    if (target !== p && fs.existsSync(target) && !sameFile(p, target)) throw new Error(`A file named "${path.basename(target)}" already exists.`); // a case-only rename is the same file on case-insensitive disks, another file elsewhere
     fs.renameSync(p, target);
     return done(target);
   });
@@ -402,10 +406,18 @@ function registerIpc() {
   };
   handle('moveFile', transfer(true));
   handle('copyFile', transfer(false));
-  handle('createInFolder', async ({ dirUri, name, data }) => {
+  handle('createInFolder', async ({ dirUri, name, data, ifExists }) => {
     const dir = grantedDir(dirUri);
+    const bytes = Buffer.from(String(data || ''), 'base64');
+    if (ifExists === 'rename') { // never replace a file: the next free "name (2).ext", created exclusively
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const target = path.join(dir, freeName(dir, safeName(name), false));
+        try { fs.writeFileSync(target, bytes, { flag: 'wx' }); return done(target); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+      }
+      throw new Error(`No free name for "${name}".`);
+    }
     const target = path.join(dir, safeName(name));
-    fs.writeFileSync(target, Buffer.from(String(data || ''), 'base64'));
+    fs.writeFileSync(target, bytes);
     return done(target);
   });
   // Open URL: fetched here so picture hosts need no CORS headers; the renderer gets bytes and a name.

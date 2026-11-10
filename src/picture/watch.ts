@@ -29,30 +29,38 @@ const fileKey = (e: Entry) => `${e.name}|${e.size ?? ''}`;
 /** The pictures in a watched folder that it did not hold before (pure: `known` keys against a listing). */
 export const newOnes = (entries: Entry[], known: string[]): Entry[] => { const k = new Set(known); return entries.filter((e) => isPictureName(e.name) && !k.has(fileKey(e))); };
 
-async function listPictures(uri: string): Promise<Entry[]> {
+/** The folder's pictures, or null when it could not be listed (a drive that is away): that is not an empty folder. */
+async function listPictures(uri: string): Promise<Entry[] | null> {
   const r = await listFolderFiles(uri).catch(() => null);
-  if (!r) return [];
+  if (!r) return null;
   const es = listingEntries(r).filter((e) => isPictureName(e.name));
-  // Browser handles carry no size until read: fetch it so a rewritten file counts as new.
-  await Promise.all(es.map(async (e) => { if (e.size === undefined && e.uri === null) { try { e.size = (await e.read()).byteLength; } catch { /* */ } } }));
+  // Browser handles carry no size in the listing: ask the handle (no file is read), so a rewritten file counts as new.
+  for (const e of es) { if (e.size === undefined) { try { if (e.stat) e.size = (await e.stat()).size; else if (e.uri === null) e.size = (await e.read()).byteLength; } catch { /* */ } } }
   return es;
 }
 
 /** Remembers what a folder holds now (a new watch starts from here). */
-export async function primeWatch(w: Watch): Promise<void> { const u = await dirUri(w.folder); if (u) w.known = (await listPictures(u)).map(fileKey); }
+export async function primeWatch(w: Watch): Promise<void> { const u = await dirUri(w.folder); const now = u ? await listPictures(u) : null; if (now) w.known = now.map(fileKey); }
 
 /** One pass over every watch; returns how many new pictures were handled. */
+let ticking = false;
 export async function watchTick(app: App, act: (w: Watch, fresh: Entry[], uri: string) => Promise<void>): Promise<number> {
-  const all = await listWatches(); let n = 0;
-  for (const w of all) {
-    const u = await dirUri(w.folder); if (!u) continue;
-    const now = await listPictures(u), fresh = newOnes(now, w.known);
-    if (!fresh.length) { w.known = now.map(fileKey); continue; }
-    try { await act(w, fresh, u); w.lastNew = Date.now(); w.total = (w.total || 0) + fresh.length; n += fresh.length; } catch (e) { console.warn('watch', e); }
-    w.known = now.map(fileKey);
-  }
-  await saveWatches(all);
-  return n;
+  if (ticking) return 0; // the last pass is still at work (a long recipe): no second pass over the same files
+  ticking = true;
+  try {
+    const all = await listWatches(); let n = 0;
+    for (const w of all) {
+      const u = await dirUri(w.folder); if (!u) continue;
+      const now = await listPictures(u);
+      if (!now) continue; // the folder is not reachable right now: what it held is kept, so nothing counts as new when it returns
+      const fresh = newOnes(now, w.known);
+      if (!fresh.length) { w.known = now.map(fileKey); continue; }
+      try { await act(w, fresh, u); w.lastNew = Date.now(); w.total = (w.total || 0) + fresh.length; n += fresh.length; } catch (e) { console.warn('watch', e); }
+      w.known = now.map(fileKey);
+    }
+    await saveWatches(all);
+    return n;
+  } finally { ticking = false; }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -62,4 +70,4 @@ export function runWatches(app: App, act: Parameters<typeof watchTick>[1], every
   void listWatches().then((w) => { if (w.length) timer = setInterval(() => { void watchTick(app, act); }, everyMs); });
 }
 /** Copies a picture's bytes into a folder. */
-export async function copyInto(destUri: string, e: Entry): Promise<void> { await writeIntoFolder(destUri, e.name, await e.read()); }
+export async function copyInto(destUri: string, e: Entry): Promise<void> { await writeIntoFolder(destUri, e.name, await e.read(), 'rename'); } // never over a file already there

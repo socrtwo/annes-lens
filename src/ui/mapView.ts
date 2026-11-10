@@ -134,6 +134,7 @@ export class MapView {
     this.el.addEventListener('pointerup', up); this.el.addEventListener('pointercancel', up);
     this.el.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e); this.zoomBy(e.deltaY < 0 ? 1 : -1, p.x, p.y); }, { passive: false });
     this.el.addEventListener('dblclick', (e) => { if ((e.target as HTMLElement).closest('button')) return; const p = local(e); this.zoomBy(e.shiftKey ? -1 : 1, p.x, p.y); });
+    (this.el as any).__ownsKey = (e: KeyboardEvent) => !e.ctrlKey && !e.metaKey && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '=', '-', '_'].includes(e.key);
     this.el.addEventListener('keydown', (e) => {
       const step = 80, k = e.key;
       if (k === 'ArrowLeft') this.view.cx -= step; else if (k === 'ArrowRight') this.view.cx += step; else if (k === 'ArrowUp') this.view.cy -= step; else if (k === 'ArrowDown') this.view.cy += step;

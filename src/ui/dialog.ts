@@ -420,6 +420,17 @@ if (typeof document !== 'undefined') {
   for (const t of ['pointerdown', 'mousedown', 'touchstart']) document.addEventListener(t, () => { keyboardInput = false; }, true);
 }
 
+/** Whether a menu is open. */
+export const menuOpen = (): boolean => openMenus.length > 0;
+/** Moves focus into the innermost open menu when it is not there yet (a menu opened with the mouse); false when it already is. */
+export function focusMenu(last = false): boolean {
+  const menu = openMenus[openMenus.length - 1];
+  if (!menu || menu.contains(document.activeElement)) return false;
+  const items = menuItems(menu); const it = items[last ? items.length - 1 : 0];
+  if (!it) return false;
+  it.focus(); return true;
+}
+
 export function closeMenus(): void {
   for (const m of openMenus) m.remove();
   openMenus = [];

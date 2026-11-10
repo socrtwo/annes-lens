@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { encryptKeys, decryptKeys, loadKeys, storeKeys, keyBackend, keystoreHooks, resetKeystore, keysReady, setPassphrase, forgetStoredKeys } from '../../src/ai/keystore';
+import { encryptKeys, decryptKeys, loadKeys, storeKeys, keyBackend, keystoreHooks, resetKeystore, keysReady, setPassphrase, forgetStoredKeys, keysLocked } from '../../src/ai/keystore';
 import { prefsWithoutKeys, savePrefs, defaultPrefs } from '../../src/prefs';
 import type { AiService } from '../../src/ai/types';
 
@@ -54,6 +54,33 @@ describe('AI keys in the keystore (the web store: passphrase encryption)', () =>
     await forgetStoredKeys();
     expect(localStorage.getItem('annes-lens.ai.keys.v1')).toBeNull();
   }, 30000);
+  it('a stored record that was not unlocked is never deleted or written over; new keys are added to it once it is unlocked', async () => {
+    keystoreHooks.askPassphrase = async () => 'pass phrase';
+    await storeKeys([svc('one', 'key-one')]);
+    const record = localStorage.getItem('annes-lens.ai.keys.v1')!;
+    // A new session; the user answers "Not now" to the unlock prompt. Saving the settings must leave the record alone.
+    resetKeystore();
+    const told: string[] = []; keystoreHooks.notify = (m) => told.push(m);
+    keystoreHooks.askPassphrase = async () => null;
+    const locked = [svc('one', '')];
+    await loadKeys(locked);
+    expect(keysLocked()).toBe(true);
+    await storeKeys(locked);
+    expect(localStorage.getItem('annes-lens.ai.keys.v1')).toBe(record);
+    // A key typed while locked: still nothing is written over the record, and the user is told.
+    const withNew = [svc('one', ''), svc('two', 'key-two')];
+    await storeKeys(withNew);
+    expect(localStorage.getItem('annes-lens.ai.keys.v1')).toBe(record);
+    expect(told.length).toBe(1); expect(told[0]).toMatch(/locked/);
+    // Unlocked on the next change: the stored key comes back and the new one joins it.
+    keystoreHooks.askPassphrase = async () => 'pass phrase';
+    const more = [svc('one', ''), svc('two', 'key-two'), svc('three', 'key-three')];
+    await storeKeys(more);
+    expect(keysLocked()).toBe(false);
+    expect(more[0].key).toBe('key-one');
+    expect(await decryptKeys(localStorage.getItem('annes-lens.ai.keys.v1')!, 'pass phrase')).toEqual({ one: 'key-one', two: 'key-two', three: 'key-three' });
+    keystoreHooks.notify = null;
+  }, 60000);
   it('the settings never carry keys: saving and exporting scrub them', () => {
     const p = defaultPrefs();
     p.ai.services = [svc('one', 'secret-1')];

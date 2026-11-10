@@ -5,7 +5,7 @@
  */
 import { viewHooks } from './ui/viewHooks';
 import { getCommand, allCommands, type Command } from './commands/registry';
-import { loadPrefs, savePrefs, type Prefs } from './prefs';
+import { loadPrefs, loadStoredPlaces, prefsHooks, savePrefs, type Prefs } from './prefs';
 import { toast, openDialog } from './ui/dialog';
 import { canonicalKey } from './util/keys';
 import type { Shell } from './ui/shell';
@@ -22,7 +22,7 @@ import { djvuOptions } from './codecs/djvu';
 
 let tabCounter = 0;
 
-interface Snapshot { label: string; pages: Picture['pages']; page: number; frame: number }
+interface Snapshot { label: string; pages: Picture['pages']; page: number; frame: number; /** The state this snapshot holds (see PictureTab.rev). */ rev: number }
 
 export class PictureTab {
   id = `t${Date.now().toString(36)}${tabCounter++}`;
@@ -65,13 +65,17 @@ export class PictureTab {
   get history(): { label: string; image: CanvasImageSource; width: number; height: number }[] { return this.undoStack.map((s) => { const f = (s.pages[s.page] || s.pages[0]).frames[0]; return { label: s.label, image: f.image as CanvasImageSource, width: f.width, height: f.height }; }); }
   get redoHistory(): string[] { return [...this.redoStack].reverse().map((s) => s.label); }
 
+  /** The state the picture is in (a number per distinct state) and the one last saved or opened: they differ exactly when there are unsaved changes, however far undo went. */
+  private rev = 0;
+  private savedRev = 0;
+  private static revSeq = 0;
   private snapshot(label: string): Snapshot {
     const p = this.picture!;
-    return { label, pages: p.pages, page: p.page, frame: p.frame };
+    return { label, pages: p.pages, page: p.page, frame: p.frame, rev: this.rev };
   }
   private restore(s: Snapshot): void {
     const p = this.picture!;
-    p.pages = s.pages; p.page = s.page; p.frame = s.frame;
+    p.pages = s.pages; p.page = s.page; p.frame = s.frame; this.rev = s.rev;
     p.version++;
     if (this.selection && (this.selection.x + this.selection.w > p.width || this.selection.y + this.selection.h > p.height)) this.selection = null;
     if (this.selectionMask && this.selectionMask.length !== p.width * p.height) this.selectionMask = null;
@@ -95,12 +99,21 @@ export class PictureTab {
     const before = this.snapshot(label);
     fn(this.picture);
     this.picture.version++;
+    this.rev = ++PictureTab.revSeq;
     this.undoStack.push(before);
-    if (this.undoStack.length > 30) this.undoStack.shift();
     this.redoStack = [];
+    this.trimHistory();
     this.afterChange();
   }
+  /** Keeps the undo history within 30 steps and a memory budget (full-size snapshots add up fast on large pictures); the oldest steps go first. */
+  private trimHistory(): void {
+    const bytes = (s: Snapshot) => { let n = 0; for (const pg of s.pages) for (const f of pg.frames) n += f.width * f.height * 4; return n; };
+    const budget = ((navigator as { deviceMemory?: number }).deviceMemory ?? 8) >= 8 ? 1536 * 1048576 : 512 * 1048576;
+    let total = this.undoStack.reduce((n, s) => n + bytes(s), 0);
+    while (this.undoStack.length > 1 && (this.undoStack.length > 30 || total > budget)) total -= bytes(this.undoStack.shift()!);
+  }
   undo(): boolean {
+    if (this.stash) this.showOriginal(false); // Before / After is a view, not a state: back to the edited picture first
     const s = this.undoStack.pop();
     if (!s || !this.picture) return false;
     this.redoStack.push(this.snapshot(s.label));
@@ -109,6 +122,7 @@ export class PictureTab {
     return true;
   }
   redo(): boolean {
+    if (this.stash) this.showOriginal(false);
     const s = this.redoStack.pop();
     if (!s || !this.picture) return false;
     this.undoStack.push(this.snapshot(s.label));
@@ -116,7 +130,8 @@ export class PictureTab {
     this.afterChange();
     return true;
   }
-  clearHistory(): void { this.undoStack = []; this.redoStack = []; this.stash = null; }
+  /** Forgets the history: the picture as it is now is the saved (or freshly opened) one. */
+  clearHistory(): void { this.undoStack = []; this.redoStack = []; this.stash = null; this.savedRev = this.rev; this.dirty = false; }
   private stash: Snapshot | null = null;
   /** Before / After: shows the picture as it was before the first edit while `on`, without touching the history. */
   showOriginal(on: boolean): boolean {
@@ -129,7 +144,7 @@ export class PictureTab {
   }
   get showingOriginal(): boolean { return !!this.stash; }
   afterChange(): void {
-    this.dirty = this.undoStack.length > 0;
+    this.dirty = this.rev !== this.savedRev;
     this.ui.pictureChanged();
     this.app.ui.tabsChanged();
     this.app.refresh();
@@ -143,7 +158,12 @@ export class PictureTab {
       const { choiceDialog } = await import('./ui/dialog');
       const c = await choiceDialog('Save Changes?', `Save changes to "${this.picture.name}" before moving on?`, ['Save', 'Don\'t Save']);
       if (c < 0) { this.folder.select(this.folder.entries.indexOf(this.picture.entry)); return; }
-      if (c === 0) { const { saveTab } = await import('./commands/file'); if (!(await saveTab(this.app, this))) { this.folder.select(this.folder.entries.indexOf(this.picture.entry)); return; } }
+      if (c === 0) {
+        const was = this.picture.entry;
+        const { saveTab } = await import('./commands/file');
+        if (!(await saveTab(this.app, this))) { this.folder.select(this.folder.entries.indexOf(this.picture?.entry || was)); return; }
+        const ti = this.folder.entries.indexOf(e); if (ti >= 0) this.folder.select(ti); // saving may have added an entry; on to the picture that was asked for
+      }
     }
     this.loading = e; this.error = '';
     this.app.ui.tabsChanged();
@@ -193,6 +213,9 @@ export class App {
   journal = new Journal();
 
   constructor(public host: HTMLElement) {
+    keystoreHooks.notify = (message) => toast(message, { ms: 9000 });
+    prefsHooks.saveFailed = (why) => toast(`Settings could not be saved (${why}). Changes made now are lost when the app closes; free some of this site's storage.`, { ms: 12000 });
+    void loadStoredPlaces(this.prefs);
     keystoreHooks.askPassphrase = async (purpose, wrong) => {
       const r = await openDialog(purpose === 'set'
         ? { title: 'Protect Your AI Keys', ok: 'Encrypt', cancel: 'Keep unencrypted', help: 'This browser keeps your AI service keys in its storage. Choose a passphrase to encrypt them; the app asks for it once per session. Without one the keys are stored unencrypted on this device.', fields: [{ key: 'pw', label: 'Passphrase', type: 'password', value: '' }, { key: 'pw2', label: 'Again', type: 'password', value: '' }] }

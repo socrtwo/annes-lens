@@ -13,6 +13,8 @@ const PLATFORM = new Set(['jpeg', 'png', 'apng', 'webp', 'gif', 'bmp', 'avif', '
 
 export type ThumbMode = 'grid' | 'strip';
 
+const LIST_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+
 export class ThumbPanel {
   el: HTMLElement;
   private list: HTMLElement;
@@ -40,6 +42,8 @@ export class ThumbPanel {
     this.el = h('div', { class: 'qn-thumbs', style: 'display:none' }, this.bar, this.list);
     this.io = new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) this.load((e.target as any).__entry); }, { root: this.list, rootMargin: '200px' });
     this.list.addEventListener('keydown', (e) => this.key(e));
+    // The keys this list handles itself (see Shell.widgetOwnsKey): the shortcuts stand aside for them while it has focus.
+    (this.list as any).__ownsKey = (e: KeyboardEvent) => !!this.tab.folder.length && !e.ctrlKey && !e.metaKey && !e.altKey && (LIST_KEYS.has(e.key) || ((e.key === 'Escape' || e.key === 'Enter') && this.mode === 'grid'));
     this.list.addEventListener('contextmenu', (e) => { e.preventDefault(); const item = (e.target as HTMLElement).closest('.qn-thumb') as any; if (item?.__entry) { this.select(item.__entry, e); } this.app.ui.pictureContextMenu(e.clientX, e.clientY); });
     this.list.addEventListener('scroll', () => { /* lazy loading by the observer */ });
   }
@@ -159,7 +163,7 @@ export class ThumbPanel {
       this.highlight(); this.renderBar();
       return;
     }
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (this.mode === 'grid') this.hide(); return; }
+    if (e.key === 'Enter') { if (this.mode === 'grid') { e.preventDefault(); e.stopPropagation(); this.hide(); } return; }
     if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); const cur = f.current; if (cur) { if (this.tab.marked.has(cur)) this.tab.marked.delete(cur); else this.tab.marked.add(cur); this.anchor = cur; this.render(false); this.renderBar(); } return; }
     if (e.key === 'Escape' && this.mode === 'grid') { e.preventDefault(); e.stopPropagation(); this.hide(); }
   }

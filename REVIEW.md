@@ -11,6 +11,33 @@ geometry, create, albums, people, colorMgmt, suite, print files and most of `met
 (searched for sinks, writers and timers only). `src/color` and `picture/geometry.ts` were read and had no
 findings.
 
+## 0. What has been fixed since
+
+The tables below are the review as written at commit 59af882. Fixed since then, with tests in
+`tests/unit/dataloss.test.ts`, `hostile.test.ts`, `keys.test.ts`, `keystore.test.ts` and blocks in both e2e
+suites. The crafted-file tests were run against the old code and hung or failed there. Not every fix has its
+own test: the Android change (D5) is compiled by CI but not exercised, and D4, D7, D8, D14, D15 and D17 were
+checked by reading and by the suites still passing, not by a test of their own.
+
+- **Data loss: D1 to D17.** Batch, import, watch and catalog recipes never replace a file (a second file gets
+  a " (2)" name, and the result says so); Save is bound to the window and picture it was started on, leaves the
+  Before view first, replaces the right folder entry, and only writes back what the encoder keeps; lossless and
+  AI results go to the picture they were made from; "could not be read" is no longer treated as "empty" for
+  keys, watched folders and the catalog; unsaved-changes tracking no longer depends on the undo depth; Batch
+  Rename, case-only rename, imported places and the Cull Mode overlay as described. Not done from D11: waiting
+  for a new file's size to settle over two checks before acting on it.
+- **Security: S1, S3.** File names, folder names and captions are escaped wherever they go into dialogs, and
+  data embedded in generated pages' scripts cannot close the script element.
+- **Hangs on crafted files: R1 to R8.** 7z, xz, tar, OpenEXR, FITS (and Rice tiles), BMP, DDS, GIF code size,
+  DICOM segmented palettes and presentation-state drawing all bound their counts and loops.
+- **Wrong results: W1, W2.** Interlaced GIFs; median cut with one dominant color.
+- **Interface: U1, U2, U5.** Esc closes the app only with that option on; the shortcut handler stands aside
+  for a control reached with Tab, for lists and the map, for an open menu, and for a picture larger than the
+  window (the arrows move it); release builds of the desktop app carry their runtimes, and staging fails
+  without them.
+
+Everything else below is still open.
+
 ## 1. Data loss and wrong files written (fix first)
 
 | # | Where | What happens | Status |

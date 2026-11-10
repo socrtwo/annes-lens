@@ -98,17 +98,17 @@ async function runImport(app: App, rule: ImportRule): Promise<void> {
   const src = await pickFolder('Import from (the camera or phone folder, e.g. DCIM)'); if (!src) return;
   const dest = await pickFolder('Import into'); if (!dest) return;
   const listing = await listFolderOf(src.uri); if (!listing || !listing.entries.length) { toast('No pictures in that folder.'); return; }
-  const destListing = await listFolderOf(dest.uri);
-  const existing = new Map<string, number>(); for (const e of destListing?.entries || []) existing.set(`${e.name}|${e.size || 0}`, 1);
+  // What each target folder already holds (name and size), listed once per folder: duplicates are judged where the file would land.
+  const listings = new Map<string, Set<string>>();
+  const existingIn = async (dirUri: string): Promise<Set<string>> => { let s = listings.get(dirUri); if (!s) { s = new Set(); const l = await listFolderOf(dirUri, { all: true }).catch(() => null); for (const x of l?.entries || []) s.add(`${x.name.toLowerCase()}|${x.size || 0}`); listings.set(dirUri, s); } return s; };
   const hashes = new Map<string, true>();
   if (rule.deleteAfter && !(await confirmDialog('Delete after import?', `${listing.entries.length} files will be deleted from ${src.name} after they are copied. Continue?`, 'Import and delete'))) return;
-  let done = 0, skipped = 0, failed = 0, n = 0;
+  let done = 0, skipped = 0, failed = 0, n = 0, renamed = 0, kept = 0;
   const subfolders = new Map<string, string>();
   const t = toast; t(`Importing ${listing.entries.length} files…`, { ms: 2000 });
   for (const e of listing.entries) {
     try {
       const date = e.mtime ? new Date(e.mtime) : new Date();
-      if (rule.skipDuplicates && existing.has(`${e.name}|${e.size || 0}`)) { skipped++; continue; }
       const f = await readUri(e.uri); if (!f) { failed++; continue; }
       if (rule.skipDuplicates) { const h = await sha(new Uint8Array(f.data), 'SHA-256'); if (hashes.has(h)) { skipped++; continue; } hashes.set(h, true); }
       let dir = dest.uri;
@@ -116,14 +116,23 @@ async function runImport(app: App, rule: ImportRule): Promise<void> {
         const rel = expandImportName(rule.subfolder.trim() + '.x', { name: 'x.x', date, n }).replace(/\.x$/, '');
         for (const part of rel.split('/').filter(Boolean)) { const key = `${dir}|${part}`; let u = subfolders.get(key); if (!u) { u = (await createSubfolder(dir, part)).uri; subfolders.set(key, u); } dir = u; }
       }
+      const name = expandImportName(rule.rename.trim() || '{name}', { name: e.name, date, n: n + 1 });
+      const there = await existingIn(dir);
+      if (rule.skipDuplicates && (there.has(`${name.toLowerCase()}|${f.data.byteLength}`) || there.has(`${e.name.toLowerCase()}|${f.data.byteLength}`))) { skipped++; continue; }
       n++;
-      const name = expandImportName(rule.rename.trim() || '{name}', { name: e.name, date, n });
-      await writeIntoFolder(dir, name, f.data);
-      if (rule.deleteAfter) await deleteFile(e.uri, src.uri, true);
+      // Never over a file already in the destination: a taken name gets " (2)". The source goes only after the copy reads back whole.
+      const w = await writeIntoFolder(dir, name, f.data, 'rename');
+      there.add(`${w.name.toLowerCase()}|${f.data.byteLength}`);
+      if (w.name !== name) renamed++;
+      if (rule.deleteAfter) {
+        const back = await readUri(w.uri).catch(() => null);
+        if (!back || back.data.byteLength !== f.data.byteLength) { kept++; done++; continue; } // the copy could not be verified: the source stays
+        await deleteFile(e.uri, src.uri, true);
+      }
       done++;
     } catch { failed++; }
   }
-  toast(`Imported ${done} file${done === 1 ? '' : 's'} into ${dest.name}; ${skipped} skipped, ${failed} failed.`, { ms: 7000 });
+  toast(`Imported ${done} file${done === 1 ? '' : 's'} into ${dest.name}; ${skipped} skipped, ${failed} failed${renamed ? `; ${renamed} under a new name (a file of that name was there already)` : ''}${kept ? `; ${kept} left on the source because the copy could not be checked` : ''}.`, { ms: renamed || kept ? 12000 : 7000 });
   app.journal.push({ kind: 'copy', label: `Import ${done} files from ${src.name} to ${dest.name}`, when: Date.now(), noUndo: 'imported files stay in the destination' } as any);
 }
 

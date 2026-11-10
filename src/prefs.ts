@@ -1,4 +1,5 @@
 /** Application preferences (per device), persisted to localStorage (or beside the program in portable mode). */
+import { kvGet, kvSet } from './util/store';
 import { defaultAiPrefs, type AiPrefs } from './ai/types';
 import { PLAN_LAYOUTS } from './plan.generated';
 
@@ -296,8 +297,25 @@ function sanitizeAi(raw: any): AiPrefs {
 /** The preferences without the AI service keys (those live in the keystore), for saving and exporting. */
 export function prefsWithoutKeys(p: Prefs): Prefs { return { ...p, ai: { ...p.ai, services: p.ai.services.map((s) => ({ ...s, key: '' })) } }; }
 
+/** Told when the settings could not be written (storage full or blocked), once until a save works again. */
+export const prefsHooks = { saveFailed: null as null | ((why: string) => void) };
+const PLACES_KEY = 'places.v1';
+let placesStored: unknown = null, saveWarned = false;
+/**
+ * Saves the settings. Imported places (up to 200,000 rows) do not fit the settings record's storage quota, so they are
+ * kept in the app's database and left out of the record; a failed save is reported instead of being swallowed.
+ */
 export function savePrefs(p: Prefs): void {
-  try { localStorage.setItem(KEY, JSON.stringify(prefsWithoutKeys(p))); } catch { /* storage full or unavailable */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ ...prefsWithoutKeys(p), importedPlaces: [] })); saveWarned = false; }
+  catch (e) { if (!saveWarned) { saveWarned = true; prefsHooks.saveFailed?.((e as Error)?.message || 'storage is full or unavailable'); } }
+  if (p.importedPlaces !== placesStored) { placesStored = p.importedPlaces; void kvSet(PLACES_KEY, p.importedPlaces).catch(() => undefined); }
+}
+/** Brings the imported places back from the app's database at startup (records written before they moved there still carry them). */
+export async function loadStoredPlaces(p: Prefs): Promise<void> {
+  if (p.importedPlaces.length) return; // an older settings record still holds them: the next save moves them
+  const v = await kvGet<Prefs['importedPlaces']>(PLACES_KEY).catch(() => undefined);
+  if (Array.isArray(v) && v.length) p.importedPlaces = v.filter((r) => r && typeof r.city === 'string' && typeof r.lat === 'number' && typeof r.lon === 'number').slice(0, 200000);
+  placesStored = p.importedPlaces;
 }
 
 /**

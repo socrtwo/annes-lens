@@ -80,15 +80,16 @@ export function decodeGif(u8: Uint8Array): DecodeResult {
       const minCode = u8[p++];
       const data = concat(subBlocks());
       if (!ct) { warnings.push('Frame without a palette skipped'); continue; }
-      const indexes = lzwDecode(data, minCode, iw * ih);
+      // A file cut off before the frame's data still shows what came before it (and says so); a code size that is there but out of range is a damaged file.
+      const indexes = minCode === undefined ? new Uint8Array(0) : lzwDecode(data, minCode, iw * ih);
       if (indexes.length < iw * ih) warnings.push(`Frame ${frames.length + 1} is truncated`);
       // Compose
       if (disposal === 3) prev = canvas.data.slice() as Uint8ClampedArray<ArrayBuffer>;
       const out = canvas.data;
-      for (let row = 0; row < ih; row++) {
-        const srcRow = interlaced ? deinterlace(row, ih) : row;
-        const y = iy + row;
-        if (y >= h) break;
+      for (let srcRow = 0; srcRow < ih; srcRow++) {
+        // Interlaced data comes in four passes (every 8th row from 0, from 4, every 4th from 2, every 2nd from 1): data row → picture row.
+        const y = iy + (interlaced ? deinterlace(srcRow, ih) : srcRow);
+        if (y >= h) { if (interlaced) continue; break; }
         for (let x = 0; x < iw; x++) {
           const xx = ix + x;
           if (xx >= w) break;
@@ -133,6 +134,7 @@ function deinterlace(row: number, h: number): number {
 
 /** GIF-flavored LZW (little-endian bit packing, clear and end codes). Returns the indexes decoded. */
 export function lzwDecode(src: Uint8Array, minCode: number, want: number): Uint8Array {
+  if (!(minCode >= 1 && minCode <= 11)) throw new Error(`Bad LZW code size ${minCode}`); // the table holds 4096 codes; anything else is a damaged or crafted file
   const out = new Uint8Array(want);
   let o = 0;
   const clear = 1 << minCode, end = clear + 1;

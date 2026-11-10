@@ -48,14 +48,14 @@ const onCullKey = (e: KeyboardEvent) => {
 function startCull(app: App): void {
   cull.running = true; cull.app = app; cull.decided = 0;
   window.addEventListener('keydown', onCullKey, true);
-  (cull as any).savedOsd = viewState.osd; (cull as any).savedTpl = app.prefs.osdTemplate;
-  viewState.osd = true; app.prefs.osdTemplate = 'CULL  {n} / {total}  {name}\nP pick · X reject · U unflag · 1–5 stars · Esc leaves';
+  (cull as any).savedOsd = viewState.osd;
+  viewState.osd = true; viewState.osdTemplate = 'CULL  {n} / {total}  {name}\nP pick · X reject · U unflag · 1–5 stars · Esc leaves';
   fullScreen(app, true); app.viewer.draw(); app.refresh();
 }
 function stopCull(app: App): void {
   if (!cull.running) return; cull.running = false;
   window.removeEventListener('keydown', onCullKey, true);
-  viewState.osd = (cull as any).savedOsd; app.prefs.osdTemplate = (cull as any).savedTpl;
+  viewState.osd = (cull as any).savedOsd; viewState.osdTemplate = null;
   fullScreen(app, false); app.viewer.draw(); app.refresh();
   toast(`Cull mode ended: ${cull.decided} decision${cull.decided === 1 ? '' : 's'}. Select Rejected gathers the rejects.`, { ms: 4000 });
 }

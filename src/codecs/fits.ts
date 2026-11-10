@@ -54,9 +54,11 @@ export function fitsHdus(u8: Uint8Array): FitsHdu[] {
     if (!ended) break;
     const dataStart = Math.ceil(q / 2880) * 2880;
     let bitpix = +(cards.get('BITPIX') || 0), axes: number[] = [];
-    const naxis = +(cards.get('NAXIS') || 0);
-    for (let i = 1; i <= naxis; i++) axes.push(+(cards.get(`NAXIS${i}`) || 0));
-    const gcount = +(cards.get('GCOUNT') || 1), pcount = +(cards.get('PCOUNT') || 0);
+    // Sizes are whole and not negative: a negative length would send the reader backwards for ever.
+    const whole = (key: string, dflt: number): number => { const v = +(cards.get(key) || dflt); if (!Number.isInteger(v) || v < 0) throw new Error(`Damaged FITS header: ${key} = ${cards.get(key)}`); return v; };
+    const naxis = Math.min(whole('NAXIS', 0), 999);
+    for (let i = 1; i <= naxis; i++) axes.push(whole(`NAXIS${i}`, 0));
+    const gcount = whole('GCOUNT', 1), pcount = whole('PCOUNT', 0);
     const elements = axes.length ? axes.reduce((a, b) => a * b, 1) : 0;
     const dataLength = Math.ceil((Math.abs(bitpix) / 8 * (elements + pcount) * gcount) / 2880) * 2880;
     const xt = (cards.get('XTENSION') || '').trim().toUpperCase();
@@ -152,7 +154,8 @@ function decodeTiles(u8: Uint8Array, h: FitsHdu, warnings: string[], hi: number)
   const zval: Record<string, string> = {};
   for (let i = 1; c.has(`ZNAME${i}`); i++) zval[(c.get(`ZNAME${i}`) || '').trim().toUpperCase()] = (c.get(`ZVAL${i}`) || '').trim();
   const tiles = dims.map((d, i) => +(c.get(`ZTILE${i + 1}`) || (i === 0 ? d : 1)) || (i === 0 ? d : 1));
-  const nt = dims.map((d, i) => Math.ceil(d / tiles[i])), ntiles = nt.reduce((a, b) => a * b, 1);
+  if (tiles.some((t) => !Number.isInteger(t) || t < 1)) throw new Error(`HDU ${hi + 1}: bad tile size (ZTILE)`);
+  const nt = dims.map((d, i) => Math.ceil(d / tiles[i])), ntiles = Math.min(nt.reduce((a, b) => a * b, 1), t.rows); // never more tiles than the table has rows
   if (ntiles !== t.rows) warnings.push(`HDU ${hi + 1}: ${t.rows} table rows for ${ntiles} tiles`);
   const quantized = h.bitpix < 0 && (!!col('ZSCALE') || c.has('ZSCALE')), bytepix = +(zval.BYTEPIX || (quantized ? 4 : Math.abs(h.bitpix) / 8)), blocksize = +(zval.BLOCKSIZE || 32), smooth = +(zval.SMOOTH || 0) > 0;
   const quantiz = (c.get('ZQUANTIZ') || 'NO_DITHER').trim().toUpperCase(), dither = quantiz === 'SUBTRACTIVE_DITHER_1' ? 1 : quantiz === 'SUBTRACTIVE_DITHER_2' ? 2 : 0, dither0 = +(c.get('ZDITHER0') || 1);

@@ -2,7 +2,7 @@
  * Applying raster operations to the picture in a window as undoable edits: every frame of the current
  * page (or every page) goes canvas → RGBA → operation → canvas.
  */
-import type { App } from '../app';
+import type { App, PictureTab } from '../app';
 import type { Page, Frame } from './model';
 import type { Raster } from '../codecs/raster';
 import { crop } from './ops';
@@ -29,12 +29,12 @@ export function mapPageRaster(page: Page, fn: (r: Raster, index: number) => Rast
 }
 
 /** One undoable edit of the current page (or all pages). Clears the selection when the size changes unless `keepSelection`. */
-export function editRaster(app: App, label: string, fn: (r: Raster, index: number) => Raster, opts: { allPages?: boolean; keepSelection?: boolean; patch?: Partial<Page> } = {}): void {
-  const tab = app.tab;
+export function editRaster(app: App, label: string, fn: (r: Raster, index: number) => Raster, opts: { allPages?: boolean; keepSelection?: boolean; patch?: Partial<Page>; /** The window to edit when it is not the active one (a result that arrives later). */ tab?: PictureTab } = {}): void {
+  const tab = opts.tab || app.tab;
   const pic = tab.picture;
   if (!pic) return;
   const before = { w: pic.width, h: pic.height };
-  app.edit(label, (p) => { p.pages = p.pages.map((pg, i) => (opts.allPages || i === p.page ? mapPageRaster(pg, fn, opts.patch) : pg)); });
+  tab.edit(label, (p) => { p.pages = p.pages.map((pg, i) => (opts.allPages || i === p.page ? mapPageRaster(pg, fn, opts.patch) : pg)); });
   if (!opts.keepSelection && (pic.width !== before.w || pic.height !== before.h)) tab.setSelection(null);
   else if (opts.keepSelection === false) tab.setSelection(null);
 }

@@ -59,7 +59,7 @@ interface QuillNativePlugin {
   /** ACTION_OPEN_DOCUMENT_TREE / a folder dialog: a folder files can be created in and listed. */
   pickFolder?(opts: { title?: string }): Promise<{ canceled?: boolean; uri?: string; name?: string }>;
   /** Creates (or replaces) a file in a picked folder. */
-  createInFolder?(opts: { dirUri: string; name: string; mime: string; data: string }): Promise<{ uri: string; name: string }>;
+  createInFolder?(opts: { dirUri: string; name: string; mime: string; data: string; ifExists?: 'overwrite' | 'rename' }): Promise<{ uri: string; name: string }>;
   /** Lists the pictures in a picked folder. */
   listFolder?(opts: { uri: string; all?: boolean }): Promise<{ uri: string; name: string; entries: FolderEntry[] }>;
   /** The folders inside a picked tree (or a folder in it), as folder URIs. */
@@ -93,7 +93,7 @@ interface DesktopBridge extends QuillNativePlugin {
   copyFile(opts: { uri: string; dirUri: string; name?: string }): Promise<{ uri: string; name: string }>;
   setFileTime(opts: { uri: string; mtime: number }): Promise<{ ok: boolean }>;
   /** Writes bytes to a new file in a folder the app may use (undo of a delete). */
-  createInFolder(opts: { dirUri: string; name: string; mime: string; data: string }): Promise<{ uri: string; name: string }>;
+  createInFolder(opts: { dirUri: string; name: string; mime: string; data: string; ifExists?: 'overwrite' | 'rename' }): Promise<{ uri: string; name: string }>;
   renameDocument(opts: { uri: string; name: string }): Promise<{ uri: string; name: string }>;
   deleteDocument(opts: { uri: string; permanent?: boolean }): Promise<{ ok: boolean; trashed?: boolean }>;
   pickFolder(opts: { title?: string }): Promise<{ canceled?: boolean; uri?: string; name?: string }>;
@@ -281,6 +281,7 @@ export async function renameFile(uri: string, dirUri: string | null, newName: st
   if (uri.startsWith('fsa:')) {
     const h = handles.get(uri.slice(4)), dir = fsaDir(dirUri);
     if (!h || !dir) throw new Error('The folder is not available for renaming.');
+    if (newName.toLowerCase() !== String(h.name).toLowerCase()) { let taken = false; try { await dir.getFileHandle(newName); taken = true; } catch { /* free */ } if (taken) throw new Error(`A file named "${newName}" already exists.`); } // neither move() nor the copy below may replace another file
     if (typeof h.move === 'function') { try { await h.move(newName); return { uri: 'fsa:' + (await handleId(h)), name: newName }; } catch { /* fall through to copy + remove */ } }
     const f: File = await h.getFile();
     const nh = await dir.getFileHandle(newName, { create: true });
@@ -325,17 +326,30 @@ export async function pickFolder(title: string): Promise<{ uri: string; name: st
 }
 
 /** Writes `data` as `name` into a folder from pickFolder / openFolder; replaces an existing file of that name. */
-export async function writeIntoFolder(dirUri: string, name: string, data: ArrayBuffer): Promise<{ uri: string; name: string }> {
-  if (desktop) return desktop.createInFolder({ dirUri, name, mime: mimeOf(name), data: b64FromBuffer(data) });
+/** "name (2).ext", "name (3).ext"… for the first `n` for which `taken` says no. */
+export async function freeNameWith(name: string, taken: (n: string) => Promise<boolean>): Promise<string> {
+  if (!(await taken(name))) return name;
+  const i = name.lastIndexOf('.'), base = i > 0 ? name.slice(0, i) : name, ext = i > 0 ? name.slice(i) : '';
+  for (let k = 2; k < 10000; k++) { const n = `${base} (${k})${ext}`; if (!(await taken(n))) return n; }
+  throw new Error(`No free name for ${name}.`);
+}
+/**
+ * Writes a file into a folder. `ifExists` says what happens when the name is taken: 'overwrite' replaces the file
+ * (sidecars, the library file), 'rename' never touches an existing file and writes "name (2).ext" instead (batch
+ * outputs, imports, copies). The name actually used comes back.
+ */
+export async function writeIntoFolder(dirUri: string, name: string, data: ArrayBuffer, ifExists: 'overwrite' | 'rename' = 'overwrite'): Promise<{ uri: string; name: string }> {
+  if (desktop) return desktop.createInFolder({ dirUri, name, mime: mimeOf(name), data: b64FromBuffer(data), ifExists });
   const dir = fsaDir(dirUri);
   if (dir) {
     if (dir.requestPermission && (await dir.requestPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('Writing to the folder was not allowed.');
-    const nh = await dir.getFileHandle(name, { create: true });
+    const used = ifExists === 'rename' ? await freeNameWith(name, async (n) => { try { await dir.getFileHandle(n); return true; } catch { return false; } }) : name;
+    const nh = await dir.getFileHandle(used, { create: true });
     const w = await nh.createWritable(); await w.write(data); await w.close();
-    return { uri: 'fsa:' + (await handleId(nh)), name };
+    return { uri: 'fsa:' + (await handleId(nh)), name: used };
   }
-  if (dirUri.startsWith(IOS_PREFIX)) { await iosWrite(new Blob([data]), name); return { uri: IOS_PREFIX + name, name }; }
-  if (isNative() && Native.createInFolder) return Native.createInFolder({ dirUri, name, mime: mimeOf(name), data: b64FromBuffer(data) });
+  if (dirUri.startsWith(IOS_PREFIX)) { const used = await iosWrite(new Blob([data]), ifExists === 'rename' ? await iosFreeName(name) : name); return { uri: IOS_PREFIX + used, name: used }; }
+  if (isNative() && Native.createInFolder) return Native.createInFolder({ dirUri, name, mime: mimeOf(name), data: b64FromBuffer(data), ifExists });
   throw new Error('The folder cannot be written to here.');
 }
 

@@ -4,7 +4,8 @@
  * ensemble for text commands, the on-device runtime with model downloads, AI History, Stop AI, and
  * opening a result as a new labeled picture (or replacing the current one as an undoable step).
  */
-import type { App } from '../app';
+import type { App, PictureTab } from '../app';
+import type { Picture } from '../picture/model';
 import type { Raster } from '../codecs/raster';
 import { encodeCanvas } from '../codecs/registry';
 import { Folder, entryFromBytes } from '../picture/folder';
@@ -14,7 +15,7 @@ import { maskBounds, type Rect } from '../picture/mask';
 import { setXmp } from '../meta/metaEdit';
 import { updateXmp, type XmpProps } from '../meta/xmp';
 import { confirmDialog, openDialog, toast } from '../ui/dialog';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import { chat, generateImage, hasImages } from './hosted';
 import { runEnsemble } from './ensemble';
 import { addHistory } from './history';
@@ -62,7 +63,9 @@ export async function withJob<T>(app: App, label: string, fn: (status: (t: strin
 
 // Pictures in and out ----------------------------------------------------------------------------
 
-export function currentRaster(app: App): Raster { const p = app.picture!; return frameRaster(p.currentFrame); }
+/** The picture an AI edit was started on: its result goes back to this window and picture, not to whatever is active when the answer arrives. */
+let origin: { tab: PictureTab; picture: Picture } | null = null;
+export function currentRaster(app: App): Raster { const p = app.picture!; origin = { tab: app.tab, picture: p }; return frameRaster(p.currentFrame); }
 /** The selection as a full-size mask (255 inside), or null when nothing is selected. */
 export function selectionMask(app: App): { mask: Uint8Array; bounds: Rect } | null {
   const t = app.tab, p = t.picture; if (!p || !t.selection) return null;
@@ -129,19 +132,26 @@ const base = (n: string) => n.replace(/\.[^.]+$/, '');
 let edits = 0;
 /** Opens a result as a new picture (PNG with provenance), or replaces the current picture as an undoable step. */
 export async function openResult(app: App, r: Raster, p: Provenance, opts: { name?: string; replace?: boolean; label?: string } = {}): Promise<void> {
-  const replace = opts.replace ?? (app.prefs.ai.result === 'replace' && p.kind === 'edited' && !!app.picture);
-  if (replace) { editRaster(app, opts.label || p.command, () => r); toast(`${opts.label || p.command} applied (AI; undo with Ctrl+Z).`); return; }
-  const source = p.kind === 'edited' && app.picture ? { name: app.picture.name, bytes: app.picture.bytes, mime: app.picture.format.mime } : null;
+  // An edit belongs to the picture it was made from. If that window has moved on to another picture (or is closed) while
+  // the job ran, the result opens as a new picture instead of replacing whatever is shown now.
+  const from = p.kind === 'edited' ? origin : null; origin = null;
+  const fromTab = from && app.tabs.includes(from.tab) ? from.tab : null;
+  const stillThere = !from || (!!fromTab && fromTab.picture === from.picture);
+  const wantReplace = opts.replace ?? (app.prefs.ai.result === 'replace' && p.kind === 'edited' && !!app.picture);
+  const replace = wantReplace && stillThere;
+  if (replace) { editRaster(app, opts.label || p.command, () => r, { tab: fromTab || undefined }); toast(`${opts.label || p.command} applied${fromTab && fromTab !== app.tab ? ` to ${from!.picture.name}` : ''} (AI; undo with Ctrl+Z).`); return; }
+  const srcPic = from?.picture || app.picture;
+  const source = p.kind === 'edited' && srcPic ? { name: srcPic.name, bytes: srcPic.bytes, mime: srcPic.format.mime } : null;
   const blob = await encodeCanvas(rasterCanvas(r), 'png');
   let u8 = new Uint8Array(await blob.arrayBuffer());
   const props = provenanceProps(app, p);
   if (Object.keys(props).length) u8 = setXmp(u8, 'png', new TextEncoder().encode(updateXmp(null, props))) as Uint8Array<ArrayBuffer>;
-  const cur = app.picture?.name;
+  const cur = srcPic?.name;
   const name = opts.name || (p.kind === 'generated' || !cur ? `AI ${p.command.replace(/^ai\./, '')} ${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.png` : `${base(cur)} (AI edit ${++edits}).png`);
   const entry = entryFromBytes(name, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer);
   if (source) entry.ingredient = source;
   await app.openFolder(new Folder([entry], p.kind === 'generated' ? 'Generated' : 'AI edits'), 0, { newWindow: true });
-  toast(`${name} opened (AI result; not saved yet).`);
+  toast(wantReplace && !stillThere ? `${name} opened as a new picture: the window had moved on from ${from!.picture.name} (AI result; not saved yet).` : `${name} opened (AI result; not saved yet).`, wantReplace && !stillThere ? { ms: 8000 } : undefined);
 }
 
 // Sending ----------------------------------------------------------------------------------------
@@ -152,7 +162,7 @@ async function confirmSend(app: App, s: AiService, what: string): Promise<boolea
   if (!app.prefs.ai.privacy.allowRemote) { toast('Sending pictures to services on the internet is off (AI ▸ AI and Privacy).'); return false; }
   if (!app.prefs.ai.privacy.confirmSend || confirmedThisSession) return true;
   const r = await openDialog({ title: 'Send to an AI service?', ok: 'Send', fields: [
-    { key: 'i', type: 'info', html: `<p>${what} will be sent to <b>${s.name}</b> (${s.baseUrl}). Pictures go as metadata-free copies no larger than ${app.prefs.ai.privacy.maxEdge} px on their long side.</p><p>Nothing is sent before you choose Send.</p>` },
+    { key: 'i', type: 'info', html: `<p>${esc(what)} will be sent to <b>${esc(s.name)}</b> (${esc(s.baseUrl)}). Pictures go as metadata-free copies no larger than ${app.prefs.ai.privacy.maxEdge} px on their long side.</p><p>Nothing is sent before you choose Send.</p>` },
     { key: 'again', label: 'Do not ask again', type: 'checkbox', value: false },
   ] });
   if (!r) return false;

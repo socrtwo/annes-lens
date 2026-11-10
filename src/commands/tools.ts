@@ -8,7 +8,7 @@ import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast } from '../ui/dialog';
 import type { Field } from '../ui/dialog';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import { Folder, entryFromBytes } from '../picture/folder';
 import type { Entry } from '../picture/folder';
 import { encodeCanvas, ENCODERS, decodePicture, sniff, type EncodeFormat } from '../codecs/registry';
@@ -89,7 +89,7 @@ def([
         { key: 'wifiSsid', label: 'Network name', type: 'text', value: '', half: true, visibleIf: (v) => v.kind === 'wifi' }, { key: 'wifiPass', label: 'Password', type: 'text', value: '', half: true, visibleIf: (v) => v.kind === 'wifi' }, { key: 'wifiSec', label: 'Security', type: 'select', options: ['WPA', 'WEP', 'nopass'], value: 'WPA', half: true, visibleIf: (v) => v.kind === 'wifi' },
         { key: 'name', label: 'Name', type: 'text', value: '', half: true, visibleIf: (v) => v.kind === 'contact' }, { key: 'tel', label: 'Phone', type: 'text', value: '', half: true, visibleIf: (v) => v.kind === 'contact' }, { key: 'email', label: 'Email', type: 'text', value: '', half: true, visibleIf: (v) => v.kind === 'contact' },
         { key: 'scale', label: 'Pixels per module', type: 'number', min: 1, max: 40, value: 8, half: true }, { key: 'dark', label: 'Dark', type: 'color', value: '#000000', half: true }, { key: 'light', label: 'Light', type: 'color', value: '#ffffff', half: true },
-      ], onChange: (v, ctl) => { try { const { qr } = make(v); ctl.setPreview(`<div style="max-width:220px;margin:auto">${qrSvg(qr)}</div><div class="ql-help">Version ${qr.version} (${qr.size}×${qr.size}), level ${qr.ecl}</div>`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${e.message}</div>`); } }, onOpen: (ctl) => { const { qr } = make(ctl.values()); ctl.setPreview(`<div style="max-width:220px;margin:auto">${qrSvg(qr)}</div><div class="ql-help">Version ${qr.version}, level ${qr.ecl}</div>`); }, buttons: [
+      ], onChange: (v, ctl) => { try { const { qr } = make(v); ctl.setPreview(`<div style="max-width:220px;margin:auto">${qrSvg(qr)}</div><div class="ql-help">Version ${qr.version} (${qr.size}×${qr.size}), level ${qr.ecl}</div>`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${esc(String(e.message))}</div>`); } }, onOpen: (ctl) => { const { qr } = make(ctl.values()); ctl.setPreview(`<div style="max-width:220px;margin:auto">${qrSvg(qr)}</div><div class="ql-help">Version ${qr.version}, level ${qr.ecl}</div>`); }, buttons: [
         { label: 'Save SVG…', onClick: async (v) => { try { const { qr } = make(v); const saved = await saveAs(new Blob([qrSvg(qr)], { type: 'image/svg+xml' }), 'qr-code.svg'); if (saved) toast(`Saved ${saved.name}`); } catch (e: any) { toast(e.message); } } },
       ] });
       if (!r) return;

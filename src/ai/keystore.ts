@@ -15,7 +15,7 @@ const WEB_KEY = 'annes-lens.ai.keys.v1', SECRET_NAME = 'ai.keys', ITERATIONS = 6
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 /** The app sets this: asks for the passphrase (purpose 'set' when choosing one, 'unlock' when opening the store). Null: the user declined. */
-export const keystoreHooks = { askPassphrase: null as null | ((purpose: 'set' | 'unlock', wrong: boolean) => Promise<string | null>) };
+export const keystoreHooks = { askPassphrase: null as null | ((purpose: 'set' | 'unlock', wrong: boolean) => Promise<string | null>), /** Tells the user something about the store (a toast). */ notify: null as null | ((message: string) => void) };
 
 let ready: Promise<void> = Promise.resolve();
 let passphrase: string | null = null, cryptoKey: { salt: Uint8Array; key: CryptoKey } | null = null;
@@ -27,7 +27,7 @@ export async function setExtra(name: string, value: string | null): Promise<void
 /** Resolves when the keys have been loaded into the service records (immediately when nothing was asked to load). */
 export const keysReady = (): Promise<void> => ready;
 /** For tests: forgets the session's passphrase and cached state. */
-export function resetKeystore(): void { passphrase = null; cryptoKey = null; lastStored = ''; extras = {}; known = []; ready = Promise.resolve(); }
+export function resetKeystore(): void { passphrase = null; cryptoKey = null; lastStored = ''; extras = {}; known = []; ready = Promise.resolve(); unread = false; }
 
 const subtle = (): SubtleCrypto => { const c = (globalThis.crypto || (globalThis as any).webcrypto) as Crypto; if (!c?.subtle) throw new Error('No WebCrypto'); return c.subtle; };
 const b64 = (u8: Uint8Array): string => btoa(String.fromCharCode(...u8));
@@ -76,24 +76,31 @@ export async function decryptKeys(record: string, pass: string): Promise<Record<
   return JSON.parse(dec.decode(plain));
 }
 
+/**
+ * True while a stored record exists that this session has not read (the passphrase was declined or wrong, or the
+ * platform store failed). "Not read" is not "empty": nothing is written or deleted over such a record.
+ */
+let unread = false;
+export const keysLocked = (): boolean => unread;
 /** Fills the services' keys from the store (keys already on a record are kept: those are new or legacy ones). */
 export function loadKeys(services: AiService[]): Promise<void> {
   known = services;
   ready = (async () => {
     const d = desktopBridge();
+    unread = true; // until a branch below has read the record, or found there is none
     try {
-      if (d) { const r = await d.secretGet({ name: SECRET_NAME }); if (r.value) applyMap(services, JSON.parse(r.value)); return; }
-      if (isCapacitor() && isNative()) { try { const r = await Native.secretGet({ name: SECRET_NAME }); if (r.value) applyMap(services, JSON.parse(r.value)); return; } catch { /* older native build: fall through to the web store */ } }
+      if (d) { const r = await d.secretGet({ name: SECRET_NAME }); if (r.value) applyMap(services, JSON.parse(r.value)); unread = false; return; }
+      if (isCapacitor() && isNative()) { try { const r = await Native.secretGet({ name: SECRET_NAME }); if (r.value) applyMap(services, JSON.parse(r.value)); unread = false; return; } catch { /* older native build: fall through to the web store */ } }
       const raw = localStorage.getItem(WEB_KEY);
-      if (!raw) return;
+      if (!raw) { unread = false; return; }
       const rec = JSON.parse(raw);
-      if (rec.mode === 'plain') { applyMap(services, rec.keys || {}); return; }
-      if (rec.mode !== 'encrypted') return;
+      if (rec.mode === 'plain') { applyMap(services, rec.keys || {}); unread = false; return; }
+      if (rec.mode !== 'encrypted') return; // a record this version does not understand: left alone
       let wrong = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         const pass = passphrase ?? (keystoreHooks.askPassphrase ? await keystoreHooks.askPassphrase('unlock', wrong) : null);
         if (pass === null) return; // locked for this session
-        try { applyMap(services, await decryptKeys(raw, pass)); return; } catch { wrong = true; passphrase = null; cryptoKey = null; }
+        try { applyMap(services, await decryptKeys(raw, pass)); unread = false; return; } catch { wrong = true; passphrase = null; cryptoKey = null; }
       }
     } catch { /* the store is unreadable: the services keep whatever keys they have */ }
   })();
@@ -103,8 +110,16 @@ export function loadKeys(services: AiService[]): Promise<void> {
 /** Writes the services' keys to the store (nothing is written when they have not changed). */
 export async function storeKeys(services: AiService[]): Promise<void> {
   known = services;
-  const map = keyMap(services), json = JSON.stringify(map);
+  let map = keyMap(services), json = JSON.stringify(map);
   if (json === lastStored) return;
+  if (unread) {
+    // The stored record was never read this session. With nothing new to keep, it stays exactly as it is; with new keys,
+    // it is read first (asking for the passphrase once more) so they are added to it, never written over it.
+    if (!Object.keys(map).length) { lastStored = json; return; }
+    await loadKeys(services);
+    if (unread) { lastStored = json; keystoreHooks.notify?.('The stored AI keys are locked, so the new key is kept for this session only. Unlock them (AI ▸ Set Up AI) to store it.'); return; }
+    map = keyMap(services); json = JSON.stringify(map);
+  }
   const d = desktopBridge();
   if (d) { if (Object.keys(map).length) await d.secretSet({ name: SECRET_NAME, value: json }); else await d.secretDelete({ name: SECRET_NAME }); lastStored = json; return; }
   if (isCapacitor() && isNative()) {
@@ -122,6 +137,7 @@ export async function storeKeys(services: AiService[]): Promise<void> {
 
 /** Changes the web store's passphrase (or sets one where the keys were unencrypted). */
 export async function setPassphrase(services: AiService[], pass: string): Promise<void> {
+  if (unread) { await loadKeys(services); if (unread) throw new Error('Unlock the stored keys with the current passphrase first.'); }
   passphrase = pass; cryptoKey = null; lastStored = '';
   const map = keyMap(services);
   localStorage.setItem(WEB_KEY, await encryptKeys(map, pass));
@@ -132,6 +148,6 @@ export async function forgetStoredKeys(): Promise<void> {
   const d = desktopBridge();
   if (d) { await d.secretDelete({ name: SECRET_NAME }); }
   else if (isCapacitor() && isNative()) { try { await Native.secretDelete({ name: SECRET_NAME }); } catch { /* older native build */ } }
-  localStorage.removeItem(WEB_KEY);
+  localStorage.removeItem(WEB_KEY); unread = false;
   lastStored = ''; passphrase = null; cryptoKey = null;
 }

@@ -8,7 +8,7 @@ import { iccForSave, writeWithProfile } from '../color/embedded';
 import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast, confirmDialog } from '../ui/dialog';
-import { h, download } from '../ui/dom';
+import { h, download, esc } from '../ui/dom';
 import type { Entry } from '../picture/folder';
 import { decodePicture, encodeCanvas, encoderFor, ENCODERS, type EncodeFormat } from '../codecs/registry';
 import { frameRaster, rasterFrame } from '../picture/edit';
@@ -186,7 +186,7 @@ export async function runBatch(app: App, job: BatchJob, sink: (r: BatchResult) =
     try {
       const r = await processOne(job, e, i, names[i]);
       const w = await sink(r);
-      done.push({ name: w.name, uri: w.uri, source: e, note: r.note });
+      done.push({ name: w.name, uri: w.uri, source: e, note: w.name !== r.name ? [r.note, `named ${w.name}: ${r.name} was there already`].filter(Boolean).join('; ') : r.note });
     } catch (err: any) { failed.push({ name: e.name, error: err?.message || String(err) }); }
     bar.value = i + 1;
     await new Promise((res) => setTimeout(res, 0));
@@ -200,7 +200,8 @@ export async function runBatch(app: App, job: BatchJob, sink: (r: BatchResult) =
 /** Where outputs go: a folder the platform can write into, or a ZIP download. */
 export async function chooseSink(app: App, title: string): Promise<{ sink: (r: BatchResult) => Promise<{ uri: string | null; name: string }>; finish: () => Promise<void>; dirUri: string | null; label: string } | null> {
   const dest = await pickFolder(title);
-  if (dest) return { sink: async (r) => writeIntoFolder(dest.uri, r.name, r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) as ArrayBuffer), finish: async () => undefined, dirUri: dest.uri, label: dest.name };
+  // Outputs never replace a file that is already there (the source folder may be the destination): a taken name gets " (2)".
+  if (dest) return { sink: async (r) => writeIntoFolder(dest.uri, r.name, r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) as ArrayBuffer, 'rename'), finish: async () => undefined, dirUri: dest.uri, label: dest.name };
   const fsa = !!(window as any).showDirectoryPicker;
   if (fsa) return null; // the user canceled the picker
   const zipped: { name: string; data: Uint8Array }[] = [];
@@ -208,13 +209,15 @@ export async function chooseSink(app: App, title: string): Promise<{ sink: (r: B
 }
 
 export function summary(app: App, r: { done: any[]; failed: { name: string; error: string }[]; canceled: boolean }, where: string): void {
-  const text = `${r.done.length} file${r.done.length === 1 ? '' : 's'} written to ${where}${r.failed.length ? `; ${r.failed.length} failed (${r.failed.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join('; ')})` : ''}${r.canceled ? '; canceled' : ''}`;
+  const renamed = r.done.filter((d) => /was there already$/.test(d.note || '')).length;
+  const text = `${r.done.length} file${r.done.length === 1 ? '' : 's'} written to ${where}${renamed ? ` (${renamed} under a new name, since a file of that name was there already)` : ''}${r.failed.length ? `; ${r.failed.length} failed (${r.failed.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join('; ')})` : ''}${r.canceled ? '; canceled' : ''}`;
   toast(text, { ms: 8000, action: r.done.length ? 'Undo' : undefined, onAction: () => app.exec('batch.undo') });
 }
 
+/** Undo removes the batch's own outputs, which are always new files (the sink never replaces one), to the trash where the platform has one. */
 export function journalOutputs(app: App, label: string, done: { name: string; uri: string | null }[], dirUri: string | null): void {
   const withUri = done.filter((d) => d.uri);
-  app.journal.push({ kind: 'copy', label, when: Date.now(), undo: withUri.length ? async () => { for (const d of withUri) await deleteFile(d.uri!, dirUri, true); } : undefined, noUndo: withUri.length ? undefined : 'the outputs were downloaded, not written to a folder' });
+  app.journal.push({ kind: 'copy', label, when: Date.now(), undo: withUri.length ? async () => { for (const d of withUri) await deleteFile(d.uri!, dirUri, false); } : undefined, noUndo: withUri.length ? undefined : 'the outputs were downloaded, not written to a folder' });
 }
 
 const formatOptions = [{ value: 'keep', label: 'Same as the source (copy or lossless rotate)' }, ...Object.entries(ENCODERS).map(([value, v]) => ({ value, label: v.label }))];
@@ -235,7 +238,7 @@ async function batchDialog(app: App, preset: Partial<{ format: string; quality: 
   const preview = (v: Record<string, any>, ctl: any) => {
     const job = build(v);
     previewNames = planNames(job, job.inputs.map((entry) => ({ entry })));
-    const rows = job.inputs.slice(0, 200).map((e, i) => `<tr><td>${e.name}</td><td>→</td><td>${previewNames[i]}</td></tr>`).join('');
+    const rows = job.inputs.slice(0, 200).map((e, i) => `<tr><td>${esc(e.name)}</td><td>→</td><td>${esc(previewNames[i] || '')}</td></tr>`).join('');
     ctl.setPreview(`<div class="ql-help">${job.inputs.length} file${job.inputs.length === 1 ? '' : 's'}${marked && v.scope !== 'current' ? ' (the marked thumbnails)' : ''}; ${new Set(previewNames.map((n) => n.toLowerCase())).size === previewNames.length ? 'no name conflicts' : 'conflicting names get " (2)"'}</div><table class="ql-stats qn-info" style="font-size:12px">${rows}${job.inputs.length > 200 ? '<tr><td colspan="3">…</td></tr>' : ''}</table>`);
   };
   const r = await openDialog({ title: preset.title || 'Batch Conversion and Rename', wide: true, ok: 'Run…', preview: true, previewStyle: 'max-height:40vh;overflow:auto',
@@ -287,8 +290,9 @@ def([
       const tab = app.tab;
       const dirUri = dirUriOf(tab.entry, tab.folder);
       const build = (v: Record<string, any>): NameOptions => ({ pattern: v.pattern || '{name}', start: +v.start || 1, step: 1, pad: +v.pad || 1, case: v.case, find: v.find || undefined, replace: v.replace || '', regex: !!v.regex });
-      const plan = (o: NameOptions) => { const used = new Set<string>(); return entries.map((e, i) => uniqueName(`${expandName(o, { name: base(e.name), ext: extOf(e.name), index: i, date: e.mtime ? new Date(e.mtime) : new Date() })}.${extOf(e.name)}`, used)); };
-      const preview = (v: Record<string, any>, ctl: any) => { const names = plan(build(v)); ctl.setPreview(`<table class="ql-stats qn-info" style="font-size:12px">${entries.slice(0, 300).map((e, i) => `<tr><td>${e.name}</td><td>→</td><td>${names[i] === e.name ? '<span class="ql-help">(unchanged)</span>' : names[i]}</td></tr>`).join('')}</table>`); };
+      const staying = tab.folder.entries.filter((e) => !entries.includes(e)).map((e) => e.name.toLowerCase()); // files not in the rename keep their names
+      const plan = (o: NameOptions) => { const used = new Set<string>(staying); return entries.map((e, i) => uniqueName(`${expandName(o, { name: base(e.name), ext: extOf(e.name), index: i, date: e.mtime ? new Date(e.mtime) : new Date() })}.${extOf(e.name)}`, used)); };
+      const preview = (v: Record<string, any>, ctl: any) => { const names = plan(build(v)); ctl.setPreview(`<table class="ql-stats qn-info" style="font-size:12px">${entries.slice(0, 300).map((e, i) => `<tr><td>${esc(e.name)}</td><td>→</td><td>${names[i] === e.name ? '<span class="ql-help">(unchanged)</span>' : esc(names[i])}</td></tr>`).join('')}</table>`); };
       const r = await openDialog({ title: 'Batch Rename', wide: true, ok: 'Rename', preview: true, previewStyle: 'max-height:40vh;overflow:auto', help: `${entries.length} file${entries.length === 1 ? '' : 's'}${marked ? ' (the marked thumbnails)' : ''} are renamed in place. {name} {n} {n:4} {date} {time} {yyyy} {mm} {dd} {exifdate}; the extension stays.`,
         fields: [
           { key: 'pattern', label: 'Pattern', type: 'text', value: '{name}', half: true }, { key: 'start', label: 'Counter starts at', type: 'number', min: 0, value: 1, half: true },
@@ -301,16 +305,22 @@ def([
       const changes = entries.map((e, i) => ({ e, to: names[i] })).filter((c) => c.to !== c.e.name && c.e.uri);
       if (!changes.length) { toast('Nothing to rename.'); return; }
       if (!(await confirmDialog('Batch Rename', `Rename ${changes.length} file${changes.length === 1 ? '' : 's'}?`, 'Rename'))) return;
-      const undoList: { uri: string; from: string }[] = [];
+      const undoList: { uri: string; from: string }[] = [], stranded: string[] = [];
       let n = 0;
       // Two passes avoid collisions when names rotate (a→b, b→a): first to temporary names, then to the targets.
       const temps = changes.map((c, i) => ({ c, tmp: `.ql-batch-${Date.now()}-${i}.${extOf(c.e.name)}` }));
       const current = new Map<Entry, Entry>();
-      for (const { c, tmp } of temps) { try { const t = await renameFile(c.e.uri!, dirUri, tmp); const te = entryFromUri({ uri: t.uri, name: t.name, size: c.e.size, mtime: c.e.mtime }); replaceEntry(tab, c.e, te); current.set(c.e, te); } catch { /* left alone */ } }
+      for (const { c, tmp } of temps) { try { const t = await renameFile(c.e.uri!, dirUri, tmp); const te = entryFromUri({ uri: t.uri, name: t.name, size: c.e.size, mtime: c.e.mtime }); replaceEntry(tab, c.e, te); current.set(c.e, te); } catch (err: any) { stranded.push(`${c.e.name}: ${err?.message || err}`); } }
       for (const { c } of temps) {
         const cur = current.get(c.e); if (!cur) continue;
         try { const t = await renameFile(cur.uri!, dirUri, c.to); const ne = entryFromUri({ uri: t.uri, name: t.name, size: c.e.size, mtime: c.e.mtime }); replaceEntry(tab, cur, ne); undoList.push({ uri: ne.uri!, from: c.e.name }); current.set(c.e, ne); n++; }
-        catch (err: any) { toast(`${c.e.name}: ${err?.message || err}`); try { const t = await renameFile(cur.uri!, dirUri, c.e.name); replaceEntry(tab, cur, entryFromUri({ uri: t.uri, name: t.name, size: c.e.size, mtime: c.e.mtime })); } catch { /* */ } }
+        catch (err: any) {
+          // Back to its old name; if another file took that name meanwhile, to a visible free one, and say so (never left under the hidden temporary name).
+          let back: { uri: string; name: string } | null = null;
+          for (const cand of [c.e.name, ...Array.from({ length: 20 }, (_, k) => c.e.name.replace(/(\.[^.]+)?$/, ` (not renamed ${k + 1})$1`))]) { try { back = await renameFile(cur.uri!, dirUri, cand); break; } catch { /* try the next name */ } }
+          if (back) replaceEntry(tab, cur, entryFromUri({ uri: back.uri, name: back.name, size: c.e.size, mtime: c.e.mtime }));
+          stranded.push(back ? (back.name === c.e.name ? `${c.e.name}: ${err?.message || err}` : `${c.e.name} is now ${back.name}: ${err?.message || err}`) : `${c.e.name} is left as ${cur.name}: ${err?.message || err}`);
+        }
       }
       tab.folder.sort(app.prefs.sort, app.prefs.sortDescending);
       app.refresh(); tab.thumbs.sync();
@@ -318,7 +328,7 @@ def([
         for (const u of undoList.reverse()) { const e = tab.folder.entries.find((x) => x.uri === u.uri); if (!e) continue; const t = await renameFile(e.uri!, dirUri, u.from); replaceEntry(tab, e, entryFromUri({ uri: t.uri, name: t.name, size: e.size, mtime: e.mtime })); }
         tab.folder.sort(app.prefs.sort, app.prefs.sortDescending); app.refresh(); tab.thumbs.sync();
       } });
-      toast(`${n} file${n === 1 ? '' : 's'} renamed`, { action: 'Undo', onAction: () => app.exec('file.undoFileOp') });
+      toast(`${n} file${n === 1 ? '' : 's'} renamed${stranded.length ? `; ${stranded.length} not renamed (${stranded.slice(0, 3).join('; ')})` : ''}`, { ms: stranded.length ? 12000 : undefined, action: 'Undo', onAction: () => app.exec('file.undoFileOp') });
     },
   },
   {

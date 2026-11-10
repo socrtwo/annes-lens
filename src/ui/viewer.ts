@@ -253,7 +253,7 @@ export class Viewer {
     const vs = viewState;
     if (vs.grid !== 'off' || vs.rulers || vs.clipping || vs.peaking || vs.histogram || vs.osd || vs.loupe || vs.navigator || (vs.measure.on && vs.measure.pts.length) || (vs.ocr.show && vs.ocr.words.length) || vs.codes.length) {
       const f = this.tab.folder;
-      drawOverlays(ctx, this, r, frame, { name: p.name, index: f.index, total: f.length, exif: p.exif, size: p.bytes.length, page: p.page, pages: p.pages.length, dpi: p.current.dpi, template: this.app.prefs.osdTemplate, pointer: this.pointer });
+      drawOverlays(ctx, this, r, frame, { name: p.name, index: f.index, total: f.length, exif: p.exif, size: p.bytes.length, page: p.page, pages: p.pages.length, dpi: p.current.dpi, template: viewState.osdTemplate ?? this.app.prefs.osdTemplate, pointer: this.pointer });
     }
     paintHooks.overlay(ctx, this, r, this.pointer);
     viewHooks.changed(this);
@@ -510,19 +510,25 @@ export class Viewer {
     }, { passive: false });
     el.addEventListener('touchend', (e) => { if (e.touches.length < 2) this.pinch = null; });
     el.addEventListener('contextmenu', (e) => { e.preventDefault(); this.app.ui.pictureContextMenu(e.clientX, e.clientY); });
-    el.addEventListener('keydown', (e) => {
-      if (!this.picture) return;
-      const step = 40 / this._zoom;
-      const pr = this.pictureRect();
-      const overflow = pr && (pr.h > el.clientHeight + 1 || pr.w > el.clientWidth + 1);
-      if (overflow && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const map: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-        if (map[e.key]) { e.preventDefault(); e.stopPropagation(); this.cx += map[e.key][0]; this.cy += map[e.key][1]; this.clampCenter(); this.draw(); }
-      }
-    });
     el.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); el.classList.add('qn-dropping'); } });
     el.addEventListener('dragleave', () => el.classList.remove('qn-dropping'));
     el.addEventListener('drop', () => el.classList.remove('qn-dropping'));
+  }
+
+  /**
+   * Moves a picture larger than the window with an arrow key, along the axis where it does not fit. False when the key
+   * is not a move here (the picture fits that way, or it is another key), so that the arrows stay Next and Previous.
+   * Called by the shell's key handler, which sees every key first.
+   */
+  panKey(e: KeyboardEvent): boolean {
+    if (!this.picture || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const map: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const d = map[e.key]; const pr = this.pictureRect();
+    if (!d || !pr) return false;
+    if (d[0] ? pr.w <= this.el.clientWidth + 1 : pr.h <= this.el.clientHeight + 1) return false;
+    const step = 40 / this._zoom;
+    e.preventDefault(); this.cx += d[0] * step; this.cy += d[1] * step; this.clampCenter(); this.draw();
+    return true;
   }
 
   /** A short message over the picture (file name on navigation in full screen, warnings). */

@@ -76,7 +76,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: npm run build
+      # The desktop build carries its runtimes (PDF, OCR, the extra decoders): the app's Content Security Policy allows no CDN.
+      - run: npm run build:desktop
       - run: node scripts/prepare-desktop.mjs
       - name: Check the staged desktop app
         shell: bash
@@ -84,6 +85,10 @@ jobs:
           node --check build/desktop-app/electron/main.cjs
           node --check build/desktop-app/electron/preload.cjs
           test -f build/desktop-app/dist/index.html
+          test -f build/desktop-app/dist/runtimes.json
+          test -f build/desktop-app/dist/pdf/build/pdf.min.mjs
+          test -f build/desktop-app/dist/ocr/worker.min.js
+          test -f build/desktop-app/dist/openjpeg/dist/openjpegjs_decode.js
       - name: Package
         shell: bash
         env:

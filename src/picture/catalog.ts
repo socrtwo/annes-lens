@@ -16,7 +16,7 @@ import { listSubfolders, listFolderFiles, dirUriFor, handleFor, handleId, type F
 
 export interface CatFolder { id: string; name: string; uri?: string; handle?: any; subfolders: boolean; lastScan?: number; count?: number }
 export interface CatItem { key: string; folderId: string; path: string[]; name: string; uri: string | null; dirUri?: string; size: number; mtime: number; info: Record<string, unknown> }
-export interface ScanReport { added: number; updated: number; removed: number; unchanged: number; thumbs: number; orphans: string[]; failed: number }
+export interface ScanReport { added: number; updated: number; removed: number; unchanged: number; thumbs: number; orphans: string[]; failed: number; /** Items kept because their subfolder could not be listed this time. */ unlisted?: number }
 
 const FOLDERS = 'catalog.v1.folders', ITEMS = (id: string) => `catalog.v1.items.${id}`, THUMB = (key: string) => `catalog.v1.thumb.${key}`;
 export const listCatFolders = async (): Promise<CatFolder[]> => (await kvGet<CatFolder[]>(FOLDERS)) || [];
@@ -47,12 +47,13 @@ export function catFolderFor(uri: string | null, name: string, subfolders: boole
 
 interface Found { entry: Entry; path: string[]; size: number; mtime: number; uri: string | null; dirUri: string }
 /** Every picture under a folder (with subfolders when asked), and the .xmp files with no picture beside them. */
-async function walk(uri: string, subfolders: boolean, onFolder?: (n: number) => void): Promise<{ found: Found[]; orphans: string[] }> {
-  const found: Found[] = [], orphans: string[] = [];
+async function walk(uri: string, subfolders: boolean, onFolder?: (n: number) => void): Promise<{ found: Found[]; orphans: string[]; unlisted: string[][] }> {
+  const found: Found[] = [], orphans: string[] = [], unlisted: string[][] = []; // unlisted: subfolders that could not be listed (their items are kept, not dropped)
   let folders = 0;
   const visit = async (u: string, path: string[], depth: number) => {
     onFolder?.(++folders);
     const r = await listFolderFiles(u, { all: true }).catch(() => null);
+    if (!r) { if (depth === 0) throw new Error('The folder could not be listed (a drive that is not connected, or permission refused); the catalog was left as it is.'); unlisted.push(path); return; }
     const files: { name: string; size: number; mtime: number; entry: () => Promise<Entry>; uri: string | null }[] = [];
     if (r?.entries) for (const e of r.entries as FolderEntry[]) files.push({ name: e.name, size: e.size || 0, mtime: e.mtime || 0, uri: e.uri, entry: async () => entryFromUri(e) });
     if (r?.handles) for (const x of r.handles) {
@@ -66,7 +67,7 @@ async function walk(uri: string, subfolders: boolean, onFolder?: (n: number) => 
     for (const s of (await listSubfolders(u).catch(() => null)) || []) await visit(s.uri, [...path, s.name], depth + 1);
   };
   await visit(uri, [], 0);
-  return { found, orphans };
+  return { found, orphans, unlisted };
 }
 
 async function makeThumb(app: App, e: Entry): Promise<string | null> {
@@ -83,7 +84,7 @@ export async function scanFolder(app: App, f: CatFolder, o: { thumbs?: boolean; 
   const uri = await folderUri(f);
   if (!uri) throw new Error(`${f.name} cannot be reached (moved, or permission refused).`);
   const old = new Map((await catItems(f.id)).map((x) => [x.key, x]));
-  const { found, orphans } = await walk(uri, f.subfolders, (n) => o.progress?.(`${f.name}: folder ${n}…`));
+  const { found, orphans, unlisted } = await walk(uri, f.subfolders, (n) => o.progress?.(`${f.name}: folder ${n}…`));
   rep.orphans = orphans;
   const items: CatItem[] = [];
   for (const [i, x] of found.entries()) {
@@ -103,7 +104,9 @@ export async function scanFolder(app: App, f: CatFolder, o: { thumbs?: boolean; 
       if (o.thumbs !== false) { const t = await makeThumb(app, x.entry); if (t) { await kvSet(THUMB(key), t); rep.thumbs++; } }
     } catch { rep.failed++; if (prev) items.push(prev); }
   }
-  for (const key of old.keys()) { await kvDel(THUMB(key)); rep.removed++; }
+  // Items under a subfolder that could not be listed this time stay in the catalog; only pictures seen to be gone are dropped.
+  const under = (p: string[]) => unlisted.some((u) => u.every((part, i) => p[i] === part));
+  for (const [key, prev] of old) { if (under(prev.path || [])) { items.push(prev); rep.unlisted = (rep.unlisted || 0) + 1; continue; } await kvDel(THUMB(key)); rep.removed++; }
   await kvSet(ITEMS(f.id), items);
   const all = await listCatFolders(), me = all.find((x) => x.id === f.id);
   if (me) { me.lastScan = Date.now(); me.count = items.length; await saveCatFolders(all); }

@@ -176,6 +176,20 @@ try {
   const offStatus = await fetch(rbase + 'state').then((r) => r.status, () => 'closed');
   check('desktop phone remote: page behind a token, live state, commands drive the app, off closes it', [rm.on, /Start slideshow/.test(page), /EventSource/.test(js), wrongToken, s0.name, /^data: \{/.test(firstEvent), bad, n1, s1.name, s1.index, /^data:image\/jpeg/.test(s1.thumb || ''), s2.running, s3.paused, s4.running, offStatus],
     [true, true, true, 404, 'c.png', true, 400, 204, 'd.png', 2, true, true, true, false, 'closed'], JSON.stringify({ s0: { ...s0, thumb: undefined }, s1: { ...s1, thumb: undefined }, rm }));
+  // Writes that must not replace a file ('rename'), and a folder that is gone is an error, not its parent's listing.
+  const gw = await w.evaluate(async () => {
+    const b64 = btoa('new bytes');
+    const dirUri = qn.folder.uri, first = qn.folder.entries[0];
+    const kept = await window.quillDesktop.createInFolder({ dirUri, name: first.name, mime: 'image/png', data: b64, ifExists: 'rename' });
+    const again = await window.quillDesktop.createInFolder({ dirUri, name: first.name, mime: 'image/png', data: b64, ifExists: 'rename' });
+    const gone = await window.quillDesktop.listFolder({ uri: dirUri.replace(/\/[^/]+$/, '/no-such-folder-here') }).then(() => 'listed', (e) => String(e.message || e));
+    return { first: first.name, kept: kept.name, again: again.name, gone };
+  });
+  check('desktop: a write that must not replace a file takes the next free name; a missing folder is an error',
+    [gw.kept, gw.again, readFileSync(join(lib, 'Photos/2024', gw.first)).length > 20, readFileSync(join(lib, 'Photos/2024', gw.kept)).toString(), /not available|no permission/i.test(gw.gone)],
+    [gw.first.replace(/(\.[^.]+)$/, ' (2)$1'), gw.first.replace(/(\.[^.]+)$/, ' (3)$1'), true, 'new bytes', true], JSON.stringify(gw));
+  for (const n of [gw.kept, gw.again]) rmSync(join(lib, 'Photos/2024', n), { force: true });
+  await w.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); await qn.exec('browse.favorites', 0); for (let i = 0; i < 60 && qn.folder.length !== 2; i++) await wait(50); await wait(200); });
   // Network sharing on the desktop: the view room from Node (page, state, conditional state), following the own share in a
   // second window (the same file is shown from the open folder, not the rendition), an album room with files and an upload.
   mkdirSync(join(lib, 'Uploads'), { recursive: true });

@@ -4,6 +4,7 @@
  * .docx, .pptx, .xlsx, .odt, .epub and any ZIP; PDF and other files by carving), Slideshow
  * Video (WebM through the browser's recorder, with crossfades and pan-and-zoom) and Stitch Panorama.
  */
+import { jsonForScript } from '../ui/dom';
 import { def } from './registry';
 import type { App } from '../app';
 import type { Entry } from '../picture/folder';
@@ -42,7 +43,7 @@ export const GALLERY_HTML = (title: string, items: { file: string; thumb: string
 <div class="grid">${items.map((i, k) => `<a href="${i.file}" data-i="${k}" title="${esc(i.caption)}"><img src="${i.thumb}" alt="${esc(i.caption)}" loading="lazy"></a>`).join('')}</div>
 <figure id="lb"><img alt=""><figcaption></figcaption><button id="prev" aria-label="Previous">‹</button><button id="next" aria-label="Next">›</button><button id="x" aria-label="Close">×</button></figure>
 <footer>Made with Anne's Lens</footer>
-<script>const items=${JSON.stringify(items.map((i) => ({ file: i.file, caption: i.caption })))};let cur=-1;const lb=document.getElementById('lb'),img=lb.querySelector('img'),cap=lb.querySelector('figcaption');
+<script>const items=${jsonForScript(items.map((i) => ({ file: i.file, caption: i.caption })))};let cur=-1;const lb=document.getElementById('lb'),img=lb.querySelector('img'),cap=lb.querySelector('figcaption');
 function show(i){cur=(i+items.length)%items.length;img.src=items[cur].file;cap.textContent=items[cur].caption;lb.classList.add('on');}
 document.querySelectorAll('.grid a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();show(+a.dataset.i)}));
 document.getElementById('prev').onclick=()=>show(cur-1);document.getElementById('next').onclick=()=>show(cur+1);document.getElementById('x').onclick=()=>lb.classList.remove('on');

@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'build/desktop-app');
-if (!existsSync(join(root, 'dist/index.html'))) throw new Error('dist/ is missing: run npm run build first');
+if (!existsSync(join(root, 'dist/index.html'))) throw new Error('dist/ is missing: run npm run build:desktop first');
+// Without its own runtimes the desktop app cannot open PDFs, run OCR or use the extra decoders: its Content Security Policy allows no CDN.
+if (!existsSync(join(root, 'dist/runtimes.json'))) throw new Error('dist/ was built without the local runtimes: run npm run build:desktop (not npm run build) for the desktop app');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'electron'), { recursive: true });

@@ -44,9 +44,10 @@ export async function keepOriginalCopy(app: App, tab: PictureTab): Promise<void>
   const data = pic.bytes.buffer.slice(pic.bytes.byteOffset, pic.bytes.byteOffset + pic.bytes.byteLength) as ArrayBuffer;
   try {
     const r = await writeIntoFolder(dir, name, data);
-    const f = tab.folder, at = f.index;
+    // Beside the picture's own entry; the folder's index (which may already point at the next picture) stays on the entry it was on.
+    const f = tab.folder, cur = f.current, own = f.entries.indexOf(pic.entry), at = own >= 0 ? own : f.index;
     f.entries.splice(at + 1, 0, entryFromUri({ uri: r.uri, name: r.name, size: data.byteLength, mtime: Date.now() }));
-    f.index = at;
+    if (cur) f.index = f.entries.indexOf(cur);
     toast(`The original was kept as ${r.name}.`, { ms: 4000 });
   } catch (e) { toast(`The original could not be kept: ${(e as Error).message}`, { ms: 7000 }); }
 }

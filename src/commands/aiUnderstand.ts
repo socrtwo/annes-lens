@@ -8,7 +8,7 @@ import { def } from './registry';
 import type { App } from '../app';
 import type { Raster } from '../codecs/raster';
 import { openDialog, toast } from '../ui/dialog';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import type { Entry } from '../picture/folder';
 import { patchXmp, forTargets, propsOf, readMeta } from '../picture/metadata';
 import { writeClipboardText } from '../platform/native';
@@ -207,7 +207,7 @@ def([
       if (!svc) { toast(needText(app)!); return; }
       const v = await openDialog({ title: 'Run on Selection', ok: 'Run', wide: true, fields: [
         { key: 'cmd', label: 'Command', type: 'select', options: cmds.map(([value, label]) => ({ value, label })), value: 'ai.altText' },
-        info(`<p><b>${entries.length} picture${entries.length === 1 ? '' : 's'}</b> (${marked ? 'marked' : 'the whole folder'}) → <b>${svc.name}</b> (${svc.textModel}): ${entries.length} request${entries.length === 1 ? '' : 's'}, each with one downscaled picture (about ${Math.round(app.prefs.ai.privacy.maxEdge / 1024 * 800)} tokens of image input on most services) and a short prompt. The service's price page states the cost per token or request; this app cannot know it.</p>`),
+        info(`<p><b>${entries.length} picture${entries.length === 1 ? '' : 's'}</b> (${marked ? 'marked' : 'the whole folder'}) → <b>${esc(svc.name)}</b> (${esc(svc.textModel)}): ${entries.length} request${entries.length === 1 ? '' : 's'}, each with one downscaled picture (about ${Math.round(app.prefs.ai.privacy.maxEdge / 1024 * 800)} tokens of image input on most services) and a short prompt. The service's price page states the cost per token or request; this app cannot know it.</p>`),
         { key: 'cap', label: 'Stop after this many pictures (0 = no cap)', type: 'number', min: 0, max: 10000, value: 0, half: true },
         { key: 'skip', label: 'Skip pictures that already have the field', type: 'checkbox', value: true, half: true },
       ] });

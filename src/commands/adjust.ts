@@ -9,7 +9,7 @@ import { openDialog, toast } from '../ui/dialog';
 import type { Field } from '../ui/dialog';
 import { editSelection, editRaster, frameRaster, rasterFrame } from '../picture/edit';
 import type { Picture } from '../picture/model';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import { openDocuments } from '../platform/native';
 import { crop, resample, hexToRgb } from '../picture/ops';
 import * as A from '../picture/adjust';
@@ -51,7 +51,7 @@ export async function adjustDialog(app: App, title: string, fields: Field[], fn:
     try {
       const out = fn(small, v);
       if (my === seq) ctl.setPreview(`<div class="ql-sxs"><figure><img src="${before}"><figcaption>Before</figcaption></figure><figure><img src="${(rasterFrame(out, 0).image as HTMLCanvasElement).toDataURL()}"><figcaption>After</figcaption></figure></div>`);
-    } catch (e: any) { ctl.setPreview(`<div class="ql-help">${e?.message || e}</div>`); }
+    } catch (e: any) { ctl.setPreview(`<div class="ql-help">${esc(String(e?.message || e))}</div>`); }
     busy = false;
     if (pending) { const p = pending; pending = null; void render(p, ctl); }
   };

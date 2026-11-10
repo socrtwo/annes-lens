@@ -1,6 +1,7 @@
 /** File commands: open (files, folders, recent, dropped, launched), save, reload, print, share, close, options, settings transfer, portable mode. */
 import { def } from './registry';
 import type { App, PictureTab } from '../app';
+import type { Picture } from '../picture/model';
 import { Folder, entryFromFile, entryFromBytes, entryFromUri, entryFromHandle, isPictureName, isSharedPictureName, sharedMaxBytes, type Entry } from '../picture/folder';
 import { canListSubfolders, listing, type FolderEntry } from '../platform/native';
 import { openDocuments, openFolderDialog, listFolderOf, saveAs, writeBack, shareFile, readUri, printDocument, isDesktop, isCapacitor, desktopBridge, writeClipboardText, type OpenedFile } from '../platform/native';
@@ -8,7 +9,7 @@ import { OPEN_ACCEPT, OPEN_MIMES, FORMATS, encodeCanvas, ENCODERS, encoderFor, t
 import { openDialog, toast, confirmDialog, choiceDialog } from '../ui/dialog';
 import { sanitizePrefs, parseKeyList, DEFAULT_QAT, type Prefs, prefsWithoutKeys } from '../prefs';
 import { allCommands, getCommand } from './registry';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import { fmtSize } from '../ui/shell';
 import { extractMeta, hasMeta, injectMeta, setExifOrientation } from '../meta/metaWrite';
 import { parseXmp } from '../meta/xmp';
@@ -144,9 +145,9 @@ export type SaveFormat = EncodeFormat;
 const EXT = Object.fromEntries(Object.entries(ENCODERS).map(([k, v]) => [k, v.ext])) as Record<SaveFormat, string>;
 const SAVE_OPTIONS = Object.entries(ENCODERS).map(([value, v]) => ({ value, label: v.label }));
 
-/** Encodes the active picture's current page in the format chosen (asking for options unless given). */
-async function produce(app: App, format?: SaveFormat, quality?: number): Promise<{ blob: Blob; name: string } | null> {
-  const pic = app.picture!;
+/** Encodes the tab's picture (its current page) in the format chosen, asking for options unless given. The tab is the one being saved, which is not always the active window. */
+async function produce(app: App, tab: PictureTab, format?: SaveFormat, quality?: number): Promise<{ blob: Blob; name: string } | null> {
+  const pic = tab.picture!;
   const base = pic.name.replace(/\.[^.]+$/, '') || 'picture';
   let fmt = format, q = quality;
   let opts: { rle?: boolean; threshold?: number } = { rle: app.prefs.tgaRle };
@@ -167,8 +168,8 @@ async function produce(app: App, format?: SaveFormat, quality?: number): Promise
   }
   const c = pic.frameCanvas();
   let blob = await encodeCanvas(c, fmt!, (q ?? app.prefs.jpegQuality) / 100, opts);
-  if ((app.prefs.keepMetadata || pic.current.icc) && (fmt === 'jpeg' || fmt === 'png' || fmt === 'webp')) blob = await withMetadata(blob, pic.bytes, fmt, pic.orientationApplied || app.tab.dirty, { keep: app.prefs.keepMetadata, icc: pic.current.icc });
-  if (app.prefs.ai.credentials && (fmt === 'jpeg' || fmt === 'png' || fmt === 'webp')) blob = await withCredentials(app, blob, pic.bytes, fmt, `${base}.${EXT[fmt!]}`, pic.entry.ingredient);
+  if ((app.prefs.keepMetadata || pic.current.icc) && (fmt === 'jpeg' || fmt === 'png' || fmt === 'webp')) blob = await withMetadata(blob, pic.bytes, fmt, pic.orientationApplied || tab.dirty, { keep: app.prefs.keepMetadata, icc: pic.current.icc });
+  if (app.prefs.ai.credentials && (fmt === 'jpeg' || fmt === 'png' || fmt === 'webp')) blob = await withCredentials(app, blob, pic.bytes, fmt, `${base}.${EXT[fmt!]}`, pic.entry.ingredient, tab.dirty);
   return { blob, name: `${base}.${EXT[fmt!]}` };
 }
 
@@ -193,7 +194,7 @@ const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '
  * signed C2PA manifest (the action, its source type, the service and model, the prompt), signed with this device's
  * own self-signed certificate from the keystore. Pictures without AI provenance are left as they are.
  */
-export async function withCredentials(app: App, blob: Blob, source: Uint8Array, format: 'jpeg' | 'png' | 'webp', name: string, ingredient?: { name: string; bytes: Uint8Array; mime: string }): Promise<Blob> {
+export async function withCredentials(app: App, blob: Blob, source: Uint8Array, format: 'jpeg' | 'png' | 'webp', name: string, ingredient?: { name: string; bytes: Uint8Array; mime: string }, edited = !!app.tab?.dirty): Promise<Blob> {
   try {
     const xmp = extractMeta(source).xmp;
     if (!xmp) return blob;
@@ -214,7 +215,7 @@ export async function withCredentials(app: App, blob: Blob, source: Uint8Array, 
       title: name, format: format === 'jpeg' ? 'image/jpeg' : format === 'png' ? 'image/png' : 'image/webp', generator: { name: "Anne's Lens", version: APP_VERSION },
       ingredient: ingredient ? { title: ingredient.name, format: ingredient.mime, bytes: ingredient.bytes, thumbnail: await thumbnailOf(ingredient.bytes) } : undefined,
       action: { action: generated ? 'c2pa.created' : 'c2pa.edited', when: props.aiDate && !Number.isNaN(Date.parse(props.aiDate)) ? new Date(props.aiDate).toISOString().replace(/\.\d{3}Z$/, 'Z') : now, softwareAgent: agent, digitalSourceType: props.digitalSourceType || 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia', description: `${props.aiCommand}${props.aiProvider ? ` with ${props.aiProvider}` : ''}${props.aiModel ? ` (${props.aiModel})` : ''}`, parameters },
-      more: app.tab?.dirty ? [{ action: 'c2pa.edited', when: now, softwareAgent: agent, description: 'edited in Anne\'s Lens before saving' }] : [],
+      more: edited ? [{ action: 'c2pa.edited', when: now, softwareAgent: agent, description: 'edited in Anne\'s Lens before saving' }] : [],
     }, signer);
     return new Blob([bytes as BlobPart], { type: blob.type });
   } catch (e) { toast(`Content Credentials could not be added: ${(e as Error).message}`); return blob; }
@@ -236,30 +237,33 @@ async function thumbnailOf(bytes: Uint8Array): Promise<{ bytes: Uint8Array; mime
 export async function saveTab(app: App, tab: PictureTab, opts: { as?: boolean; format?: SaveFormat; copy?: boolean } = {}): Promise<boolean> {
   if (!tab.picture) return false;
   if (!(await paintHooks.beforeSave(app, tab))) return false;
+  if (tab.showingOriginal) tab.showOriginal(false); // Before / After shows the original; what is saved is the edited picture
   const pic = tab.picture;
   if (!pic) return false;
   const writable = encoderFor(pic.format.id);
-  if (!opts.as && !opts.copy && pic.entry.uri && writable) {
+  if (!opts.as && !opts.copy && pic.entry.uri && writable && writesBackWhole(pic, writable)) {
     try {
-      const out = await produce(app, writable, app.prefs.jpegQuality);
+      const out = await produce(app, tab, writable, app.prefs.jpegQuality);
       if (!out) return false;
+      if (tab.picture !== pic) return false; // the window moved on while the picture was encoded
       await keepOriginalCopy(app, tab);
-      if (await writeBack(pic.entry.uri, out.blob)) { await reloadAfterSave(app, tab, out.blob); toast(`Saved ${pic.name}`); return true; }
+      if (await writeBack(pic.entry.uri, out.blob)) { await reloadAfterSave(app, tab, pic, out.blob); toast(`Saved ${pic.name}`); return true; }
     } catch (e) { console.warn(e); }
   }
-  const out = await produce(app, opts.format);
+  const out = await produce(app, tab, opts.format);
   if (!out) return false;
   const r = await saveAs(out.blob, out.name);
   if (!r) return false;
   if (!opts.copy) {
     const data = await out.blob.arrayBuffer();
     const e = entryFromBytes(r.name, data, r.uri);
-    // The saved file joins the folder at the current position (or replaces the entry when the name is the same).
+    // The saved file joins the folder after the picture it came from (or replaces that entry when it is the same file).
+    // The picture's own place is looked up: the folder's index may already point at the next picture (Save from "Save changes?").
     const f = tab.folder;
-    const i = f.index;
-    if (r.name === pic.name && pic.entry.uri === r.uri) f.entries[i] = e; else f.entries.splice(i + 1, 0, e);
+    const at = f.entries.indexOf(pic.entry), i = at >= 0 ? at : f.index, same = r.name === pic.name && pic.entry.uri === r.uri;
+    if (same && at >= 0) f.entries[i] = e; else f.entries.splice(i + 1, 0, e);
     tab.loader.invalidate(pic.entry);
-    f.select(r.name === pic.name && pic.entry.uri === r.uri ? i : i + 1);
+    f.select(same && at >= 0 ? i : i + 1);
     tab.dirty = false; tab.clearHistory();
     await tab.show();
   }
@@ -267,11 +271,23 @@ export async function saveTab(app: App, tab: PictureTab, opts: { as?: boolean; f
   return true;
 }
 
-async function reloadAfterSave(app: App, tab: PictureTab, blob: Blob): Promise<void> {
-  const pic = tab.picture!;
+/**
+ * Whether writing the picture back in its own format keeps what the file holds: one page, one frame, and for the
+ * Netpbm family the same kind (an 8-bit color PPM). Anything else (an animation, a multi-page file, a PAM with
+ * transparency, a 16-bit or float map) goes through Save As instead of being flattened into the old name.
+ */
+export function writesBackWhole(pic: { pages: { frames: unknown[]; bitDepth?: number; hasAlpha?: boolean }[]; name: string; format: { id: string } }, encoder: SaveFormat): boolean {
+  if (pic.pages.length !== 1 || pic.pages[0].frames.length !== 1) return false;
+  if (pic.format.id === 'pnm') return encoder === 'ppm' && /\.ppm$/i.test(pic.name) && !pic.pages[0].hasAlpha && (pic.pages[0].bitDepth ?? 24) <= 24;
+  return true;
+}
+
+async function reloadAfterSave(app: App, tab: PictureTab, pic: Picture, blob: Blob): Promise<void> {
   const data = await blob.arrayBuffer();
   const e = entryFromBytes(pic.name, data, pic.entry.uri);
-  tab.folder.entries[tab.folder.index] = e;
+  // The saved picture's own entry, wherever the folder's index points now (it has moved on when the save came from "Save changes?").
+  const at = tab.folder.entries.indexOf(pic.entry);
+  if (at >= 0) tab.folder.entries[at] = e;
   tab.loader.invalidate(pic.entry);
   tab.dirty = false; tab.clearHistory();
   await tab.show();
@@ -432,10 +448,12 @@ def([
   { id: 'file.closeAll', icon: 'tab_close', noRecord: true, run: async (app) => { for (const d of [...app.tabs]) { app.activate(d); await app.exec('file.close', d.id); } } },
   {
     id: 'file.exit', icon: 'logout', noRecord: true, tip: 'Esc leaves full screen first; closing the app with Esc is an option (desktop)',
-    run: async (app) => {
+    run: async (app, how?: string) => {
+      // `how` is 'esc' when the Esc key ran the command: Esc leaves full screen, and closes the app only with the option on.
+      const esc = how === 'esc';
       if (document.fullscreenElement || document.body.classList.contains('ql-fullscreen')) { app.exec('view.fullScreen'); return; }
-      if (!app.prefs.escExits && app.lastCommand?.id === 'file.exit' && !isDesktop()) return;
-      if (!isDesktop() && !isCapacitor()) { if (app.lastCommand?.id === 'file.exit') toast('Close the browser tab to leave Anne\'s Lens.'); return; }
+      if (esc && !app.prefs.escExits) return;
+      if (!isDesktop() && !isCapacitor()) { if (!esc) toast('Close the browser tab to leave Anne\'s Lens.'); return; }
       for (const d of [...app.tabs]) if (d.dirty) { app.activate(d); await app.exec('file.close', d.id); if (app.tabs.includes(d) && d.dirty) return; }
       if (isDesktop()) { window.close(); return; }
       try { const { App: CapApp } = await import('@capacitor/app'); await CapApp.exitApp(); } catch { window.close(); }
@@ -550,7 +568,7 @@ def([
       const st = await d.getPortableMode();
       (window as any).__qlPortable = st.on;
       if (!st.available) { toast(`The folder beside the program is not writable (${st.dir}); portable mode is not available here.`); return; }
-      const r = await openDialog({ title: 'Portable Mode', fields: [{ key: 'i', type: 'info', html: `<p>Portable mode keeps every setting (preferences, Quick Access Bar, keys, macros, recent lists) in <code>${st.dir}</code>, so Anne's Lens can run from a USB stick or a folder you carry along.</p><p>It is currently <b>${st.on ? 'on' : 'off'}</b>. Turning it ${st.on ? 'off' : 'on'} copies the current settings and restarts the app.</p>` }], ok: st.on ? 'Turn Off and Restart' : 'Turn On and Restart' });
+      const r = await openDialog({ title: 'Portable Mode', fields: [{ key: 'i', type: 'info', html: `<p>Portable mode keeps every setting (preferences, Quick Access Bar, keys, macros, recent lists) in <code>${esc(st.dir)}</code>, so Anne's Lens can run from a USB stick or a folder you carry along.</p><p>It is currently <b>${st.on ? 'on' : 'off'}</b>. Turning it ${st.on ? 'off' : 'on'} copies the current settings and restarts the app.</p>` }], ok: st.on ? 'Turn Off and Restart' : 'Turn On and Restart' });
       if (!r) return;
       const res = await d.setPortableMode({ on: !st.on });
       if (!res.ok) { toast(res.error || 'Could not change portable mode.'); return; }

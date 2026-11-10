@@ -14,7 +14,7 @@ export function decodeDds(u8: Uint8Array): DecodeResult {
   if (!isDds(u8)) throw new Error('Not a DDS file');
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   const h = dv.getUint32(12, true), w = dv.getUint32(16, true);
-  const mips = Math.max(1, dv.getUint32(28, true));
+  const mips = Math.min(32, Math.max(1, dv.getUint32(28, true))); // a picture has at most 32 levels, whatever the header claims
   const pfFlags = dv.getUint32(80, true), fourcc = dv.getUint32(84, true), bpp = dv.getUint32(88, true);
   const masks = [dv.getUint32(92, true), dv.getUint32(96, true), dv.getUint32(100, true), dv.getUint32(104, true)];
   const caps2 = dv.getUint32(112, true);
@@ -72,7 +72,7 @@ function decodeUncompressed(u8: Uint8Array, p: number, w: number, h: number, f: 
   const d = out.data;
   const bytes = f.bpp / 8;
   const stride = Math.ceil((w * f.bpp) / 8);
-  const shiftOf = (m: number) => { if (!m) return [0, 0]; let s = 0; while (!((m >>> s) & 1)) s++; let b = 0; while ((m >>> (s + b)) & 1) b++; return [s, b]; };
+  const shiftOf = (m: number) => { if (!m) return [0, 0]; let s = 0; while (s < 32 && !((m >>> s) & 1)) s++; let b = 0; while (s + b < 32 && ((m >>> (s + b)) & 1)) b++; return [s, b]; }; // shift counts wrap at 32: a full mask must stop there
   const sh = f.masks.map(shiftOf);
   const to8 = (v: number, bits: number) => (bits >= 8 ? v >>> (bits - 8) : bits ? Math.round((v * 255) / ((1 << bits) - 1)) : 0);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {

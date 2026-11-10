@@ -12,6 +12,8 @@ import { colorStep } from '../color/display';
 export type GridMode = 'off' | 'thirds' | 'golden' | 'square';
 export type ColorBlind = 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia';
 export const viewState = {
+  /** A template that replaces the user's for the moment (slideshow captions, cull mode); view state, so it is never saved as the preference. */
+  osdTemplate: null as string | null,
   grid: 'off' as GridMode, gridSize: 50, rulers: false, clipping: false, peaking: false, histogram: false, osd: false, loupe: false, loupeZoom: 4,
   grayscale: false, colorBlind: 'off' as ColorBlind, display: { brightness: 0, contrast: 0, gamma: 1 },
   /** Navigator: a mini-map of the whole picture with the visible part outlined (when it does not fit). */

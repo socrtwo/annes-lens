@@ -634,9 +634,13 @@ function readPaletteIn(d: Parsed, elements: Elements, u8: Uint8Array, warnings: 
       const bytes8 = desc[2] === 8, dv = new DataView(u8.buffer, u8.byteOffset + el.off, el.len), nw = bytes8 ? el.len : el.len >> 1;
       const word = (i: number) => (i < nw ? (bytes8 ? u8[el.off + i] : dv.getUint16(i * 2, !el.be)) : 0);
       const vals: number[] = [];
+      // Indirect segments may point at each other; a crafted table would be walked exponentially often. The whole expansion gets
+      // a budget of segment visits (a real table needs at most one per entry).
+      let visits = 4 * paletteN + 64;
       const run = (from: number, segments: number, depth: number): number => { // returns the element position after the segments
         let p = from;
         for (let s = 0; s < segments && p + 1 < nw && vals.length < paletteN; s++) {
+          if (--visits < 0) { if (visits === -1) warnings.push('The segmented palette refers to itself; it was cut short'); break; }
           const op = word(p), n = word(p + 1);
           if (op === 0) { for (let i = 0; i < n; i++) vals.push(word(p + 2 + i)); p += 2 + n; }
           else if (op === 1) { const y = word(p + 2), y0 = vals.length ? vals[vals.length - 1] : 0; for (let i = 1; i <= n; i++) vals.push(Math.round(y0 + ((y - y0) * i) / n)); p += 3; }
@@ -722,11 +726,12 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
   // Shutters: everything outside the shape takes the shutter's gray (pixel columns and rows are 1-based in the file).
   for (const sh of ps.shutters) {
     const g = sh.gray;
+    const poly = sh.shape === 'POLYGONAL' && sh.vertices && sh.vertices.length >= 3 ? sh.vertices.slice(0, 4096).map(([row, col]) => [col, row] as [number, number]) : null; // made once, not for every pixel
     const keep = (x: number, y: number): boolean => {
       const c = x + 1, rr = y + 1;
       if (sh.shape === 'RECTANGULAR') return c >= (sh.left ?? 1) && c <= (sh.right ?? w) && rr >= (sh.upper ?? 1) && rr <= (sh.lower ?? h);
       if (sh.shape === 'CIRCULAR') return sh.center ? Math.hypot(c - sh.center[1], rr - sh.center[0]) <= (sh.radius ?? 0) : true;
-      if (sh.shape === 'POLYGONAL' && sh.vertices && sh.vertices.length >= 3) return insidePolygon(sh.vertices.map(([row, col]) => [col, row] as [number, number]), c, rr);
+      if (poly) return insidePolygon(poly, c, rr);
       return true;
     };
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!keep(x, y)) { const o = (y * w + x) * 4; d[o] = d[o + 1] = d[o + 2] = g; }
@@ -799,6 +804,14 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
 type R = ReturnType<typeof makeRaster>;
 function put(r: R, x: number, y: number, g: number): void { const xi = Math.floor(x), yi = Math.floor(y); if (xi < 0 || yi < 0 || xi >= r.width || yi >= r.height) return; const o = (yi * r.width + xi) * 4; r.data[o] = r.data[o + 1] = r.data[o + 2] = g; r.data[o + 3] = 255; }
 function drawLine(r: R, x0: number, y0: number, x1: number, y1: number, g: number): void {
+  if (![x0, y0, x1, y1].every(Number.isFinite)) return;
+  // Clipped to the picture first (Liang–Barsky): a point far outside must not be stepped to pixel by pixel.
+  let t0 = 0, t1 = 1; const dx = x1 - x0, dy = y1 - y0;
+  for (const [p, q] of [[-dx, x0 + 1], [dx, r.width - x0], [-dy, y0 + 1], [dy, r.height - y0]]) {
+    if (p === 0) { if (q < 0) return; continue; }
+    const t = q / p; if (p < 0) { if (t > t1) return; if (t > t0) t0 = t; } else { if (t < t0) return; if (t < t1) t1 = t; }
+  }
+  [x0, y0, x1, y1] = [x0 + dx * t0, y0 + dy * t0, x0 + dx * t1, y0 + dy * t1];
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
   for (let i = 0; i <= n; i++) put(r, x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, g);
 }
@@ -817,7 +830,8 @@ function drawPolyline(r: R, pts: [number, number][], closed: boolean, filled: bo
 }
 function ellipsePoints(c: [number, number], a: number, b: number, angle: number): [number, number][] {
   if (!b) b = a;
-  const n = Math.max(16, Math.ceil(2 * Math.PI * Math.max(a, b))), out: [number, number][] = [], ca = Math.cos(angle), sa = Math.sin(angle);
+  if (![c[0], c[1], a, b, angle].every(Number.isFinite)) return [];
+  const n = Math.min(20000, Math.max(16, Math.ceil(2 * Math.PI * Math.max(a, b)))), out: [number, number][] = [], ca = Math.cos(angle), sa = Math.sin(angle); // more steps than any picture's outline needs are never taken
   for (let i = 0; i < n; i++) { const t = (2 * Math.PI * i) / n, ex = a * Math.cos(t), ey = b * Math.sin(t); out.push([c[0] + ex * ca - ey * sa, c[1] + ex * sa + ey * ca]); }
   return out;
 }

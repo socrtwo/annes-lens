@@ -43,7 +43,7 @@ export function decodeDib(u8: Uint8Array, pixelOffset: number | null, icon: bool
   if (!w || !h || w * h > 80_000_000) throw new Error('bad DIB dimensions');
   const paletteAt = hdr + (hdr === 40 && comp === 3 ? 12 : 0);
   const entrySize = hdr === 12 ? 3 : 4;
-  const palCount = bpp <= 8 ? (colors || 1 << bpp) : 0;
+  const palCount = bpp <= 8 ? Math.min(colors || 1 << bpp, 1 << bpp) : 0; // never more entries than the depth can index, whatever the header says
   const palette = new Uint8Array(palCount * 3);
   for (let i = 0; i < palCount; i++) { const o = paletteAt + i * entrySize; palette[i * 3] = u8[o + 2]; palette[i * 3 + 1] = u8[o + 1]; palette[i * 3 + 2] = u8[o]; }
   let px = pixelOffset ?? paletteAt + palCount * entrySize;
@@ -55,7 +55,7 @@ export function decodeDib(u8: Uint8Array, pixelOffset: number | null, icon: bool
   let pixels: Uint8Array = u8.subarray(px);
   if (comp === 1 || comp === 2) { pixels = unRle(u8.subarray(px), w, h, comp === 1 ? 8 : 4, stride); notes.push(comp === 1 ? 'RLE8' : 'RLE4'); }
   const rowAt = (y: number) => (topDown ? y : h - 1 - y) * stride;
-  const shiftOf = (m: number) => { if (!m) return [0, 0]; let s = 0; while (!((m >> s) & 1)) s++; let b = 0; while ((m >> (s + b)) & 1) b++; return [s, b]; };
+  const shiftOf = (m: number) => { if (!m) return [0, 0]; let s = 0; while (s < 32 && !((m >>> s) & 1)) s++; let b = 0; while (s + b < 32 && ((m >>> (s + b)) & 1)) b++; return [s, b]; }; // shift counts wrap at 32: a full mask must stop there
   const dmask = masks || (bpp === 16 ? [0x7c00, 0x3e0, 0x1f, 0] : [0xff0000, 0xff00, 0xff, bpp === 32 ? 0xff000000 : 0]);
   const sh = dmask.map(shiftOf);
   const scaleTo8 = (v: number, bits: number) => (bits >= 8 ? v >> (bits - 8) : bits ? Math.round((v * 255) / ((1 << bits) - 1)) : 0);

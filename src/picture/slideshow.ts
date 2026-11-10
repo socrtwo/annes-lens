@@ -7,7 +7,7 @@
  */
 import type { App } from '../app';
 import { viewState } from '../ui/overlays';
-import { h } from '../ui/dom';
+import { h, jsonForScript } from '../ui/dom';
 
 export type Transition = 'none' | 'fade' | 'wipe' | 'slide' | 'zoom' | 'panzoom' | 'random';
 export interface SlideshowSettings { seconds: number; transition: Transition; loop: boolean; random: boolean; captions: boolean; captionTemplate: string; kiosk: boolean; transitionMs: number; musicOn: boolean; musicVolume: number; musicShuffle: boolean }
@@ -83,8 +83,8 @@ export function start(app: App, fromCurrent: boolean, kiosk = false): void {
   const s = settings(app);
   show.app = app; show.running = true; show.paused = false; show.kiosk = kiosk || s.kiosk;
   show.order = makeOrder(f.length, fromCurrent ? Math.max(0, f.index) : 0, s.random);
-  show.savedOsd = viewState.osd; show.savedTemplate = app.prefs.osdTemplate;
-  if (s.captions) { viewState.osd = true; app.prefs.osdTemplate = s.captionTemplate; }
+  show.savedOsd = viewState.osd;
+  if (s.captions) { viewState.osd = true; viewState.osdTemplate = s.captionTemplate; }
   document.body.classList.add('qn-slideshow'); if (show.kiosk) document.body.classList.add('qn-kiosk');
   window.addEventListener('keydown', onKey, true);
   void import('../commands/view').then(({ fullScreen }) => fullScreen(app, true));
@@ -97,7 +97,7 @@ export function stop(app: App): void {
   clearTimeout(show.timer); show.running = false; show.paused = false; show.kiosk = false;
   window.removeEventListener('keydown', onKey, true);
   show.overlay?.remove(); show.overlay = null;
-  viewState.osd = show.savedOsd; app.prefs.osdTemplate = show.savedTemplate;
+  viewState.osd = show.savedOsd; viewState.osdTemplate = null;
   document.body.classList.remove('qn-slideshow', 'qn-kiosk');
   void import('../commands/view').then(({ fullScreen }) => fullScreen(app, false));
   app.viewer.draw(); app.refresh(); show.onEnd?.();
@@ -110,8 +110,8 @@ export const previous = (app: App) => goTo(app, show.pos - 1);
 /** A self-contained HTML slideshow page: pictures as data URLs, timing, transitions, captions, keyboard control. */
 export function buildSlideshowHtml(items: { name: string; dataUrl: string; caption: string }[], s: SlideshowSettings, title: string): string {
   const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const data = JSON.stringify(items.map((i) => ({ src: i.dataUrl, caption: i.caption, name: i.name })));
-  const cfg = JSON.stringify({ seconds: s.seconds, transition: s.transition, loop: s.loop, random: s.random, captions: s.captions, ms: s.transitionMs });
+  const data = jsonForScript(items.map((i) => ({ src: i.dataUrl, caption: i.caption, name: i.name })));
+  const cfg = jsonForScript({ seconds: s.seconds, transition: s.transition, loop: s.loop, random: s.random, captions: s.captions, ms: s.transitionMs });
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title>
 <style>html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.4 system-ui,sans-serif;overflow:hidden}#stage{position:fixed;inset:0}#stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity var(--ms) ease,transform var(--ms) ease,clip-path var(--ms) linear}#cap{position:fixed;left:0;right:0;bottom:0;padding:12px 18px;background:linear-gradient(transparent,rgba(0,0,0,.7));white-space:pre-line;text-shadow:0 1px 3px #000}#bar{position:fixed;top:0;left:0;height:3px;background:#fff8;width:0}#help{position:fixed;top:8px;right:12px;opacity:.6;font-size:12px}</style></head>

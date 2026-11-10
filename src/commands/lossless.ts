@@ -4,7 +4,9 @@
  * coefficients (src/codecs/jpegLossless.ts); the result is saved directly, never through the canvas.
  */
 import { def } from './registry';
-import type { App } from '../app';
+import type { App, PictureTab } from '../app';
+import type { Picture } from '../picture/model';
+import { keepOriginalCopy } from '../picture/keepOriginal';
 import { openDialog, toast, confirmDialog } from '../ui/dialog';
 import { Folder, entryFromBytes } from '../picture/folder';
 import { losslessTransform, readJpegCoefficients, isPerfect, opForOrientation, type LosslessOp } from '../codecs/jpegLossless';
@@ -19,15 +21,20 @@ const OPS: { value: LosslessOp; label: string }[] = [
 ];
 
 /** Hands the transformed bytes over: write back, save as, or open as a new picture. */
-async function deliver(app: App, bytes: Uint8Array, how: 'overwrite' | 'saveAs' | 'new', suffix: string): Promise<void> {
-  const pic = app.picture!;
-  const tab = app.tab;
+async function deliver(app: App, from: { tab: PictureTab; pic: Picture }, bytes: Uint8Array, how: 'overwrite' | 'saveAs' | 'new', suffix: string): Promise<void> {
+  // The picture the transform was computed from, in its own window: a dialog was open meanwhile, and the window may show another picture now.
+  const { tab, pic } = from;
   const blob = new Blob([bytes as BlobPart], { type: 'image/jpeg' });
   if (how === 'overwrite' && pic.entry.uri) {
+    if (!app.tabs.includes(tab) || tab.picture !== pic) { toast(`${pic.name} is no longer the picture shown, so its file was left alone. Use Save As.`, { ms: 7000 }); how = 'saveAs'; }
+    else if (tab.dirty && !(await confirmDialog('Lossless JPEG', `${pic.name} has unsaved edits. Writing the lossless result back drops them (the lossless operation works on the file, not on the edits). Continue?`, 'Write back'))) return;
+  }
+  if (how === 'overwrite' && pic.entry.uri) {
+    await keepOriginalCopy(app, tab);
     if (!(await writeBack(pic.entry.uri, blob))) { toast('The file could not be written; use Save As.'); how = 'saveAs'; }
     else {
       const e = entryFromBytes(pic.name, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, pic.entry.uri);
-      tab.folder.entries[tab.folder.index] = e;
+      const at = tab.folder.entries.indexOf(pic.entry); if (at >= 0) tab.folder.entries[at] = e;
       tab.loader.invalidate(pic.entry);
       tab.dirty = false; tab.clearHistory();
       await tab.show();
@@ -73,7 +80,7 @@ def([
     id: 'image.losslessJpeg', icon: 'rotate_90_degrees_cw', popular: true, noRecord: true, isEnabled: isJpegPicture,
     tip: 'Rotate, flip, transpose, crop, grayscale and optimize a JPEG without re-encoding its pixels',
     run: async (app) => {
-      const pic = app.picture!;
+      const pic = app.picture!, from = { tab: app.tab, pic };
       const g = gridNote(app);
       const orient = pic.exif?.orientation || 1;
       const perfectText = (op: LosslessOp, trim: boolean) => {
@@ -103,14 +110,14 @@ def([
       const out = losslessTransform(pic.bytes, r.op, { trim: !!r.trim, grayscale: !!r.gray, stripMetadata: r.meta === 'strip', keepEssential: r.meta === 'essential', orientation: r.resetOrientation ? 1 : undefined });
       if (out.warnings.length) toast(`Note: ${out.warnings[0]}`, { ms: 6000 });
       const suffix = { none: '-optimized', rot90: '-rot90', rot180: '-rot180', rot270: '-rot270', flipH: '-fliph', flipV: '-flipv', transpose: '-transposed', transverse: '-transversed' }[r.op as LosslessOp] + (r.gray ? '-gray' : '');
-      await deliver(app, out.bytes, how, suffix);
+      await deliver(app, from, out.bytes, how, suffix);
     },
   },
   {
     id: 'image.losslessCrop', icon: 'crop', noRecord: true, isEnabled: isJpegPicture,
     tip: 'Crop a JPEG on its block grid without re-encoding (a selection tool comes in M3; enter the rectangle here)',
     run: async (app) => {
-      const pic = app.picture!;
+      const pic = app.picture!, from = { tab: app.tab, pic };
       const g = gridNote(app);
       if (!g) { toast('The JPEG header could not be read.'); return; }
       const r = await openDialog({ title: 'Lossless Crop', ok: 'Save As…', help: `The left and top edges snap down to the ${g.mw} × ${g.mh} block grid; width and height are free. Pixels are copied, not re-encoded.`,
@@ -121,14 +128,15 @@ def([
         ] });
       if (!r) return;
       const out = losslessTransform(pic.bytes, 'none', { crop: { x: +r.x || 0, y: +r.y || 0, width: +r.w || g.width, height: +r.h || g.height } });
-      await deliver(app, out.bytes, r.how, `-crop${out.width}x${out.height}`);
+      if (r.how === 'overwrite' && !(await confirmDialog('Write Back', `Replace ${pic.name} on disk with the cropped file? The pixels outside the crop are gone from the file after writing.`, 'Write'))) return;
+      await deliver(app, from, out.bytes, r.how, `-crop${out.width}x${out.height}`);
     },
   },
   {
     id: 'image.losslessAutoRotate', icon: 'screen_rotation_alt', noRecord: true, isEnabled: (app) => isJpegPicture(app) && (app.picture!.exif?.orientation || 1) !== 1,
     tip: 'Turns the JPEG upright by its EXIF Orientation tag without re-encoding, and resets the tag',
     run: async (app) => {
-      const pic = app.picture!;
+      const pic = app.picture!, from = { tab: app.tab, pic };
       const o = pic.exif?.orientation || 1;
       const op = opForOrientation(o);
       if (op === 'none') { toast('The picture is already upright.'); return; }
@@ -137,7 +145,7 @@ def([
       const how = pic.entry.uri ? (await confirmDialog('Lossless Auto-Rotate', `Rotate ${pic.name} upright (${OPS.find((x) => x.value === op)!.label.toLowerCase()}) and write it back losslessly?${exact ? '' : ' The size is not a multiple of the block grid, so a partial edge strip stays in place.'}`, 'Rotate and Write') ? 'overwrite' : null) : 'saveAs';
       if (!how) return;
       const out = losslessTransform(pic.bytes, op, { orientation: 1 });
-      await deliver(app, out.bytes, how, '-upright');
+      await deliver(app, from, out.bytes, how, '-upright');
     },
   },
   {

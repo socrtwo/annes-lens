@@ -27,6 +27,7 @@ export function readTar(u8: Uint8Array): { entries: TarEntry[]; warnings: string
     if (u8.subarray(o, o + 512).every((b) => b === 0)) break; // end of archive
     if (!checksumOk(u8, o)) { warnings.push(`The archive is damaged after ${entries.length} files`); break; }
     const type = String.fromCharCode(u8[o + 156] || 48), size = pax.size !== undefined ? +pax.size : num(u8, o + 124, 12);
+    if (!(size >= 0) || size > u8.length - o) { warnings.push(`The archive is damaged after ${entries.length} files (a size that does not fit the file)`); break; } // a negative size would step backwards for ever
     const data = o + 512, next = data + Math.ceil(size / 512) * 512;
     if (type === 'L') { longName = str(u8, data, size); o = next; continue; }
     if (type === 'x') {

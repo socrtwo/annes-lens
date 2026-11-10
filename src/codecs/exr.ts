@@ -41,6 +41,7 @@ function readHeader(r: R): Header | null {
     const name = r.str(); if (!name) break;
     any = true;
     const type = r.str(), size = r.i32(), end = r.p + size, v = new R(r.u8, r.p);
+    if (size < 0 || end > r.u8.length) throw new Error('Damaged OpenEXR header: an attribute larger than the file'); // a negative size would rewind the reader for ever
     if (name === 'channels') {
       while (v.p < end - 1) { const n = v.str(); if (!n) break; const t = v.i32(), lin = v.u8[v.p]; v.p += 4; const xs = v.i32(), ys = v.i32(); h.channels.push({ name: n, type: t, linear: !!lin, xs, ys }); }
     } else if (name === 'compression') h.compression = r.u8[r.p];

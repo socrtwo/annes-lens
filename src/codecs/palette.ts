@@ -34,6 +34,7 @@ export function medianCut(data: Uint8ClampedArray | Uint8Array, n: number, maxSa
     const total = b.counts.reduce((s, v) => s + v, 0);
     let acc = 0, cut = 0;
     for (; cut < order.length - 1; cut++) { acc += b.counts[order[cut]]; if (acc * 2 >= total) break; }
+    cut = Math.min(cut, order.length - 2); // both halves keep at least one color, even when the last color outweighs all the others (a white page)
     const left: Box = { colors: [], counts: [] }, right: Box = { colors: [], counts: [] };
     order.forEach((idx, k) => { const t = k <= cut ? left : right; t.colors.push(b.colors[idx]); t.counts.push(b.counts[idx]); });
     if (!left.colors.length || !right.colors.length) break;

@@ -8,7 +8,7 @@ import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast } from '../ui/dialog';
 import type { Field } from '../ui/dialog';
-import { h } from '../ui/dom';
+import { h, esc } from '../ui/dom';
 import { adjustDialog, range, STEP_FNS, recordStep } from './adjust';
 import { editSelection, editRaster, frameRaster, rasterFrame } from '../picture/edit';
 import { crop, resample, hexToRgb } from '../picture/ops';
@@ -45,7 +45,7 @@ async function previewOnly(app: App, fx: Effect): Promise<Record<string, any> | 
   let seq = 0;
   const render = async (v: Record<string, any>, ctl: any) => {
     const my = ++seq; await new Promise((r) => setTimeout(r, 0));
-    try { const out = fx.fn(small, v); if (my === seq) ctl.setPreview(`<img src="${(rasterFrame(out, 0).image as HTMLCanvasElement).toDataURL()}" style="max-width:100%;max-height:40vh">`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${e?.message || e}</div>`); }
+    try { const out = fx.fn(small, v); if (my === seq) ctl.setPreview(`<img src="${(rasterFrame(out, 0).image as HTMLCanvasElement).toDataURL()}" style="max-width:100%;max-height:40vh">`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${esc(String(e?.message || e))}</div>`); }
   };
   return openDialog({ title: fx.title, wide: true, ok: 'Apply', preview: true, help: fx.help, fields: fx.fields, onChange: (v, ctl) => { void render(v, ctl); }, onOpen: (ctl) => { void render(ctl.values(), ctl); } });
 }
@@ -142,7 +142,7 @@ async function convolutionDialog(app: App): Promise<void> {
   const k = Math.min(1, 360 / Math.max(region.width, region.height));
   const small = k < 1 ? resample(region, Math.round(region.width * k), Math.round(region.height * k), 'bilinear') : region;
   let seq = 0;
-  const render = async (v: Record<string, any>, ctl: any) => { const my = ++seq; await new Promise((r) => setTimeout(r, 0)); try { const out = fn(small, v); if (my === seq) ctl.setPreview(`<img src="${(rasterFrame(out, 0).image as HTMLCanvasElement).toDataURL()}" style="max-width:100%;max-height:36vh">`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${e?.message || e}</div>`); } };
+  const render = async (v: Record<string, any>, ctl: any) => { const my = ++seq; await new Promise((r) => setTimeout(r, 0)); try { const out = fn(small, v); if (my === seq) ctl.setPreview(`<img src="${(rasterFrame(out, 0).image as HTMLCanvasElement).toDataURL()}" style="max-width:100%;max-height:36vh">`); } catch (e: any) { ctl.setPreview(`<div class="ql-help">${esc(String(e?.message || e))}</div>`); } };
   const r = await openDialog({
     title: 'Custom Filter (Convolution)', wide: true, ok: 'Apply', preview: true, fields: fields(),
     help: 'Each output pixel is the weighted sum of its neighbors, divided by the divisor plus the bias. Negative weights sharpen and find edges; positive ones blur.',
