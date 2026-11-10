@@ -16,6 +16,7 @@
     "pretest": "node scripts/gen-plan-ts.mjs",
     "test": "vitest run",
     "e2e": "node tests/e2e/smoke.mjs",
+    "e2e:print": "node tests/e2e/print.mjs",
     "plan": "python3 scripts/gen-plan.py && node scripts/gen-plan-ts.mjs",
     "catalog": "vite-node scripts/gen-catalog.ts",
     "notices": "node scripts/gen-notices.mjs",
