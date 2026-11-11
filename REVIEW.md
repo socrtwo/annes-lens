@@ -49,6 +49,10 @@ checked by reading and by the suites still passing, not by a test of their own.
   worker cannot answer, naming the command and its argument.
 - **Security: S7.** PowerShell and AppleScript texts are fixed; names and numbers travel in environment variables and
   arguments (`electron/osscripts.cjs`). Not run on Windows or macOS: checked by a test of the command lines only.
+- **Security: S12, S13.** CSV exports put an apostrophe before a value a spreadsheet would run as a formula (numbers
+  such as a western longitude stay numbers), and the CSV import takes it off again. A service counts as local only
+  when its whole host name is localhost or an IP address in the loopback, private or link-local ranges
+  (`localhost.example.com` is remote); agreeing to send to one service no longer covers another.
 - **Hangs on crafted files: R1 to R8.** 7z, xz, tar, OpenEXR, FITS (and Rice tiles), BMP, DDS, GIF code size,
   DICOM segmented palettes and presentation-state drawing all bound their counts and loops.
 - **Memory on crafted files: R9, R11 to R16** (`src/codecs/limits.ts`). Palette counts are bounded by the bit depth
@@ -74,6 +78,11 @@ checked by reading and by the suites still passing, not by a test of their own.
   XMP packet too large for a JPEG segment is refused with a reason. Lossless transforms keep a motion photo's video,
   leave out a gain map with its index, and say which. Writing regions keeps the people named without a region.
   Not done: extended XMP for packets over 64 KB; a gain map is dropped by a lossless transform, not transformed.
+- **Wrong results: W13.** RAW previews are turned upright by the RAW file's own orientation (IFD0 in the TIFF-based
+  families, Olympus's and Panasonic's headers included; the MRW TTW block; the CR3 CMT1 box; a Leaf back's rotation
+  angle; else the preview's EXIF). Developed pictures are marked as upright, so Auto-Rotate no longer turns them
+  again. Checked against LibRaw: on the corpus (the one portrait file, a Leaf MOS, agrees) and on every TIFF-based
+  corpus file patched to portrait. Not checked against LibRaw: CR3, RAF and MRW (no portrait sample).
 - **Wrong results: W5, W6.** Packed RAW layouts that were never checked against a real file are refused (Samsung's,
   Olympus's, Nikon's little-endian one) instead of decoded to noise; the support report runs the reader's own header
   path, so it cannot say yes to a file the reader refuses (compressed PEF, ORF and SRW, Canon sRAW); README and

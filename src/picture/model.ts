@@ -45,6 +45,8 @@ export class Picture {
   version = 0;
   /** The EXIF orientation was applied to the pixels (on decode by the auto-rotate option, or by the command). */
   orientationApplied = false;
+  /** The orientation from the file where it is not in readable EXIF (a RAW file's own header); overrides the EXIF tag. */
+  fileOrientation: number | null = null;
   page = 0;
   frame = 0;
   loadMs = 0;
@@ -72,7 +74,7 @@ export class Picture {
   get animated(): boolean { return this.current.frames.length > 1; }
   get multipage(): boolean { return this.pages.length > 1; }
   /** The EXIF Orientation tag (1–8), 1 when absent. */
-  get orientation(): number { return this.exif?.orientation || 1; }
+  get orientation(): number { return this.fileOrientation ?? (this.exif?.orientation || 1); }
 
   /** A canvas with the current frame's pixels (for pixel info, histograms and edits). */
   frameCanvas(frame = this.currentFrame): HTMLCanvasElement {

@@ -27,7 +27,7 @@ import { decodeDds, isDds } from './dds';
 import { decodeHdr, isHdr } from './hdr';
 import { decodeExr, isExr, exrNeedsHtj2k } from './exr';
 import { isEmf, isWmf } from './metafile';
-import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, RAW_EXTENSIONS } from './rawpreview';
+import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, rawOrientation, RAW_EXTENSIONS } from './rawpreview';
 import { rawSupport } from '../raw/families';
 import { isPdf } from './pdf';
 import { isDjvu } from './djvu';
@@ -380,7 +380,14 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
   if (exif?.dpi) for (const p of pic.pages) if (!p.dpi) p.dpi = exif.dpi;
   // EXIF orientation: the platform decodes with imageOrientation 'none', so the pixels are as stored.
   if (fmt.id === 'jpeg' || fmt.id === 'png' || fmt.id === 'webp') { try { const { findManifestStore, readManifest, describeManifest } = await import('../meta/c2pa'); if (findManifestStore(u8)) { const m = await readManifest(u8); if (m) decoded.info['Content Credentials'] = describeManifest(m, await ownSigningCertificate()); } } catch (e) { decoded.info['Content Credentials'] = `present but unreadable (${(e as Error).message})`; } }
-  const ops = decodeOptions.autoRotate && fmt.id !== 'tiff' && fmt.id !== 'raw' ? orientationOps(pic.orientation) : [];
+  // RAW files: the camera's orientation is in the RAW header, not in EXIF the reader above finds. A developed picture is
+  // already upright (marked so, or Auto-Rotate would turn it again); a preview is turned here like a JPEG.
+  if (fmt.id === 'raw') {
+    const rr = decoded as { rawOrientation?: number; upright?: boolean };
+    pic.fileOrientation = rr.rawOrientation || 1;
+    if (rr.upright && pic.fileOrientation !== 1) pic.orientationApplied = true;
+  }
+  const ops = decodeOptions.autoRotate && fmt.id !== 'tiff' && !(fmt.id === 'raw' && pic.orientationApplied) ? orientationOps(pic.orientation) : [];
   if (ops.length && typeof document !== 'undefined') { pic.pages = pic.pages.map((pg) => ops.reduce((acc, op) => transformPage(acc, op), pg)); pic.orientationApplied = true; }
   return pic;
 }
@@ -469,9 +476,18 @@ async function decodeEpsFile(u8: Uint8Array) {
   throw new Error('This PostScript file has no embedded preview, and PostScript itself is not interpreted (see FORMATS-PLAN.md)');
 }
 
+/**
+ * A RAW file's picture and its orientation. `rawOrientation` is the camera's; `upright` says whether the pixels already
+ * stand that way (developed pictures are turned by the developer; previews and thumbnails are stored as shot).
+ */
 async function decodeRawPreview(u8: Uint8Array, name: string) {
-  const id = identifyRaw(u8, name) || { family: 'RAW', make: 'unknown camera' };
   const previews = findEmbeddedJpegs(u8);
+  const r: any = await decodeRawPicture(u8, name, previews);
+  if (r.upright === undefined) { r.upright = false; r.rawOrientation = rawOrientation(u8, previews); }
+  return r as Awaited<ReturnType<typeof decodeRawPicture>> & { rawOrientation: number; upright: boolean };
+}
+async function decodeRawPicture(u8: Uint8Array, name: string, previews: ReturnType<typeof findEmbeddedJpegs>) {
+  const id = identifyRaw(u8, name) || { family: 'RAW', make: 'unknown camera' };
   const info: Record<string, string> = { 'RAW family': `${id.family} (${id.make})`, previews: previews.length ? previews.map((p) => `${p.width}×${p.height}`).join(', ') : 'none' };
   const warnings: string[] = [];
   // Developed here when there is no preview or previews are not preferred (DNG and the families src/raw/families.ts reads).
@@ -481,7 +497,7 @@ async function decodeRawPreview(u8: Uint8Array, name: string) {
       const { develop } = await import('../raw/develop'); const { readRaw } = await import('../raw/families');
       const d = develop(readRaw(u8, name), {});
       const r = fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the ${support.family} file's sensor data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); Develop RAW changes the settings`] }], info: { ...info, 'white balance': `${d.temp} K, tint ${d.tint}` }, warnings: [] }, 'dng develop');
-      return r;
+      return { ...r, rawOrientation: d.raw.orientation || 1, upright: true };
     } catch (e: any) { if (!previews.length) throw new Error(`${support.family}: ${e?.message || e}`); warnings.push(`Develop: ${e?.message || e}`); }
   }
   if (!previews.length) {
@@ -502,7 +518,7 @@ async function decodeRawPreview(u8: Uint8Array, name: string) {
     try {
       const { develop } = await import('../raw/develop'); const { readRaw } = await import('../raw/families');
       const d = develop(readRaw(u8, name), {});
-      return fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the ${support.family} file's sensor data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); its previews could not be decoded`] }], info, warnings }, 'dng develop');
+      return { ...fromOwn({ pages: [{ width: d.raster.width, height: d.raster.height, frames: [{ raster: d.raster, delay: 0 }], loops: 0, bitDepth: 24, hasAlpha: false, notes: [`developed from the ${support.family} file's sensor data (${d.raw.width}×${d.raw.height}, as shot ${d.temp} K); its previews could not be decoded`] }], info, warnings }, 'dng develop'), rawOrientation: d.raw.orientation || 1, upright: true };
     } catch (e: any) { warnings.push(`Develop: ${e?.message || e}`); }
   }
   throw new Error(warnings[0] || 'The embedded previews could not be decoded');

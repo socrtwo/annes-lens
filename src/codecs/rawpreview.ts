@@ -4,6 +4,8 @@
  * the optional RAW module (FORMATS-PLAN.md); this reader never pretends to decode it.
  */
 import { latin1 } from './limits';
+import { readIfd } from './tiff';
+import { readExif } from '../meta/exif';
 
 export interface RawId { family: string; make: string }
 
@@ -123,4 +125,44 @@ export async function tiffThumbnail(u8: Uint8Array): Promise<{ page: import('./r
   if (!rgb.length) return null;
   const best = rgb.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
   return { page: best, count: rgb.length };
+}
+
+/**
+ * The orientation the camera recorded for a RAW file (1–8; 1 when it says nothing). The embedded previews are stored
+ * as the sensor saw the scene, so a portrait shot needs this to stand upright. Where it is kept:
+ *  - IFD0's Orientation tag in the TIFF-based files, Olympus's and Panasonic's included (their headers carry another
+ *    magic number but the same directory);
+ *  - the TIFF inside a Minolta MRW's TTW block and inside a Canon CR3's CMT1 box;
+ *  - a Leaf back's ImgProf_rotation_angle (degrees clockwise, as LibRaw reads it: 90 is orientation 6);
+ *  - otherwise the embedded preview's own EXIF (Fujifilm RAF keeps it there).
+ */
+export function rawOrientation(u8: Uint8Array, previews: { offset: number; length: number }[] = []): number {
+  const ok = (o: number | undefined) => (o && o >= 1 && o <= 8 ? o : 0);
+  const fromTiff = (t: Uint8Array): number => {
+    if (t.length < 16 || !((t[0] === 0x49 && t[1] === 0x49) || (t[0] === 0x4d && t[1] === 0x4d))) return 0;
+    try { const le = t[0] === 0x49, dv = new DataView(t.buffer, t.byteOffset, t.byteLength); return ok(readIfd(t, dv.getUint32(4, le), le).tags.get(274)?.values[0]); } catch { return 0; }
+  };
+  let o = fromTiff(u8);
+  if (!o && u8[0] === 0 && u8[1] === 0x4d && u8[2] === 0x52 && u8[3] === 0x4d) { // MRW: blocks after the 8-byte header, up to the data offset
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), end = Math.min(u8.length, dv.getUint32(4, false) + 8);
+    for (let p = 8; p + 8 <= end;) { const len = dv.getUint32(p + 4, false); if (u8[p + 1] === 0x54 && u8[p + 2] === 0x54 && u8[p + 3] === 0x57) { o = fromTiff(u8.subarray(p + 8, p + 8 + len)); break; } p += 8 + len; }
+  }
+  if (!o && u8.length > 12 && latin1(u8, 4, 8) === 'ftyp' && latin1(u8, 8, 12) === 'crx ') { // CR3: the CMT1 box holds IFD0
+    const limit = Math.min(u8.length - 8, 1 << 20);
+    for (let p = 0; p < limit; p++) if (u8[p] === 0x43 && u8[p + 1] === 0x4d && u8[p + 2] === 0x54 && u8[p + 3] === 0x31) { const size = new DataView(u8.buffer, u8.byteOffset + p - 4, 4).getUint32(0, false); o = fromTiff(u8.subarray(p + 4, p - 4 + size)); break; }
+  }
+  if (!o) o = leafRotation(u8);
+  if (!o) for (const pv of previews) { const e = (() => { try { return readExif(u8.subarray(pv.offset, pv.offset + pv.length)); } catch { return null; } })(); if (ok(e?.orientation)) { o = e!.orientation; break; } }
+  return o || 1;
+}
+
+/** A Leaf back's rotation (its PKTS record ImgProf_rotation_angle, in degrees) as an orientation, 0 when there is none. */
+export function leafRotation(u8: Uint8Array): number {
+  const key = 'ImgProf_rotation_angle', limit = Math.min(u8.length - 60, 8 << 20);
+  for (let p = 0; p < limit; p++) {
+    if (u8[p] !== 0x50 || u8[p + 1] !== 0x4b || u8[p + 2] !== 0x54 || u8[p + 3] !== 0x53 || latin1(u8, p + 8, p + 8 + key.length) !== key) continue;
+    const len = new DataView(u8.buffer, u8.byteOffset + p + 48, 4).getUint32(0, false), deg = parseInt(latin1(u8, p + 52, p + 52 + Math.min(len, 16)), 10);
+    return ({ 90: 6, 180: 3, 270: 8 } as Record<number, number>)[((deg % 360) + 360) % 360] || 0;
+  }
+  return 0;
 }

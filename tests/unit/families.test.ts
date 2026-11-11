@@ -277,3 +277,29 @@ describe('RAW families: files', () => {
     expect(develop(pef, { wb: 'daylight' }).raster.width).toBe(W); // bytes go through readRaw too
   });
 });
+
+describe('RAW orientation from the file\'s own header', () => {
+  it('reads IFD0 in TIFF-based files, Olympus and Panasonic headers included, the MRW and CR3 containers, Leaf backs and the preview', async () => {
+    const { rawOrientation, leafRotation } = await import('../../src/codecs/rawpreview');
+    const ifd0 = (o: number, le = true, magic?: number[]) => tiff([[256, 4, [8]], [257, 4, [6]], [274, 3, [o]]], le, magic ? { magic } : {});
+    expect(rawOrientation(ifd0(6))).toBe(6); expect(rawOrientation(ifd0(8, false))).toBe(8);
+    expect(rawOrientation(ifd0(3, true, [0x52, 0x4f]))).toBe(3);         // Olympus: II RO
+    expect(rawOrientation(ifd0(6, true, [0x55, 0]))).toBe(6);            // Panasonic: II U
+    expect(rawOrientation(ifd0(9))).toBe(1); expect(rawOrientation(tiff([[256, 4, [8]]], true))).toBe(1);   // out of range, absent
+    // Minolta MRW: a TTW block holding a TIFF.
+    const t = ifd0(8, false), mrw = new Uint8Array(16 + t.length), dv = new DataView(mrw.buffer);
+    mrw.set([0, 0x4d, 0x52, 0x4d]); dv.setUint32(4, 8 + t.length); mrw.set([0, 0x54, 0x54, 0x57], 8); dv.setUint32(12, t.length); mrw.set(t, 16);
+    expect(rawOrientation(mrw)).toBe(8);
+    // Canon CR3: the CMT1 box holds IFD0.
+    const cmt = ifd0(6), box = new Uint8Array(8 + cmt.length); new DataView(box.buffer).setUint32(0, box.length); box.set([0x43, 0x4d, 0x54, 0x31], 4); box.set(cmt, 8);
+    const ftyp = Uint8Array.from([0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x63, 0x72, 0x78, 0x20, 0, 0, 0, 1]), cr3 = new Uint8Array(ftyp.length + 24 + box.length); cr3.set(ftyp); cr3.set(box, ftyp.length + 24);
+    expect(rawOrientation(cr3)).toBe(6);
+    // A Leaf back: PKTS ImgProf_rotation_angle (degrees, as LibRaw reads it).
+    const pkts = (deg: string) => { const b = new Uint8Array(52 + deg.length + 8), d = new DataView(b.buffer); b.set([0x50, 0x4b, 0x54, 0x53, 0, 0, 0, 1]); b.set([...'ImgProf_rotation_angle'].map((c) => c.charCodeAt(0)), 8); d.setUint32(48, deg.length); b.set([...deg].map((c) => c.charCodeAt(0)), 52); return b; };
+    expect([leafRotation(pkts('90')), leafRotation(pkts('180')), leafRotation(pkts('270')), leafRotation(pkts('0')), leafRotation(pkts('-90'))]).toEqual([6, 3, 8, 0, 8]);
+    // Otherwise the preview's own EXIF (Fujifilm RAF keeps it there).
+    const exif = tiff([[274, 3, [6]]], false), app1 = Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0, exif.length + 8, 0x45, 0x78, 0x69, 0x66, 0, 0, ...exif, 0xff, 0xd9]);
+    const raf = new Uint8Array(100 + app1.length); raf.set([...'FUJIFILMCCD-RAW '].map((c) => c.charCodeAt(0))); raf.set(app1, 100);
+    expect(rawOrientation(raf, [{ offset: 100, length: app1.length }])).toBe(6); expect(rawOrientation(raf, [])).toBe(1);
+  });
+});

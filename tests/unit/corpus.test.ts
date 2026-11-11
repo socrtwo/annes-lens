@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { identifyRaw, findEmbeddedJpegs, tiffThumbnail } from '../../src/codecs/rawpreview';
+import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, rawOrientation } from '../../src/codecs/rawpreview';
 import { isDng, readDng } from '../../src/raw/dng';
 import { readRaw, rawSupport } from '../../src/raw/families';
 import { decodeFits, isFits } from '../../src/codecs/fits';
@@ -16,7 +16,7 @@ interface Entry { name: string; format: string; bytes: number; camera?: string; 
 const manifest: { files: Entry[]; damaged: { name: string; from: string; damage: string }[] } | null = existsSync(MANIFEST) ? JSON.parse(readFileSync(MANIFEST, 'utf8')) : null;
 const fx = (n: string) => new Uint8Array(readFileSync(DIR + n));
 /** LibRaw's reading of each RAW sample (scripts/fetch-corpus.py --refs): sizes, levels, pattern and the visible sensor values. */
-interface Ref { bin?: string; width: number; height: number; rawWidth: number; rawHeight: number; left: number; top: number; black: number[]; white: number; pattern: number[][]; wb: number[]; skipped?: string }
+interface Ref { flip?: number; bin?: string; width: number; height: number; rawWidth: number; rawHeight: number; left: number; top: number; black: number[]; white: number; pattern: number[][]; wb: number[]; skipped?: string }
 const refs: Record<string, Ref> = existsSync(DIR + 'refs.json') ? JSON.parse(readFileSync(DIR + 'refs.json', 'utf8')) : {};
 /** Families the reader refuses on purpose (their coding is not implemented); everything else must read and match LibRaw. */
 const REFUSED = new Set(['CR3', 'CRW', 'X3F', 'IIQ', '3FR', 'FFF', 'SRF', 'KDC']);
@@ -31,6 +31,8 @@ describe.skipIf(!manifest)('the downloadable corpus (tests/corpus)', () => {
       if (f.format === 'raw') {
         const id = identifyRaw(u8, f.name);
         expect(id, 'identified as a RAW family').toBeTruthy();
+        // The camera's orientation, as LibRaw reads it (its flip 0, 3, 5, 6 are orientations 1, 3, 8, 6).
+        const lr = refs[f.name]; if (lr && typeof lr.flip === 'number') expect(rawOrientation(u8, findEmbeddedJpegs(u8)), 'orientation as LibRaw reads it').toBe(({ 0: 1, 3: 3, 5: 8, 6: 6 } as Record<number, number>)[lr.flip]);
         expect(sniff(u8, f.name)?.id).toBe('raw');
         if (isDng(u8)) { const r = readDng(u8); expect(r.width).toBeGreaterThan(0); expect(r.height).toBeGreaterThan(0); }
         else {

@@ -195,3 +195,24 @@ describe('history and preferences', () => {
     expect((sanitizePrefs({ ai: {} }) as any).ai).toEqual(defaultAiPrefs());
   });
 });
+
+describe('which AI service addresses count as local', () => {
+  it('judges the whole host name, not how it begins', async () => {
+    const { isLocalAddress } = await import('../../src/ai/index');
+    for (const u of ['http://localhost:11434/v1', 'http://127.0.0.1:8080', 'http://127.5.5.5/', 'http://10.0.0.7/', 'http://192.168.1.20:5000', 'http://172.16.0.1', 'http://172.31.255.1', 'http://169.254.10.1', 'http://[::1]:8080', 'http://[fd12:3456::1]/', 'http://[fe80::1]/', 'http://[::ffff:192.168.0.2]/', 'http://ollama.localhost/'])
+      expect(isLocalAddress(u), u).toBe(true);
+    for (const u of ['http://localhost.example.com/', 'https://10.example.org/', 'http://192.168.example.net/', 'http://172.32.0.1/', 'http://172.15.0.1/', 'https://api.openai.com/v1', 'http://8.8.8.8/', 'http://[2001:db8::1]/', 'http://[::ffff:8.8.8.8]/', 'http://999.0.0.1/', 'not a url', 'http://127.0.0.1.nip.io/'])
+      expect(isLocalAddress(u), u).toBe(false);
+  });
+});
+
+describe('CSV cells a spreadsheet would run', () => {
+  it('get an apostrophe on the way out and lose it on the way back; numbers stay numbers', async () => {
+    const { csvCell, parseCsv } = await import('../../src/commands/meta');
+    expect(csvCell('=HYPERLINK("http://x","click")')).toBe(`"'=HYPERLINK(""http://x"",""click"")"`);
+    expect([csvCell('+1 555'), csvCell('@SUM(A1)'), csvCell('-cmd|calc'), csvCell('\tx')]).toEqual(["'+1 555", "'@SUM(A1)", "'-cmd|calc", "'\tx"]);
+    expect([csvCell('-0.125000'), csvCell('+3'), csvCell('-1e-5'), csvCell('Bath'), csvCell('a,b')]).toEqual(['-0.125000', '+3', '-1e-5', 'Bath', '"a,b"']);
+    const back = parseCsv(['File,Caption,Longitude', ['x.jpg', '=1+1', '-0.125'].map(csvCell).join(','), ['y.jpg', '@me', 'Bath'].map(csvCell).join(',')].join('\r\n'));
+    expect(back).toEqual([['File', 'Caption', 'Longitude'], ['x.jpg', '=1+1', '-0.125'], ['y.jpg', '@me', 'Bath']]);
+  });
+});

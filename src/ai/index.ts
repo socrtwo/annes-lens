@@ -30,7 +30,29 @@ export const textService = (app: App): AiService | null => serviceById(app, app.
 export const imageService = (app: App): AiService | null => { const s = serviceById(app, app.prefs.ai.imageService); return hasImages(s) ? s : null; };
 export const hasText = (app: App): boolean => !!textService(app)?.textModel;
 export const hasImage = (app: App): boolean => !!imageService(app);
-const remoteUrl = (s: AiService) => !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(s.baseUrl);
+/**
+ * Whether a service's address is on this computer or the local network (no confirmation to send there), judged from
+ * the host name as a whole: localhost, or an IP address in the loopback, private or link-local ranges. A name that only
+ * begins like one (localhost.example.com, 10.example.org) is a remote host.
+ */
+export function isLocalAddress(url: string): boolean {
+  let host: string; try { host = new URL(url).hostname.toLowerCase(); } catch { return false; }
+  if (host === 'localhost' || host.endsWith('.localhost')) return true; // RFC 6761: always the loopback
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [+v4[1], +v4[2]]; if ([a, b, +v4[3], +v4[4]].some((n) => n > 255)) return false;
+    return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 0 && b === 0 && +v4[3] === 0 && +v4[4] === 0);
+  }
+  if (host.startsWith('[') && host.endsWith(']')) {
+    const h = host.slice(1, -1);
+    if (h === '::1' || h === '::') return true;
+    // An IPv4 address in IPv6 form (the URL parser writes ::ffff:192.168.0.2 as ::ffff:c0a8:2).
+    const mapped = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/); if (mapped) { const hi = parseInt(mapped[1], 16), lo = parseInt(mapped[2], 16); return isLocalAddress(`http://${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}/`); }
+    return /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h); // unique local fc00::/7, link-local fe80::/10
+  }
+  return false;
+}
+const remoteUrl = (s: AiService) => !isLocalAddress(s.baseUrl);
 
 /** Why a command cannot run now (shown by the command), or null. */
 export function needText(app: App): string | null { return hasText(app) ? null : 'Choose a text and vision service first (AI ▸ Set Up AI).'; }
@@ -156,18 +178,20 @@ export async function openResult(app: App, r: Raster, p: Provenance, opts: { nam
 
 // Sending ----------------------------------------------------------------------------------------
 
-let confirmedThisSession = false;
+/** Services (by address) the user agreed to send to in this session: agreeing for one does not cover another. */
+const confirmedThisSession = new Set<string>();
+const serviceKey = (s: AiService) => { try { return new URL(s.baseUrl).origin + new URL(s.baseUrl).pathname; } catch { return s.baseUrl; } };
 async function confirmSend(app: App, s: AiService, what: string): Promise<boolean> {
   if (!remoteUrl(s)) return true;
   if (!app.prefs.ai.privacy.allowRemote) { toast('Sending pictures to services on the internet is off (AI ▸ AI and Privacy).'); return false; }
-  if (!app.prefs.ai.privacy.confirmSend || confirmedThisSession) return true;
+  if (!app.prefs.ai.privacy.confirmSend || confirmedThisSession.has(serviceKey(s))) return true;
   const r = await openDialog({ title: 'Send to an AI service?', ok: 'Send', fields: [
     { key: 'i', type: 'info', html: `<p>${esc(what)} will be sent to <b>${esc(s.name)}</b> (${esc(s.baseUrl)}). Pictures go as metadata-free copies no larger than ${app.prefs.ai.privacy.maxEdge} px on their long side.</p><p>Nothing is sent before you choose Send.</p>` },
     { key: 'again', label: 'Do not ask again', type: 'checkbox', value: false },
   ] });
   if (!r) return false;
   if (r.again) { app.prefs.ai.privacy.confirmSend = false; app.savePrefs(); }
-  confirmedThisSession = true;
+  confirmedThisSession.add(serviceKey(s));
   return true;
 }
 const sizeOf = (b: Blob[]) => `${Math.round(b.reduce((n, x) => n + x.size, 0) / 1024)} KB`;

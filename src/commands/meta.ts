@@ -537,7 +537,15 @@ function sizeOf(u8: Uint8Array, format: string): [number, number] | null {
   } catch { /* ignore */ }
   return null;
 }
-export const csvCell = (s: string): string => (/[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+/**
+ * One CSV field. A value a spreadsheet would run as a formula (one starting with = + - @, a tab or a carriage return,
+ * as a file name or caption from someone else can) gets an apostrophe in front, which spreadsheets show as text;
+ * numbers such as a western longitude are left as they are. parseCsv takes the apostrophe off again.
+ */
+export const csvCell = (s: string): string => {
+  const v = /^[=+\-@\t\r]/.test(s) && !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s) ? `'${s}` : s;
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+};
 /** RFC 4180 parsing with quoted fields and embedded newlines; the separator is , or ; or a tab (sniffed from the header). */
 export function parseCsv(text: string): string[][] {
   const t = text.replace(/^﻿/, '');
@@ -550,5 +558,6 @@ export function parseCsv(text: string): string[][] {
     if (c === '"') q = true; else if (c === sep) { row.push(cell); cell = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some((x) => x !== '')) rows.push(row); row = []; } else cell += c;
   }
   row.push(cell); if (row.some((x) => x !== '')) rows.push(row);
-  return rows;
+  // The apostrophe csvCell puts before a formula-like value is not part of the value.
+  return rows.map((r) => r.map((c) => (/^'[=+\-@\t\r]/.test(c) ? c.slice(1) : c)));
 }

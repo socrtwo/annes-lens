@@ -14,6 +14,7 @@ import { jpegInfo, pngInfo, webpInfo } from '../codecs/info';
 import { readExif } from '../meta/exif';
 import { fmtSize } from '../ui/shell';
 import type { Raster } from '../codecs/raster';
+import { csvCell } from './meta';
 
 const rasterOf = (c: HTMLCanvasElement): Raster => { const id = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height); return { width: c.width, height: c.height, data: id.data as Uint8ClampedArray<ArrayBuffer> }; };
 const base = (name: string) => name.replace(/\.[^.]+$/, '') || 'picture';
@@ -57,7 +58,7 @@ def([
           rows.push([e.name, String(u8.length), e.mtime ? new Date(e.mtime).toISOString() : '', fmt?.label || '', w ? String(w) : '', hgt ? String(hgt) : '', x?.dateTaken || '', x?.make || '', x?.model || '', x?.lens || '', x?.exposure || '', x?.gps ? x.gps.lat.toFixed(6) : '', x?.gps ? x.gps.lon.toFixed(6) : '', x?.software || '', x?.description || '', x?.copyright || '']);
         } catch { rows.push([e.name, '', '', 'unreadable']); }
       }
-      const csv = rows.map((r) => r.map((v) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(',')).join('\r\n') + '\r\n';
+      const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'; // csvCell also keeps a spreadsheet from running a value as a formula
       const saved = await saveAs(new Blob(['﻿' + csv], { type: 'text/csv' }), `${app.tab.folder.name || 'pictures'}-metadata.csv`);
       if (saved) toast(`${rows.length - 1} rows saved to ${saved.name}`);
     },

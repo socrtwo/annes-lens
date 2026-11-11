@@ -1188,6 +1188,7 @@ try {
     const opened = [qn.picture.name, qn.picture.format.id, qn.picture.width, qn.picture.height, window.__qnGetCommand('raw.develop').isEnabled(qn)];
     await qn.exec('view.next'); await wait(500);
     const name2 = qn.picture.name, size2 = [qn.picture.width, qn.picture.height];
+    const upright2 = [qn.picture.orientation, qn.picture.orientationApplied];
     const mean = () => { const d = qn.picture.frameCanvas().getContext('2d').getImageData(0, 0, qn.picture.width, qn.picture.height).data; const m = [0, 0, 0]; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) m[c] += d[i + c]; return m.map((v) => v / (d.length / 4)); };
     const before = mean();
     const run = qn.exec('raw.develop');
@@ -1201,10 +1202,31 @@ try {
     dlg.querySelector('.ql-primary').click();
     const res = await run; await wait(300);
     const after = mean();
-    return { opened, name2, size2, note1, note2, res: { ...res, multipliers: undefined }, undo: qn.tab.undoLabel, bluer: (after[2] - after[0]) - (before[2] - before[0]) };
+    return { opened, name2, size2, upright2, note1, note2, res: { ...res, multipliers: undefined }, undo: qn.tab.undoLabel, bluer: (after[2] - after[0]) - (before[2] - before[0]) };
   }, dngBytes);
-  check('develop RAW: DNGs without a preview develop on open; the tiled one turned upright', [rw.opened, rw.name2, rw.size2], [['plain.dng', 'raw', 192, 128, true], 'tiles.dng', [128, 192]], JSON.stringify(rw));
+  check('develop RAW: DNGs without a preview develop on open; the tiled one turned upright and marked so', [rw.opened, rw.name2, rw.size2, rw.upright2], [['plain.dng', 'raw', 192, 128, true], 'tiles.dng', [128, 192], [6, true]], JSON.stringify(rw));
   check('develop RAW: the dialog previews the settings; a warm light makes it bluer, one Undo step', [/6[45]\d\d K/.test(rw.note1), /3[12]\d\d K/.test(rw.note2), rw.res.width, rw.res.height, rw.undo, rw.bluer > 20], [true, true, 128, 192, 'Develop RAW', true], JSON.stringify(rw));
+
+  // RAW orientation: a portrait shot's embedded preview is stored as the sensor saw it and is turned upright by the RAW
+  // header's Orientation; a developed picture is upright already and is marked so (Auto-Rotate does not turn it again).
+  const ro = await p.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const cv = document.createElement('canvas'); cv.width = 60; cv.height = 40; const x = cv.getContext('2d'); x.fillStyle = '#c00'; x.fillRect(0, 0, 30, 40); x.fillStyle = '#00c'; x.fillRect(30, 0, 30, 40);
+    const jpg = new Uint8Array(await (await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.95))).arrayBuffer());
+    const le16 = (v) => [v & 255, v >> 8], le32 = (v) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+    const make = [...'NIKON CORPORATION\0'].map((c) => c.charCodeAt(0));
+    const tags = [[256, 3, 1, 60], [257, 3, 1, 40], [271, 2, make.length, 0], [273, 4, 1, 0], [274, 3, 1, 6], [279, 4, 1, jpg.length]];
+    const ifdAt = 8, makeAt = ifdAt + 2 + tags.length * 12 + 4, jpgAt = makeAt + make.length + (make.length & 1);
+    const head = [0x49, 0x49, 42, 0, ...le32(ifdAt), ...le16(tags.length), ...tags.flatMap(([t, ty, n, v]) => [...le16(t), ...le16(ty), ...le32(n), ...(ty === 3 && n === 1 ? [...le16(v), 0, 0] : le32(t === 271 ? makeAt : t === 273 ? jpgAt : v))]), ...le32(0), ...make, ...(make.length & 1 ? [0] : [])];
+    const file = new Uint8Array(head.length + jpg.length); file.set(head); file.set(jpg, head.length);
+    await qn.exec('file.openDropped', [new File([file], 'portrait.nef')]);
+    for (let i = 0; i < 60 && qn.picture?.name !== 'portrait.nef'; i++) await wait(50); await wait(200);
+    const pic = qn.picture, d = pic.frameCanvas().getContext('2d').getImageData(0, 0, pic.width, pic.height).data;
+    const at = (xx, yy) => [...d.subarray((yy * pic.width + xx) * 4, (yy * pic.width + xx) * 4 + 3)];
+    const preview = { size: [pic.width, pic.height], applied: pic.orientationApplied, orientation: pic.orientation, top: at(20, 5)[0] > 150, bottom: at(20, 55)[2] > 150 };
+    return { preview };
+  });
+  check('RAW orientation: a portrait preview is turned upright by the RAW header (red on top after a quarter turn clockwise)', ro.preview, { size: [40, 60], applied: true, orientation: 6, top: true, bottom: true }, JSON.stringify(ro));
 
   // Tools: a QR code opened as a picture through its dialog, an encrypted package round trip, carving pictures out of junk, and Document Cleanup through its dialog.
   const tl = await p.evaluate(async () => {

@@ -27,6 +27,7 @@ import { readIfd, type IfdEntry } from '../codecs/tiff';
 import { readDng, isDng, type DngRaw } from './dng';
 import { decodeLjpeg } from './ljpeg';
 import { checkSensor } from './limits';
+import { leafRotation } from '../codecs/rawpreview';
 import { latin1 } from '../codecs/limits';
 
 type Tags = Map<number, IfdEntry>;
@@ -384,7 +385,8 @@ const cfaOf = (pattern: number[] | undefined): number[] | null => pattern && pat
  */
 function readTiffFamily(u8: Uint8Array, family: string, probe = false): DngRaw | null {
   const le = u8[0] === 0x49, { ifds, exif } = allIfds(u8, le), ifd0 = ifds[0];
-  const make = text(ifd0, 271), model = text(ifd0, 272), o0 = n1(ifd0, 274, 1), orientation = o0 >= 1 && o0 <= 8 ? o0 : 1;
+  const make = text(ifd0, 271), model = text(ifd0, 272), o0 = n1(ifd0, 274, 1);
+  let orientation = o0 >= 1 && o0 <= 8 ? o0 : 1;
   const r = sensorIfd(ifds, family); if (!r) throw new Error(`${family}: no sensor image found in the file`);
   const comp = n1(r, 259, 1), mk = makerNote(u8, le, exif);
   let bps = n1(r, 258, 16), width = n1(r, 256), height = n1(r, 257);
@@ -414,7 +416,7 @@ function readTiffFamily(u8: Uint8Array, family: string, probe = false): DngRaw |
     }
   }
   if (family === 'ARW' || family === 'SR2') { const s = sonyPrivate(u8, le, ifd0); if (s.wb) wb = s.wb; if (s.black) black = s.black; if (s.white) white = s.white; }
-  if (family === 'MOS') { const m = leafMeta(u8); if (m.cfa) cfa = m.cfa; if (m.wb) wb = m.wb; }
+  if (family === 'MOS') { const m = leafMeta(u8); if (m.cfa) cfa = m.cfa; if (m.wb) wb = m.wb; const rot = leafRotation(u8); if (rot && orientation === 1) orientation = rot; }
   // Pieces of data: strips or tiles, concatenated (the sensor is one image; strip boundaries fall on row boundaries).
   const tw = n1(r, 322), tl = n1(r, 323), offs = (tw ? v(r, 324) : v(r, 273)) || [], lens = (tw ? v(r, 325) : v(r, 279)) || [];
   if (!offs.length) throw new Error(`${family}: the sensor image has no data offsets`);
