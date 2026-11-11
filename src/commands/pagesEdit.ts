@@ -145,10 +145,12 @@ def([
     run: async (app) => { const pic = app.picture!; const previews = findEmbeddedJpegs(pic.bytes); if (!previews.length) { toast('No embedded JPEG preview in this file.'); return; } const pv = previews.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a)); const bytes = pic.bytes.slice(pv.offset, pv.offset + pv.length); const saved = await saveAs(new Blob([bytes as BlobPart], { type: 'image/jpeg' }), `${base(pic.name)}.jpg`); if (saved) toast(`Saved ${saved.name} (${pv.width}×${pv.height}, ${fmtSize(bytes.length)})`); },
   },
   {
-    id: 'raw.develop', icon: 'tune', noRecord: true, isEnabled: (app) => isRaw(app) && rawSupport(app.picture!.bytes, app.picture!.name).ok, tip: 'Develops a RAW file\'s sensor data (DNG and the other families the reader knows): white balance, exposure, highlights, demosaic quality and output color space (other RAW families need the RAW module)',
+    id: 'raw.develop', icon: 'tune', noRecord: true, isEnabled: isRaw, tip: 'Develops a RAW file\'s sensor data (DNG and the camera files the reader knows): white balance, exposure, highlights, demosaic quality and output color space. For a file it cannot read it says why (a maker\'s compressed coding, for instance)',
     run: async (app, arg?: DevelopOptions) => {
       const pic = app.picture!;
       const { develop, neutralToTemp } = await import('../raw/develop'), { readRaw } = await import('../raw/families');
+      // Offered for every RAW file, so that one it cannot read gets its reason rather than a greyed-out command.
+      const can = rawSupport(pic.bytes, pic.name); if (!can.ok) { toast(`Develop RAW: ${can.why || 'this file is not one the reader knows'}.`, { ms: 6000 }); return; }
       let raw; try { raw = readRaw(pic.bytes, pic.name); } catch (e) { toast(`Develop RAW: ${(e as Error).message}.`, { ms: 5000 }); return; }
       let o: DevelopOptions = arg || lastDevelop;
       if (!arg) {

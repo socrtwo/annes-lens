@@ -3,13 +3,18 @@
  * Develop RAW works on them: the sensor data at its full size, the Bayer pattern, black and white
  * levels, the as-shot white balance where the file carries one, the maker's crop and the orientation.
  *
- * Readers (each verified against LibRaw's reading of a real file in the test corpus):
+ * Readers. A maker's name here does not mean every file of that maker: each coding below was checked against LibRaw's
+ * reading of one real file (named), and a layout that was not checked is refused rather than guessed at.
  *   TIFF-based files (NEF, NRW, PEF, ERF, ORF, SR2, ARW, SRW, CR2, MOS, DCR): the sensor IFD, with
- *     uncompressed 8/12/14/16-bit data (packed either way, Epson's padded rows, strips or tiles),
- *     lossless JPEG (CR2 with Canon's slices; Leaf's 16-bit tiles), Sony's ARW2 curve coding,
- *     Nikon's Huffman coding (lossy type 1 and lossless, 12 and 14 bits) and small-size YCbCr NEFs,
- *     Kodak's 65000 coding; white balance from the Nikon, Pentax, Olympus, Epson, Canon, Sony
- *     (decrypted SR2 block) and Leaf maker data.
+ *     - 16-bit words (Olympus E-10, Sony DSC-R1, Samsung EX1, Nikon Coolpix P330);
+ *     - 12-bit samples packed most significant bit first in big-endian NEF and PEF files (Nikon D1H, Pentax *ist DL)
+ *       and Epson's padded rows (R-D1); other packed layouts (Samsung's, Olympus's, Nikon's little-endian) are refused;
+ *     - lossless JPEG (CR2 with Canon's slices: EOS 350D, PowerShot S2 IS; Leaf's 16-bit tiles: Aptus 22);
+ *     - Sony's ARW2 curve coding (ILCE-7S), Nikon's Huffman coding (D2H) and small-size YCbCr NEFs (D4S), Kodak's
+ *       65000 coding (DCS760C);
+ *     white balance from the Nikon, Pentax, Olympus, Epson, Canon, Sony (decrypted SR2 block) and Leaf maker data.
+ *     Not read, and said so before Develop RAW is offered: Pentax's compressed PEF (K10D and later), Olympus's
+ *     compressed ORF (nearly every camera after the E-10 and E-20), Samsung's compressed SRW, Canon's sRAW and mRAW.
  *   MRW (Minolta): PRD/WBG/TTW blocks, packed or unpacked data.
  *   RAF (Fujifilm, Bayer sensors): the CFA header and the CFA TIFF; X-Trans is refused.
  *   RW2/RWL (Panasonic, Leica): the version-4 bit-packed coding of 12-bit files.
@@ -21,6 +26,7 @@
 import { readIfd, type IfdEntry } from '../codecs/tiff';
 import { readDng, isDng, type DngRaw } from './dng';
 import { decodeLjpeg } from './ljpeg';
+import { checkSensor } from './limits';
 
 type Tags = Map<number, IfdEntry>;
 
@@ -370,7 +376,12 @@ function sensorIfd(ifds: Tags[], family: string): Tags | null {
 const CFA_CODES: Record<number, number[]> = { 1: [0, 1, 1, 2], 2: [1, 0, 2, 1], 3: [1, 2, 0, 1], 4: [2, 1, 1, 0] };
 const cfaOf = (pattern: number[] | undefined): number[] | null => pattern && pattern.length >= 4 && pattern.slice(0, 4).every((c) => c <= 2) && new Set(pattern.slice(0, 4)).size === 3 ? pattern.slice(0, 4) : null;
 
-function readTiffFamily(u8: Uint8Array, family: string): DngRaw {
+/**
+ * Reads a TIFF-based family. With `probe`, stops once the headers have said which coding the data is in and that it
+ * is one this reader handles (throwing the reason when it is not), without touching the sensor data: rawSupport uses
+ * that, so that what it reports and what a read then does cannot differ.
+ */
+function readTiffFamily(u8: Uint8Array, family: string, probe = false): DngRaw | null {
   const le = u8[0] === 0x49, { ifds, exif } = allIfds(u8, le), ifd0 = ifds[0];
   const make = text(ifd0, 271), model = text(ifd0, 272), o0 = n1(ifd0, 274, 1), orientation = o0 >= 1 && o0 <= 8 ? o0 : 1;
   const r = sensorIfd(ifds, family); if (!r) throw new Error(`${family}: no sensor image found in the file`);
@@ -407,18 +418,47 @@ function readTiffFamily(u8: Uint8Array, family: string): DngRaw {
   const tw = n1(r, 322), tl = n1(r, 323), offs = (tw ? v(r, 324) : v(r, 273)) || [], lens = (tw ? v(r, 325) : v(r, 279)) || [];
   if (!offs.length) throw new Error(`${family}: the sensor image has no data offsets`);
   let total = 0; for (let k = 0; k < offs.length; k++) total += Math.min(lens[k] || 0, Math.max(0, u8.length - offs[k]));
+  if (tw && (tw !== width || tl < height) && comp !== 99 && comp !== 7) throw new Error(`${family}: tiled sensor data (${tw}×${tl}) is not handled`);
+  const fileLe = le;
+  // Which coding the data is in, from the headers alone. Every size is checked against the data present before anything is allocated.
+  type Coding = 'cr2' | 'ljpeg' | 'nikon' | 'nikonYuv' | 'arw2' | 'kodak' | 'bytes' | 'words' | 'epson' | 'packedBe';
+  let coding: Coding;
+  const count = family === 'CR2' ? 0 : checkSensor(family, width, height); // a CR2's size comes from its lossless JPEG frame
+  const rowBytes = total / height, plain = Math.ceil((width * bps) / 8);
+  if (family === 'CR2') {
+    if (ljpegSubsampled(u8.subarray(offs[0], offs[0] + Math.min(lens[0] || 0, 65536)))) throw new Error('CR2: sRAW and mRAW files (subsampled YCbCr) are not supported');
+    coding = 'cr2';
+  } else if (comp === 7 || comp === 99 || comp === 6) { checkSensor(family, width, height, 1, total, 1); coding = 'ljpeg'; }
+  else if (comp === 34713 && total < count * 1.5 && total !== count && nikonMeta) { checkSensor(family, width, height, 1, total, 1); coding = 'nikon'; }
+  else if (comp === 34713 && total === count * 3) { checkSensor(family, width, height, 3); coding = 'nikonYuv'; }
+  else if (comp === 32767 && total === count) coding = 'arw2';
+  else if (comp === 65000) { checkSensor(family, width, height, 1, total, 1); coding = 'kodak'; }
+  else if ([1, 32769, 32770, 32773, 34713, 32767].includes(comp)) {
+    if (bps === 8 && total >= count) coding = 'bytes';
+    else if (total >= count * 2) coding = 'words';
+    // Packed samples: only the layouts checked against a real file. The same header fields describe other makers' packings
+    // (Samsung's, Olympus's, Nikon's little-endian one), which differ and would decode to noise without any error.
+    else if (family === 'ERF' && bps === 12 && comp === 32769 && rowBytes >= plain * 16 / 15 - 1 && Number.isInteger(rowBytes)) coding = 'epson';
+    else if (!fileLe && (family === 'NEF' || family === 'PEF') && bps === 12 && Math.abs(rowBytes - plain) < 1 && total >= plain * height) coding = 'packedBe';
+    else if (family === 'ORF') throw new Error('ORF: this file uses Olympus\'s packed or compressed coding, which is not decoded; only the uncompressed 16-bit files of the early cameras (E-10, E-20) are');
+    else if (family === 'SRW') throw new Error('SRW: this file uses one of Samsung\'s packed or compressed codings, which are not decoded; only uncompressed 16-bit files are');
+    else if (bps > 8 && bps < 16 && total >= Math.floor((width * bps) / 8) * height) throw new Error(`${family}: this packed ${bps}-bit layout has not been checked against a sample file, so it is not read`);
+    else throw new Error(`${family}: ${bps}-bit data of ${total} bytes for ${width}×${height} is not a layout this reader knows`);
+  } else if (family === 'PEF' && comp === 65535) throw new Error('PEF: this file uses Pentax\'s compressed coding (K10D and later cameras), which is not decoded; only the uncompressed files of earlier cameras are');
+  else throw new Error(`${family}: compression ${comp} is not handled`);
+  if (probe) return null;
   let src: Uint8Array;
   if (offs.length === 1) src = u8.subarray(offs[0], offs[0] + total);
   else { src = new Uint8Array(total); let p = 0; for (let k = 0; k < offs.length; k++) { const n = Math.min(lens[k] || 0, Math.max(0, u8.length - offs[k])); src.set(u8.subarray(offs[k], offs[k] + n), p); p += n; } }
-  if (tw && (tw !== width || tl < height) && comp !== 99 && comp !== 7) throw new Error(`${family}: tiled sensor data (${tw}×${tl}) is not handled`);
   let data: Uint16Array;
-  const fileLe = le;
-  if (family === 'CR2') {
+  if (coding === 'cr2') {
     let f; try { f = decodeLjpeg(src); } catch (e: any) { throw new Error(/Subsampled/.test(e?.message) ? 'CR2: sRAW and mRAW files (subsampled YCbCr) are not supported' : `CR2: ${e?.message || e}`); }
     const slices = v(r, 0xc640);
     const jwide = f.width * f.comps;
     if (slices && slices.length >= 3 && slices[0]) {
-      width = slices[0] * slices[1] + slices[2]; height = f.height;
+      // The slices cut the frame's samples into columns: together they are exactly as wide as the frame.
+      if (slices[0] * slices[1] + slices[2] !== jwide) throw new Error('CR2: the slice table does not match the lossless JPEG frame');
+      width = jwide; height = f.height;
       data = new Uint16Array(width * height);
       const perSlice = slices[1] * height;
       for (let jidx = 0, n = jwide * f.height; jidx < n; jidx++) {
@@ -430,38 +470,41 @@ function readTiffFamily(u8: Uint8Array, family: string): DngRaw {
     bps = f.precision; if (!cfa) cfa = [0, 1, 1, 2];
     // Canon's black level: the median of the masked columns left of the active area, per Bayer position.
     if (crop && crop.x >= 8 && black.length === 1 && !black[0]) black = maskedBlack(data, width, height, 2, crop.x - 2, cfa);
-  } else if (comp === 7 || comp === 99 || comp === 6) {
+  } else if (coding === 'ljpeg') {
     if (tw && offs.length > 1) { // tiles of lossless JPEG
       data = new Uint16Array(width * height); const across = Math.ceil(width / tw);
       for (let k = 0; k < offs.length; k++) { const f = decodeLjpeg(u8.subarray(offs[k], offs[k] + lens[k])); const x0 = (k % across) * tw, y0 = Math.floor(k / across) * tl; const fw = f.width * f.comps; for (let y = 0; y < f.height && y0 + y < height; y++) for (let x = 0; x < fw && x0 + x < width; x++) data[(y0 + y) * width + x0 + x] = f.data[y * fw + x]; }
     } else { const f = decodeLjpeg(src); const fw = f.width * f.comps; data = fw === width && f.height >= height ? f.data.subarray(0, width * height) : rebox(f.data, fw, f.height, width, height); bps = f.precision; }
-  } else if (comp === 34713 && total < width * height * 1.5 && total !== width * height && nikonMeta) {
-    data = decodeNikon(src, width, height, bps, nikonMeta);
-  } else if (comp === 34713 && total === width * height * 3) {
+  } else if (coding === 'nikon') {
+    data = decodeNikon(src, width, height, bps, nikonMeta!);
+  } else if (coding === 'nikonYuv') {
     data = decodeNikonYuv(src, width, height, wb); samples = 3; cfa = null; bps = 12; black = [0];
-  } else if (comp === 32767 && total === width * height) {
+  } else if (coding === 'arw2') {
     data = decodeArw2(src, width, height, v(r, 0x7010)); bps = 14;
-  } else if (comp === 65000) {
+  } else if (coding === 'kodak') {
     data = decodeKodak65000(src, width, height); bps = 12;
-  } else if ([1, 32769, 32770, 32773, 34713, 32767].includes(comp)) {
-    const rowBytes = total / height;
-    if (bps === 8 && total >= width * height) data = Uint16Array.from(src.subarray(0, width * height));
-    else if (total >= width * height * 2) {
-      const be = family === 'SRW' ? false : !fileLe || comp === 34713 || family === 'SR2'; // Nikon and Sony's SR2 write these big-endian whatever the file says; Samsung the other way
-      data = unpack16(src, width * height, !be); const sh = bps < 16 ? commonShift(data, 16 - bps) : commonShift(data, 6); if (sh) { for (let i = 0; i < data.length; i++) data[i] >>= sh; if (bps === 16) bps = 16 - sh; }
-    } else if (bps > 8 && bps < 16 && total >= Math.floor((width * bps) / 8) * height) {
-      const plain = Math.ceil((width * bps) / 8);
-      if (rowBytes >= plain * 16 / 15 - 1 && bps === 12 && comp === 32769) { // Epson: a pad byte after every 10 pixels
-        data = new Uint16Array(width * height); const rb = Math.round(rowBytes);
-        for (let y = 0; y < height; y++) data.set(unpackBe(src.subarray(y * rb, (y + 1) * rb), width, 12, 10), y * width);
-      } else if (fileLe && (comp === 34713 || family === 'NEF' || family === 'NRW')) data = unpackLe(src, width * height, bps);
-      else if (Math.abs(rowBytes - plain) < 1) data = unpackBe(src, width * height, bps);
-      else { data = new Uint16Array(width * height); const rb = Math.round(rowBytes); for (let y = 0; y < height; y++) data.set(unpackBe(src.subarray(y * rb, (y + 1) * rb), width, bps), y * width); }
-    } else throw new Error(`${family}: ${bps}-bit data of ${total} bytes for ${width}×${height} is not a layout this reader knows`);
-  } else throw new Error(`${family}: compression ${comp} is not handled`);
+  } else if (coding === 'bytes') {
+    data = Uint16Array.from(src.subarray(0, width * height));
+  } else if (coding === 'words') {
+    const be = family === 'SRW' ? false : !fileLe || comp === 34713 || family === 'SR2'; // Nikon and Sony's SR2 write these big-endian whatever the file says; Samsung the other way
+    data = unpack16(src, width * height, !be); const sh = bps < 16 ? commonShift(data, 16 - bps) : commonShift(data, 6); if (sh) { for (let i = 0; i < data.length; i++) data[i] >>= sh; if (bps === 16) bps = 16 - sh; }
+  } else if (coding === 'epson') { // a pad byte after every 10 pixels
+    data = new Uint16Array(width * height);
+    for (let y = 0; y < height; y++) data.set(unpackBe(src.subarray(y * rowBytes, (y + 1) * rowBytes), width, 12, 10), y * width);
+  } else data = unpackBe(src, width * height, bps); // packedBe
   if (!white) white = family === 'MOS' ? (bps === 15 ? 0x1fff : 0x3fff) : (1 << bps) - 1; // Leaf backs fill 14 bits of their 16-bit words
   if (!cfa && samples === 1) cfa = [0, 1, 1, 2];
   return record({ width, height, data, samples, cfa, black, white, wb, crop, orientation, make: make || family, model });
+}
+/** Whether a lossless JPEG's frame header declares subsampled components (Canon's sRAW and mRAW), from the header alone. */
+function ljpegSubsampled(u8: Uint8Array): boolean {
+  for (let p = 2; p + 4 <= u8.length && u8[p] === 0xff;) {
+    const m = u8[p + 1], len = (u8[p + 2] << 8) | u8[p + 3];
+    if (m === 0xc3) { const n = u8[p + 9]; if (n > 1) for (let i = 0; i < n; i++) if (u8[p + 11 + i * 3] !== 0x11) return true; return false; }
+    if (m === 0xda || len < 2) break;
+    p += 2 + len;
+  }
+  return false;
 }
 /** The black level from a masked column band [x0, x1): the median per Bayer position, returned per color (R, G, B, G2). */
 function maskedBlack(data: Uint16Array, width: number, height: number, x0: number, x1: number, cfa: number[]): number[] {
@@ -494,7 +537,7 @@ function leafMeta(u8: Uint8Array): { cfa: number[] | null; wb: number[] | null }
 }
 
 // Minolta MRW -----------------------------------------------------------------------------------------
-function readMrw(u8: Uint8Array): DngRaw {
+function readMrw(u8: Uint8Array, probe = false): DngRaw | null {
   const dv = dvOf(u8), dataOff = dv.getUint32(4, false) + 8;
   let width = 0, height = 0, bits = 12, packed = false, wb: number[] | null = null, orientation = 1, make = 'Minolta', model = '';
   for (let p = 8; p + 8 <= dataOff && p + 8 <= u8.length;) {
@@ -505,13 +548,15 @@ function readMrw(u8: Uint8Array): DngRaw {
     p = b + len;
   }
   if (!width || !height) throw new Error('MRW: no PRD block with the sensor size');
-  const count = width * height, src = u8.subarray(dataOff);
+  if (bits < 8 || bits > 16) throw new Error(`MRW: ${bits}-bit data is not a layout this reader knows`);
+  const src = u8.subarray(Math.min(dataOff, u8.length)), count = checkSensor('MRW', width, height, 1, src.length, packed ? bits : 16);
+  if (probe) return null;
   const data = packed ? unpackBe(src, count, bits) : unpack16(src, count, false);
   return record({ width, height, data, cfa: [0, 1, 1, 2], black: [0], white: (1 << bits) - 1, wb, orientation, make, model });
 }
 
 // Fujifilm RAF ----------------------------------------------------------------------------------------
-function readRaf(u8: Uint8Array): DngRaw {
+function readRaf(u8: Uint8Array, probe = false): DngRaw | null {
   const dv = dvOf(u8), model = String.fromCharCode(...u8.subarray(28, 60)).replace(/\0.*$/s, '').trim();
   const hdrOff = dv.getUint32(92, false), cfaOff = dv.getUint32(100, false), cfaLen = dv.getUint32(104, false);
   let rawW = 0, rawH = 0, outW = 0, outH = 0, wb: number[] | null = null, layout = 0;
@@ -543,11 +588,13 @@ function readRaf(u8: Uint8Array): DngRaw {
     }
   } else { dataOff = 0; dataLen = cfaLen; }
   if (!width || !height) throw new Error('RAF: the sensor size is missing');
-  const src = sec.subarray(dataOff, dataLen ? dataOff + dataLen : undefined), count = width * height;
+  if (bps < 8 || bps > 16) throw new Error(`RAF: ${bps}-bit data is not a layout this reader knows`);
+  const src = sec.subarray(dataOff, dataLen ? dataOff + dataLen : undefined), count = checkSensor('RAF', width, height);
+  if (src.length < Math.floor((count * bps) / 8)) throw new Error(`RAF: ${src.length} bytes of sensor data for ${width}×${height}`);
+  if (probe) return null;
   let data: Uint16Array;
   if (src.length >= count * 2) { data = unpack16(src, count, sl); const sh = commonShift(data, 16 - bps); if (sh) for (let i = 0; i < count; i++) data[i] >>= sh; }
-  else if (src.length >= Math.floor((count * bps) / 8)) data = sl ? unpackLe(src, count, bps) : unpackBe(src, count, bps);
-  else throw new Error(`RAF: ${src.length} bytes of sensor data for ${width}×${height}`);
+  else data = sl ? unpackLe(src, count, bps) : unpackBe(src, count, bps);
   // Fujifilm's Bayer order and margins (dcraw's rule): BGGR on the 2848- and 3664-pixel sensors, RGGB otherwise; the margins center the output size.
   const cfa = outW === 2848 || outW === 3664 ? [2, 1, 1, 0] : [0, 1, 1, 2];
   const crop = outW && outH && outW <= width && outH <= height ? { x: ((width - outW) >> 2) << 1, y: ((height - outH) >> 2) << 1, w: outW, h: outH } : null;
@@ -555,12 +602,14 @@ function readRaf(u8: Uint8Array): DngRaw {
 }
 
 // Panasonic RW2 / RWL ---------------------------------------------------------------------------------
-function readRw2(u8: Uint8Array): DngRaw {
+function readRw2(u8: Uint8Array, probe = false): DngRaw | null {
   const dv = dvOf(u8), t = readIfd(u8, dv.getUint32(4, true), true).tags;
   const width = n1(t, 2), height = n1(t, 3), bps = n1(t, 0xa, 12), comp = n1(t, 0xb), fmt = n1(t, 0x2d, 0), off = n1(t, 0x118) || n1(t, 273);
   if (!width || !height || !off) throw new Error('RW2: the sensor size or data offset is missing');
   if (fmt > 4 || (comp !== 34316 && comp !== 1)) throw new Error(`RW2: raw format ${fmt} (compression ${comp}) is not supported; 12-bit version-4 files are`);
-  const src = u8.subarray(off);
+  const src = u8.subarray(Math.min(off, u8.length));
+  checkSensor('RW2', width, height, 1, src.length, comp === 34316 ? 9 : 16); // the bit-packed coding holds 14 pixels in 16 bytes
+  if (probe) return null;
   const data = comp === 34316 ? decodePanasonic(src, width, height) : unpack16(src, width * height, true, 0);
   const bl = [n1(t, 0x1c), n1(t, 0x1d), n1(t, 0x1e)].map((x) => (x ? x + 15 : 0)); // LibRaw adds 15 to Panasonic's stated levels
   const wb = n1(t, 0x24) && n1(t, 0x25) && n1(t, 0x26) ? [n1(t, 0x24), n1(t, 0x25), n1(t, 0x26)] : null;
@@ -606,15 +655,40 @@ function familyOf(u8: Uint8Array, name: string): string {
   return '';
 }
 
-/** Whether Develop RAW can read this file, with the reason when it cannot (cheap: headers only). */
+/** The reader of a family; with `probe`, the headers only (see readTiffFamily). */
+function readFamily(u8: Uint8Array, family: string, probe: boolean): DngRaw | null {
+  switch (family) {
+    case 'MRW': return readMrw(u8, probe);
+    case 'RAF': return readRaf(u8, probe);
+    case 'RW2': case 'RWL': return readRw2(u8, probe);
+    case 'ORF': return readTiffFamily(orfAsTiff(u8), 'ORF', probe);
+    default: return readTiffFamily(u8, family, probe);
+  }
+}
+
+const supportCache = new WeakMap<ArrayBufferLike, Map<string, RawSupport>>();
+/**
+ * Whether Develop RAW can read this file, with the reason when it cannot. Headers only, but the same code path the
+ * reader then takes, so a file this calls readable is one the reader accepts (it can still turn out damaged while its
+ * data is decoded). The answer is kept per file, since the command's enabled state asks often. DNG files are answered
+ * by their signature; the DNG reader gives its own reasons.
+ */
 export function rawSupport(u8: Uint8Array, name = ''): RawSupport {
+  const key = `${u8.byteOffset}:${u8.byteLength}:${name}`; let known = supportCache.get(u8.buffer);
+  const hit = known?.get(key); if (hit) return hit;
+  const s = probeSupport(u8, name);
+  if (!known) supportCache.set(u8.buffer, known = new Map());
+  known.set(key, s); return s;
+}
+function probeSupport(u8: Uint8Array, name: string): RawSupport {
   if (isDng(u8)) return { ok: true, family: 'DNG' };
   const family = familyOf(u8, name);
   if (UNSUPPORTED[family]) return { ok: false, family, why: UNSUPPORTED[family] };
-  if (family === 'MRW' || family === 'RAF' || family === 'RW2' || family === 'RWL') return { ok: true, family };
-  if (family === 'ORF' && !isTiff(u8)) return { ok: true, family }; // Olympus's IIRO/IIRS/MMOR header: a TIFF with another magic
-  if (TIFF_FAMILIES.has(family) && isTiff(u8)) return { ok: true, family };
-  return { ok: false, family: family || 'RAW', why: `${family || 'This'} files are not a RAW kind this module reads` };
+  const read = family === 'MRW' || family === 'RAF' || family === 'RW2' || family === 'RWL' || (family === 'ORF' && !isTiff(u8)) // Olympus's IIRO/IIRS/MMOR header: a TIFF with another magic
+    || (TIFF_FAMILIES.has(family) && isTiff(u8));
+  if (!read) return { ok: false, family: family || 'RAW', why: `${family || 'This'} files are not a RAW kind this module reads` };
+  try { readFamily(u8, family, true); return { ok: true, family }; }
+  catch (e) { return { ok: false, family, why: (e as Error)?.message || `${family}: the file could not be read` }; }
 }
 
 /** Reads the sensor data of a camera RAW file of any supported family (DNG included). */
@@ -622,13 +696,7 @@ export function readRaw(u8: Uint8Array, name = ''): DngRaw {
   if (isDng(u8)) return readDng(u8);
   const s = rawSupport(u8, name);
   if (!s.ok) throw new Error(s.why || 'Unsupported RAW file');
-  switch (s.family) {
-    case 'MRW': return readMrw(u8);
-    case 'RAF': return readRaf(u8);
-    case 'RW2': case 'RWL': return readRw2(u8);
-    case 'ORF': return readTiffFamily(orfAsTiff(u8), 'ORF');
-    default: return readTiffFamily(u8, s.family);
-  }
+  return readFamily(u8, s.family, false)!;
 }
 /** Olympus files are TIFFs whose magic says RO/RS/OR; the parser wants 42. */
 function orfAsTiff(u8: Uint8Array): Uint8Array {

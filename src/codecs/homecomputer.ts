@@ -103,12 +103,19 @@ export function decodeAtariSt(u8: Uint8Array, name: string): DecodeResult {
   return result(r, res.planes, notes, mono ? 2 : 1 << res.planes, res.planes === 2 ? [90, 45] : undefined, warnings);
 }
 interface Cycle { lo: number; hi: number; right: boolean; vbl: number }
-/** NEOchrome: word 24 holds the limits (bit 15 = valid, bits 4–7 the upper color, bits 0–3 the lower), word 25 the speed (bit 15 = on; the low byte, signed: VBLs per step, negative = left). */
+/**
+ * NEOchrome: word 24 holds the limits (bit 15 = valid; the two nibbles of the low byte are the first and last color of
+ * the range), word 25 the speed (bit 15 = on; the low byte, signed: VBLs per step, negative = left). Which nibble holds
+ * the lower limit could not be checked against a file NEOchrome itself wrote, so the range is taken as running from the
+ * smaller to the larger of the two: the same colors either way.
+ */
 function neoCycles(u8: Uint8Array): Cycle[] {
   const lim = be16(u8, 48), spd = be16(u8, 50);
   if (!(lim & 0x8000) || !(spd & 0x8000)) return [];
   const speed = (spd & 0xff) << 24 >> 24; // signed
-  return [{ lo: lim & 15, hi: (lim >> 4) & 15, right: speed >= 0, vbl: Math.max(1, Math.abs(speed) || 1) }];
+  const a = lim & 15, b = (lim >> 4) & 15;
+  if (a === b) return [];
+  return [{ lo: Math.min(a, b), hi: Math.max(a, b), right: speed >= 0, vbl: Math.max(1, Math.abs(speed) || 1) }];
 }
 /** Degas Elite: after the bitmap, four channels: left colors, right colors, directions (0 left, 1 off, 2 right) and delays (128 − delay VBLs per step). */
 function degasCycles(u8: Uint8Array, at: number): Cycle[] {

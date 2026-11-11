@@ -29,6 +29,21 @@ export const randomToken = (bytes = 16): string => Array.from(crypto.getRandomVa
 export const relayRoom = (relay: string, kind: 's' | 'a', token: string): string => `${relay.replace(/\/+$/, '')}/${kind}/${token}/`;
 export interface ViewState { kind: 'view'; name: string; index: number; total: number; caption: string; rel: number; nx: number; ny: number; key: string; picture: string; sig: string; size?: number }
 export const viewSignature = (s: { key: string; rel: number; nx: number; ny: number }): string => `${s.key}|${s.rel.toFixed(4)}|${s.nx.toFixed(4)}|${s.ny.toFixed(4)}`;
+/**
+ * Runs `apply` on the states handed to it one at a time; a state that arrives while one is being applied waits, and
+ * only the newest of those waiting is applied. Nothing is dropped for good: the last state handed in is always applied
+ * (a follower that skipped it would stay on the picture before it, since the host does not send it again).
+ */
+export function latestOnly<T>(apply: (s: T) => Promise<void>, alive: () => boolean = () => true): (s: T) => void {
+  let next: { s: T } | null = null, busy = false;
+  return (s) => {
+    next = { s }; if (busy) return; busy = true;
+    void (async () => { try { while (next && alive()) { const n = next; next = null; try { await apply(n.s); } catch { /* the next state may work */ } } } finally { busy = false; next = null; } })();
+  };
+}
+/** How long to wait before asking the host again after `failures` requests in a row failed: 0.4 s, then doubling to 5 s. */
+export const retryDelay = (failures: number): number => Math.min(5000, 400 * 2 ** Math.max(0, Math.min(failures, 5)));
+
 /** The bytes of a data URL. */
 export function dataUrlBytes(url: string): ArrayBuffer | null { const i = url.indexOf(','); return url.startsWith('data:') && i > 0 ? bufferFromB64(url.slice(i + 1)) : null; }
 
@@ -77,7 +92,7 @@ async function stopHost(app: App): Promise<void> {
 }
 
 // Shared view: guest -------------------------------------------------------------------------------------
-const follow = { on: false, base: '', tab: null as PictureTab | null, folder: null as Folder | null, es: null as EventSource | null, timer: 0 as any, sig: '', key: '', busy: false, keys: new Map<string, Entry>() };
+const follow = { on: false, base: '', tab: null as PictureTab | null, folder: null as Folder | null, es: null as EventSource | null, timer: 0 as any, sig: '', key: '', session: 0, failures: 0, keys: new Map<string, Entry>() };
 /** The same picture in another open window (full quality), by name and size. */
 function localTwin(app: App, name: string, size?: number): Entry | null {
   for (const t of app.tabs) { if (t === follow.tab) continue; for (const e of t.folder.entries) if (e.name === name && (!size || !e.size || e.size === size)) return e; }
@@ -101,22 +116,39 @@ async function applyShared(app: App, s: Partial<ViewState> & { ended?: boolean }
   }
   if (typeof s.rel === 'number' && typeof s.nx === 'number' && typeof s.ny === 'number') follow.tab.ui.applyRel({ rel: s.rel, nx: s.nx, ny: s.ny });
 }
-function onState(app: App, s: any): void { if (follow.busy) return; follow.busy = true; void applyShared(app, s || {}).finally(() => { follow.busy = false; }); }
 async function startFollow(app: App, base: string): Promise<void> {
-  follow.on = true; follow.base = base; follow.sig = ''; follow.key = ''; follow.keys.clear();
-  follow.folder = new Folder([], 'Shared view'); follow.tab = await app.openFolder(follow.folder, 0, { newWindow: true });
+  const id = ++follow.session;
+  follow.on = true; follow.base = base; follow.sig = ''; follow.key = ''; follow.failures = 0; follow.keys.clear();
+  follow.folder = new Folder([], 'Shared view'); const tab = follow.tab = await app.openFolder(follow.folder, 0, { newWindow: true });
+  const mine = () => follow.on && follow.session === id;
+  const onState = latestOnly<any>((s) => applyShared(app, s || {}), mine);
+  // The window being closed ends the following, whether or not the host sends anything.
+  const closed = () => { if (mine() && !app.tabs.includes(tab)) { void stopFollow(app); return true; } return false; };
   if (hasNative()) {
-    const poll = async () => { if (!follow.on) return; try { const r = await request(`${base}state${follow.sig ? `?since=${encodeURIComponent(follow.sig)}` : ''}`, 'GET'); if (r.status === 200) { const s = JSON.parse(new TextDecoder().decode(r.bytes)); follow.sig = s.sig || ''; onState(app, s); } else if (r.status === 404) { toast('The shared view is gone.'); await stopFollow(app); } } catch { /* try again */ } };
-    follow.timer = setInterval(() => void poll(), 400); void poll();
+    // One request at a time, the next one after this one has answered; slower while the host cannot be reached.
+    const poll = async (): Promise<void> => {
+      if (!mine() || closed()) return;
+      try {
+        const r = await request(`${base}state${follow.sig ? `?since=${encodeURIComponent(follow.sig)}` : ''}`, 'GET');
+        if (!mine()) return;
+        if (r.status === 200) { const s = JSON.parse(new TextDecoder().decode(r.bytes)); follow.sig = s.sig || ''; follow.failures = 0; onState(s); }
+        else if (r.status === 304) follow.failures = 0;
+        else if (r.status === 404) { toast('The shared view is gone.'); await stopFollow(app); return; }
+        else throw new Error(`status ${r.status}`);
+      } catch { if (!mine()) return; if (++follow.failures === 5) toast('The shared view cannot be reached; still trying.'); }
+      follow.timer = setTimeout(() => void poll(), retryDelay(follow.failures));
+    };
+    void poll();
   } else {
     const es = new EventSource(`${base}events`); follow.es = es;
-    es.onmessage = (ev) => { try { onState(app, JSON.parse(ev.data)); } catch { /* ignore */ } };
+    es.onmessage = (ev) => { try { onState(JSON.parse(ev.data)); } catch { /* ignore */ } };
     es.onerror = () => { /* EventSource reconnects on its own */ };
+    follow.timer = setInterval(closed, 1000);
   }
   app.refresh();
 }
 async function stopFollow(app: App): Promise<void> {
-  follow.on = false; clearInterval(follow.timer); follow.es?.close(); follow.es = null; follow.tab = null; follow.folder = null; app.refresh();
+  follow.on = false; follow.session++; clearInterval(follow.timer); clearTimeout(follow.timer); follow.es?.close(); follow.es = null; follow.tab = null; follow.folder = null; app.refresh();
 }
 
 // Shared album: host -------------------------------------------------------------------------------------

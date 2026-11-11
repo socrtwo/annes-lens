@@ -83,7 +83,13 @@ scripts/
 | Linux (incl. Raspberry Pi OS) | full file system; Trash (freedesktop) | built-ins | SANE scanning, screen capture where the compositor allows |
 | Web | File System Access API where available, otherwise open/download | built-ins (WASM) | installable PWA, offline |
 
-**Desktop file permissions.** The Electron main process decides what the page may touch. A picture opened through a dialog, the command line or the OS grants that file (read and write) and its folder (list and read pictures, create new files). Folders reached by Next/Previous Folder or kept by the catalog, favorites and watches are readable. Changing an existing picture or `.xmp` sidecar that was not opened one by one (metadata on marked pictures, People's names) needs the folder to be writable: a folder chosen in the folder dialog is; any other asks once in a native dialog, which the page cannot answer for the user, and the answer lasts until the app closes.
+**Desktop file permissions.** The Electron main process decides what the page may touch, on the assumption that the page could be made to misbehave (by a crafted file or a script). Reading and writing are separate:
+
+- *Reading.* A picture opened through a dialog, the command line or the OS grants that file (read and write) and its folder (list and read pictures). From there the page can move up and down the folder tree (Next/Previous Folder, the Folder Tree) and read the pictures it finds, with three limits: going up stops at the home folder; hidden folders (names starting with a dot) are never entered; the app's own settings folder is never listed or read.
+- *Writing.* Saving, copying or moving a file into a folder, making a subfolder, or changing an existing picture or `.xmp` sidecar that was not opened one by one needs the folder to be writable. A folder chosen in a folder dialog is; any other asks once in a native dialog, which the page cannot answer for the user, and the answer lasts until the app closes. A remembered folder (catalog, favorites, watches, backup targets) is writable again after a restart only if it was writable when it was remembered.
+- *Never.* Files and folders whose names start with a dot are not created (shell start-up files, settings folders); Batch Rename's own short-lived names are the one exception. Nothing is written into the app's settings folder, which holds the remembered folders and the list of programs External Tools may start.
+
+What remains readable by design: pictures in any folder the tree can reach, and, with Show All Files, the other visible files there. `tests/unit/desktopGrants.test.ts` exercises these rules through the IPC handlers with Electron stubbed.
 
 ## Builds and CI
 

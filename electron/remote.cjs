@@ -6,6 +6,7 @@
 const http = require('http');
 const os = require('os');
 const crypto = require('crypto');
+const { urlOf, pushEvent, guarded, MAX_GUESTS } = require('./netshare.cjs');
 
 const PAGE = (token) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Anne's Lens remote</title><style>
@@ -36,8 +37,9 @@ function startRemote(onCommand, port = 0) {
   const token = crypto.randomBytes(16).toString('hex');
   let state = {};
   const clients = new Set();
-  const server = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://x');
+  const server = http.createServer(guarded((req, res) => {
+    const u = urlOf(req);
+    if (!u) { res.writeHead(400).end(); return; }
     const prefix = `/r/${token}/`;
     if (!u.pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
     const rest = u.pathname.slice(prefix.length);
@@ -47,7 +49,8 @@ function startRemote(onCommand, port = 0) {
     if (req.method === 'GET' && rest === 'state') { res.writeHead(200, { ...headers, 'content-type': 'application/json' }); res.end(JSON.stringify(state)); return; }
     if (req.method === 'GET' && rest === 'events') {
       res.writeHead(200, { ...headers, 'content-type': 'text/event-stream', connection: 'keep-alive' });
-      res.write(`data: ${JSON.stringify(state)}\n\n`); clients.add(res); req.on('close', () => clients.delete(res)); return;
+      if (clients.size >= MAX_GUESTS) { res.writeHead(503, headers).end(); return; }
+      pushEvent(res, `data: ${JSON.stringify(state)}\n\n`); clients.add(res); req.on('close', () => clients.delete(res)); return;
     }
     if (req.method === 'POST' && rest === 'cmd') {
       let body = '';
@@ -56,14 +59,14 @@ function startRemote(onCommand, port = 0) {
       return;
     }
     res.writeHead(404, headers).end();
-  });
+  }));
   return new Promise((resolve, reject) => {
     server.on('error', reject);
     server.listen(port, '0.0.0.0', () => {
       const p = server.address().port;
       resolve({
         token, port: p, urls: lanAddresses().map((ip) => `http://${ip}:${p}/r/${token}/`),
-        setState(s) { state = s || {}; const line = `data: ${JSON.stringify(state)}\n\n`; for (const c of clients) c.write(line); },
+        setState(s) { state = s || {}; const line = `data: ${JSON.stringify(state)}\n\n`; for (const c of clients) pushEvent(c, line); },
         stop() { for (const c of clients) c.end(); clients.clear(); server.close(); },
       });
     });

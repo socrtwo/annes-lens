@@ -35,6 +35,8 @@ const app = await electron.launch({ executablePath: 'node_modules/electron/dist/
 app.process().stderr?.on('data', (d) => process.stderr.write('[main] ' + d));
 app.process().stdout?.on('data', (d) => process.stderr.write('[main] ' + d));
 try {
+  // Native permission questions are answered "Allow" unless a test says otherwise; each one is recorded.
+  await app.evaluate(({ dialog }) => { globalThis.__asks = []; globalThis.__answer = 0; dialog.showMessageBox = async (_w, o) => { globalThis.__asks.push(o.message); return { response: globalThis.__answer }; }; });
   let w = await app.firstWindow();
   await w.waitForFunction(() => window.qn && window.qn.picture?.name === 'a.png', null, { timeout: 30000 });
   const where = () => w.evaluate(() => `${qn.folder.name}:${qn.folder.length}:${qn.picture?.name}`);
@@ -177,6 +179,10 @@ try {
   check('desktop phone remote: page behind a token, live state, commands drive the app, off closes it', [rm.on, /Start slideshow/.test(page), /EventSource/.test(js), wrongToken, s0.name, /^data: \{/.test(firstEvent), bad, n1, s1.name, s1.index, /^data:image\/jpeg/.test(s1.thumb || ''), s2.running, s3.paused, s4.running, offStatus],
     [true, true, true, 404, 'c.png', true, 400, 204, 'd.png', 2, true, true, true, false, 'closed'], JSON.stringify({ s0: { ...s0, thumb: undefined }, s1: { ...s1, thumb: undefined }, rm }));
   // Writes that must not replace a file ('rename'), and a folder that is gone is an error, not its parent's listing.
+  // The folder was only read so far: saving into it asks the user first (a native question; refused once here, then allowed).
+  await app.evaluate(() => { globalThis.__answer = 1; });
+  const gwRefused = await w.evaluate(() => window.quillDesktop.createInFolder({ dirUri: qn.folder.uri, name: 'refused.png', mime: 'image/png', data: btoa('x'), ifExists: 'rename' }).then(() => 'written', (e) => String(e.message || e)));
+  await app.evaluate(() => { globalThis.__answer = 0; });
   const gw = await w.evaluate(async () => {
     const b64 = btoa('new bytes');
     const dirUri = qn.folder.uri, first = qn.folder.entries[0];
@@ -185,6 +191,9 @@ try {
     const gone = await window.quillDesktop.listFolder({ uri: dirUri.replace(/\/[^/]+$/, '/no-such-folder-here') }).then(() => 'listed', (e) => String(e.message || e));
     return { first: first.name, kept: kept.name, again: again.name, gone };
   });
+  gw.refused = gwRefused;
+  const gwAsks = await app.evaluate(() => globalThis.__asks.filter((m) => /save files into “2024”/.test(m))); // (the backup test above names its destination directly, without the folder dialog, and was asked for it too)
+  check('desktop: saving into a folder that was only read asks once, and writes nothing when refused', [/was not allowed/.test(gw.refused), gwAsks], [true, Array(2).fill('Allow Anne\'s Lens to save files into “2024”?')]);
   check('desktop: a write that must not replace a file takes the next free name; a missing folder is an error',
     [gw.kept, gw.again, readFileSync(join(lib, 'Photos/2024', gw.first)).length > 20, readFileSync(join(lib, 'Photos/2024', gw.kept)).toString(), /not available|no permission/i.test(gw.gone)],
     [gw.first.replace(/(\.[^.]+)$/, ' (2)$1'), gw.first.replace(/(\.[^.]+)$/, ' (3)$1'), true, 'new bytes', true], JSON.stringify(gw));
@@ -259,10 +268,15 @@ try {
 
   // Frameless: a new window without a frame, the same picture in it, the title bar's window buttons shown.
   // The window that asks is replaced, so the call itself never returns.
+  // A view shared from the window that is about to be replaced ends with it (the new page knows nothing of it).
+  const shBefore = await w.evaluate(async () => { const r = await qn.exec('view.shareView', { quiet: true, relay: '' }); return r.urls[0].replace(/^http:\/\/[^/:]+/, 'http://127.0.0.1'); });
+  const shLive = await fetch(shBefore + 'state').then((r) => r.status, () => 'closed');
   const next = app.waitForEvent('window');
   void w.evaluate(() => qn.exec('view.frameless')).catch(() => undefined);
   w = await next;
   await w.waitForFunction(() => window.qn && window.qn.picture?.name === 'a.png' && document.body.classList.contains('qn-frameless'), null, { timeout: 30000 });
+  const shAfter = await fetch(shBefore + 'state').then((r) => r.status, () => 'closed');
+  check('desktop: a shared view ends when its window is replaced', [shLive, shAfter, await w.evaluate(() => window.__qnGetCommand('view.shareView').isActive(qn))], [200, 'closed', false]);
   const fl = await w.evaluate(() => ({ winctl: getComputedStyle(document.querySelector('.ql-winctl')).display !== 'none' && document.querySelector('.ql-winctl').getBoundingClientRect().width > 60, drag: getComputedStyle(document.querySelector('.ql-titlebar')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('.ql-titlebar')).getPropertyValue('app-region'), active: window.__qnGetCommand('view.frameless').isActive(qn), folder: qn.folder.name }));
   const count = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
   check('desktop frameless window reopens the picture with window buttons', [fl, count], [{ winctl: true, drag: 'drag', active: true, folder: '01 Jan' }, 1]);

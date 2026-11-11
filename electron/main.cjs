@@ -74,12 +74,15 @@ const grantedDirs = new Set();
 // after a restart; programs picked through the dialog are the only ones External Tools may start.
 const foldersFile = () => path.join(app.getPath('userData'), 'remembered-folders.json');
 const programsFile = () => path.join(app.getPath('userData'), 'programs.json');
-let remembered = new Set(), programs = new Set();
+// Remembered folders the user had picked in a folder dialog (or allowed when asked): written into again after a restart.
+const writableFile_ = () => path.join(app.getPath('userData'), 'writable-folders.json');
+let remembered = new Set(), programs = new Set(), rememberedWritable = new Set();
 const readSet = (f) => { try { return new Set(JSON.parse(fs.readFileSync(f, 'utf8'))); } catch { return new Set(); } };
 const writeSet = (f, s) => { try { fs.writeFileSync(f, JSON.stringify([...s].slice(-500))); } catch { /* read-only profile */ } };
 function loadGrants() {
-  remembered = readSet(foldersFile()); programs = readSet(programsFile());
+  remembered = readSet(foldersFile()); programs = readSet(programsFile()); rememberedWritable = readSet(writableFile_());
   for (const d of remembered) grantedDirs.add(d);
+  for (const d of rememberedWritable) if (remembered.has(d)) writableDirs.add(d);
   try { grants = new Set(JSON.parse(fs.readFileSync(grantsFile(), 'utf8'))); } catch { grants = new Set(); }
 }
 function grant(p) {
@@ -88,25 +91,54 @@ function grant(p) {
   grants = new Set(list);
   try { fs.writeFileSync(grantsFile(), JSON.stringify(list)); } catch { /* read-only profile */ }
 }
-function grantDir(dir) { grantedDirs.add(path.resolve(dir)); }
-// Folders whose existing pictures (and .xmp sidecars) may be changed: folders the user picked in the
-// folder dialog, and folders the user allowed when asked (both until the app closes; remembered
-// folders are not writable by themselves, since the renderer can ask to remember any granted folder). Opening one
-// picture grants only that file; changing its neighbors (metadata on marked pictures, People's names)
-// asks once per folder in a native dialog, which the renderer cannot answer for the user.
+/** Whether `p` is `root` or inside it (names compared without case on Windows). */
+function inside(p, root) {
+  const norm = (x) => (process.platform === 'win32' ? path.resolve(x).toLowerCase() : path.resolve(x));
+  const a = norm(p), b = norm(root);
+  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
+}
+/**
+ * The app's own data folder: which folders are remembered, which programs External Tools may start, the stored keys.
+ * The page reaches other folders by moving up and down from the ones the user opened; it never reaches this one that
+ * way, and never writes into it.
+ */
+const isProtected = (dir) => inside(dir, app.getPath('userData'));
+/** Lets the page read the pictures of a folder. `chosen`: the user named this folder (a dialog, the command line, a file opened from the system), which is the only way to the app's own data folder. */
+function grantDir(dir, chosen = false) { const d = path.resolve(dir); if (!chosen && isProtected(d)) return false; grantedDirs.add(d); return true; }
+// Folders that may be written into: their existing pictures (and .xmp sidecars) changed, files saved, copied or moved
+// into them, subfolders made. Being able to read a folder is not enough (the page can read its way up and down the
+// folder tree): these are the folders the user picked in a folder dialog and the ones they allowed when asked, until
+// the app closes; a remembered folder is written into again after a restart only if it was writable when it was
+// remembered (the page can ask to remember any folder it can read). Opening one picture grants only that file;
+// anything else in its folder asks once per folder in a native dialog, which the page cannot answer for the user.
 const writableDirs = new Set();
 const asking = new Map();
+/** Asks, once per folder at a time, whether the folder may be written into; the answer holds until the app closes. */
+function allowFolder(dir, title, message, detail) {
+  if (writableDirs.has(dir)) return Promise.resolve(true);
+  if (!asking.has(dir)) asking.set(dir, dialog.showMessageBox(win, { type: 'question', buttons: ['Allow', 'Don\'t Allow'], defaultId: 0, cancelId: 1, noLink: true, title, message, detail })
+    .then((r) => { const ok = r.response === 0; if (ok) writableDirs.add(dir); return ok; }).finally(() => asking.delete(dir)));
+  return asking.get(dir);
+}
+/** A folder the page may write into: one it can read, that is not the app's own, and that the user picked or allows now. */
+async function writableDir(dirUri) {
+  const dir = grantedDir(dirUri);
+  if (isProtected(dir)) throw new Error('Anne\'s Lens does not write into its own settings folder.');
+  if (writableDirs.has(dir)) return dir;
+  const ok = await allowFolder(dir, 'Save into this folder?', `Allow Anne's Lens to save files into “${path.basename(dir) || dir}”?`,
+    `${dir}\n\nNeeded to save, copy or move files into a folder you did not choose in a folder dialog. The permission lasts until Anne's Lens closes.`);
+  if (!ok) throw new Error('Saving into this folder was not allowed.');
+  return dir;
+}
 async function writableFile(uri) {
   try { return grantedPath(uri, true); } catch (e) {
     if (typeof uri !== 'string' || !uri.startsWith('file:')) throw e;
     const p = path.resolve(fileURLToPath(uri)), dir = path.dirname(p);
     if (!grantedDirs.has(dir) || !(isPictureName(p) || /\.xmp$/i.test(p)) || !fs.existsSync(p)) throw e;
-    if (!writableDirs.has(dir)) {
-      if (!asking.has(dir)) asking.set(dir, dialog.showMessageBox(win, { type: 'question', buttons: ['Allow', 'Don\'t Allow'], defaultId: 0, cancelId: 1, noLink: true, title: 'Change pictures in this folder?',
-        message: `Allow Anne's Lens to change the pictures in “${path.basename(dir) || dir}”?`, detail: `${dir}\n\nNeeded to write into pictures you did not open one by one (names, keywords, ratings or other metadata). The permission lasts until Anne's Lens closes.` }).then((r) => r.response === 0).finally(() => asking.delete(dir)));
-      if (!(await asking.get(dir) ?? writableDirs.has(dir))) throw new Error('Changing the pictures in this folder was not allowed.');
-      writableDirs.add(dir);
-    }
+    if (isProtected(dir)) throw e;
+    const ok = await allowFolder(dir, 'Change pictures in this folder?', `Allow Anne's Lens to change the pictures in “${path.basename(dir) || dir}”?`,
+      `${dir}\n\nNeeded to write into pictures you did not open one by one (names, keywords, ratings or other metadata). The permission lasts until Anne's Lens closes.`);
+    if (!ok) throw new Error('Changing the pictures in this folder was not allowed.');
     return p;
   }
 }
@@ -145,7 +177,7 @@ function listSubdirs(dir) {
     try { if (fs.statSync(p).isDirectory()) out.push({ uri: pathToFileURL(p).href, name, p }); } catch { /* unreadable */ }
   }
   out.sort((a, b) => collator.compare(a.name, b.name));
-  return out.map(({ uri, name, p }) => { grantDir(p); return { uri, name }; });
+  return out.filter(({ p }) => grantDir(p)).map(({ uri, name }) => ({ uri, name })); // the app's own data folder is not among them
 }
 function grantedDir(uri) {
   if (typeof uri !== 'string' || !uri.startsWith('file:')) throw new Error('Not a file address');
@@ -176,7 +208,7 @@ function filesFromArgs(argv) {
 }
 function openExternalFiles(paths) {
   if (!paths.length) return;
-  for (const p of paths) { grant(p); grantDir(path.dirname(p)); }
+  for (const p of paths) { grant(p); grantDir(path.dirname(p), true); }
   if (win && rendererReady) win.webContents.send('ql:fileOpened', { files: paths.map(fileResult) });
   else pendingFiles.push(...paths);
   if (!win && app.isReady()) createWindow();
@@ -188,6 +220,12 @@ function flushPendingFiles() {
 
 // ------------------------------------------------------------------------------------------
 // IPC
+
+// What a page starts and only that page can stop (sharing rooms, the phone remote) ends when the page goes away: the
+// window closes, is made again for Frameless, or reloads. Otherwise the room keeps serving, and taking uploads, with
+// nothing on screen saying so.
+const pageServices = [];
+function endPageServices() { for (const end of pageServices) { try { end(); } catch { /* already gone */ } } }
 
 const safeUrl = (u) => typeof u === 'string' && /^(https?|mailto|tel|ftp|sms|geo):/i.test(u.trim());
 function handle(name, fn) {
@@ -204,7 +242,7 @@ function registerIpc() {
       filters: [{ name: 'Pictures', extensions: [...OPENABLE, ...SHARED] }, { name: 'All files', extensions: ['*'] }],
     });
     if (r.canceled || !r.filePaths[0]) return { canceled: true };
-    for (const p of r.filePaths) { grant(p); grantDir(path.dirname(p)); }
+    for (const p of r.filePaths) { grant(p); grantDir(path.dirname(p), true); }
     if (r.filePaths.length > 1) return { files: r.filePaths.map(fileResult) };
     return fileResult(r.filePaths[0]);
   });
@@ -212,7 +250,7 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
     if (r.canceled || !r.filePaths[0]) return { canceled: true };
     const dir = r.filePaths[0];
-    grantDir(dir);
+    grantDir(dir, true);
     return { uri: pathToFileURL(dir).href, name: path.basename(dir) || dir, entries: listDir(dir, !!all) };
   });
   handle('listFolder', async ({ uri, all }) => {
@@ -235,6 +273,7 @@ function registerIpc() {
   });
   handle('remoteStop', async () => { if (remote) { remote.stop(); remote = null; } return { ok: true }; });
   handle('remoteState', async (state) => { if (remote) remote.setState(state); return { ok: true }; });
+  pageServices.push(() => { if (remote) { remote.stop(); remote = null; } });
   app.on('before-quit', () => { if (remote) remote.stop(); });
   // Network sharing (shared views and albums): one server for every room, started when first needed.
   let share = null; const shares = new Map();
@@ -256,13 +295,17 @@ function registerIpc() {
     return { ok: true, servable: mapped.filter((m) => m.path).length, contribute: !!dir };
   });
   handle('shareStop', async ({ token }) => { const r = shares.get(String(token)); if (r) { r.stop(); shares.delete(String(token)); } if (!shares.size && share) { share.stop(); share = null; } return { ok: true }; });
+  pageServices.push(() => { for (const r of shares.values()) r.stop(); shares.clear(); if (share) { share.stop(); share = null; } });
   app.on('before-quit', () => { if (share) share.stop(); });
   handle('cliJob', async () => { const j = cliJob; if (j && j.mode === 'view') cliJob = null; return j; });
   handle('listSubfolders', async ({ uri }) => ({ folders: listSubdirs(grantedDir(uri)) }));
   handle('parentFolder', async ({ uri }) => {
     const dir = grantedDir(uri), parent = path.dirname(dir);
     if (parent === dir) return null;
-    grantDir(parent);
+    // Going up stops at the home folder: what is above it (other people's folders, the system) is reached only by opening it.
+    const home = require('node:os').homedir();
+    if (inside(dir, home) && !inside(parent, home)) return null;
+    if (!grantDir(parent)) return null;
     return { uri: pathToFileURL(parent).href, name: path.basename(parent) || parent };
   });
   handle('listDisplays', async () => {
@@ -288,6 +331,7 @@ function registerIpc() {
     const old = win, bounds = old.isMaximized() || old.isFullScreen() ? null : old.getBounds();
     if (typeof reopen === 'string' && reopen.startsWith('file:')) { try { pendingFiles.push(grantedPath(reopen)); } catch { /* no longer allowed */ } }
     rendererReady = false;
+    endPageServices(); // the page that shared is going away with its window
     createWindow(bounds || undefined);
     old.destroy();
     return { ok: true };
@@ -307,7 +351,7 @@ function registerIpc() {
     });
     if (r.canceled || !r.filePath) return { canceled: true };
     fs.writeFileSync(r.filePath, Buffer.from(String(data || ''), 'base64'));
-    grant(r.filePath); grantDir(path.dirname(r.filePath));
+    grant(r.filePath); grantDir(path.dirname(r.filePath), true);
     return { uri: pathToFileURL(r.filePath).href, name: path.basename(r.filePath) };
   });
   handle('writeUri', async ({ uri, data }) => {
@@ -368,6 +412,9 @@ function registerIpc() {
     return dir;
   };
   const safeName = (name) => { const n = path.basename(String(name || '')).trim(); if (!n || n === '.' || n === '..' || /[\\/:*?"<>|\0]/.test(n)) throw new Error('That is not a valid file name.'); return n; };
+  // Names that start with a dot are hidden files and folders: shell start-up files, settings folders. The page makes none
+  // (Batch Rename's own short-lived names aside) and is not led into existing ones.
+  const visibleName = (name, allow) => { const n = safeName(name); if (n.startsWith('.') && !(allow && allow.test(n))) throw new Error('A name cannot start with a dot.'); return n; };
   const freeName = (dir, name, allowSame) => {
     if (allowSame || !fs.existsSync(path.join(dir, name))) return name;
     const ext = path.extname(name), base = name.slice(0, name.length - ext.length);
@@ -378,7 +425,7 @@ function registerIpc() {
   const sameFile = (a, b) => { try { const x = fs.statSync(a), y = fs.statSync(b); return x.ino === y.ino && x.dev === y.dev && (x.ino !== 0 || a.toLowerCase() === b.toLowerCase()); } catch { return false; } };
   handle('renameDocument', async ({ uri, name }) => {
     const p = grantedPath(uri, true);
-    const target = path.join(path.dirname(p), safeName(name));
+    const target = path.join(path.dirname(p), visibleName(name, /^\.ql-batch-\d+-\d+\.[A-Za-z0-9]+$/));
     if (target !== p && fs.existsSync(target) && !sameFile(p, target)) throw new Error(`A file named "${path.basename(target)}" already exists.`); // a case-only rename is the same file on case-insensitive disks, another file elsewhere
     fs.renameSync(p, target);
     return done(target);
@@ -393,13 +440,13 @@ function registerIpc() {
     const r = await dialog.showOpenDialog(win, { title: String(title || 'Choose a folder'), properties: ['openDirectory', 'createDirectory'] });
     if (r.canceled || !r.filePaths[0]) return { canceled: true };
     const dir = r.filePaths[0];
-    grantDir(dir); writableDirs.add(path.resolve(dir));
+    grantDir(dir, true); writableDirs.add(path.resolve(dir));
     return { uri: pathToFileURL(dir).href, name: path.basename(dir) || dir };
   });
   const transfer = (move) => async ({ uri, dirUri, name }) => {
     const p = grantedPath(uri, true);
-    const dir = grantedDir(dirUri);
-    const target = path.join(dir, freeName(dir, safeName(name || path.basename(p)), false));
+    const dir = await writableDir(dirUri);
+    const target = path.join(dir, freeName(dir, visibleName(name || path.basename(p)), false));
     if (move) { try { fs.renameSync(p, target); } catch { fs.copyFileSync(p, target, fs.constants.COPYFILE_EXCL); fs.unlinkSync(p); } }
     else fs.copyFileSync(p, target, fs.constants.COPYFILE_EXCL);
     return done(target);
@@ -407,7 +454,7 @@ function registerIpc() {
   handle('moveFile', transfer(true));
   handle('copyFile', transfer(false));
   handle('createInFolder', async ({ dirUri, name, data, ifExists }) => {
-    const dir = grantedDir(dirUri);
+    const dir = await writableDir(dirUri); name = visibleName(name);
     const bytes = Buffer.from(String(data || ''), 'base64');
     if (ifExists === 'rename') { // never replace a file: the next free "name (2).ext", created exclusively
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -553,10 +600,10 @@ function registerIpc() {
     } finally { try { fs.unlinkSync(file); } catch { /* */ } }
   });
   handle('createSubfolder', async ({ dirUri, name }) => {
-    const dir = grantedDir(dirUri);
-    const target = path.join(dir, safeName(name));
+    const dir = await writableDir(dirUri);
+    const target = path.join(dir, visibleName(name));
     fs.mkdirSync(target, { recursive: true });
-    grantDir(target);
+    grantDir(target); writableDirs.add(path.resolve(target)); // a folder made inside a writable one is written into without asking again
     return { uri: pathToFileURL(target).href, name: path.basename(target) };
   });
   void os;
@@ -570,7 +617,9 @@ function registerIpc() {
   });
   handle('rememberFolder', async ({ uri }) => {
     const dir = grantedDir(uri);
+    if (isProtected(dir)) throw new Error('Anne\'s Lens does not keep its own settings folder among the remembered ones.');
     remembered.add(dir); writeSet(foldersFile(), remembered);
+    if (writableDirs.has(dir)) { rememberedWritable.add(dir); writeSet(writableFile_(), rememberedWritable); }
     return { ok: true };
   });
   handle('openWithProgram', async ({ uri, program, args }) => {
@@ -720,7 +769,9 @@ function createWindow(bounds, opts = {}) {
     if (choice === 0) e.preventDefault();
   });
   win.webContents.on('did-start-loading', () => { if (win === w) rendererReady = false; });
-  win.on('closed', () => { if (win === w) { win = null; rendererReady = false; } });
+  win.on('closed', () => { if (win === w) { win = null; rendererReady = false; endPageServices(); } });
+  // A reload starts the page again without what it had running.
+  win.webContents.on('did-start-navigation', (e, _url, isInPlace, isMainFrame) => { const main = e && e.isMainFrame !== undefined ? e.isMainFrame : isMainFrame, same = e && e.isSameDocument !== undefined ? e.isSameDocument : isInPlace; if (win === w && main && !same) endPageServices(); });
   win.on('leave-full-screen', () => { if (restoreBounds && win === w) { const b = restoreBounds; restoreBounds = null; setTimeout(() => { if (!w.isDestroyed()) w.setBounds(b); }, 50); } });
   void win.loadURL(`${ORIGIN}/index.html`);
 }
@@ -743,7 +794,7 @@ function startCliConvert() {
     try { const st = fs.statSync(p); if (st.isDirectory()) { for (const e of listDir(p)) inputs.push(fileURLToPath(e.uri)); } else if (st.isFile()) inputs.push(p); else throw new Error(); } catch { process.stderr.write(`annes-lens: ${a}: not found\n`); }
   }
   if (!inputs.length) { process.stderr.write('annes-lens: no pictures to convert\n'); app.exit(2); return; }
-  for (const p of inputs) { grant(p); grantDir(path.dirname(p)); }
+  for (const p of inputs) { grant(p); grantDir(path.dirname(p), true); }
   const pattern = path.resolve(String(cli.convert)), outDir = path.dirname(pattern);
   try { fs.mkdirSync(outDir, { recursive: true }); } catch (e) { process.stderr.write(`annes-lens: cannot create ${outDir}: ${e.message}\n`); app.exit(2); return; }
   const stem = path.basename(pattern, path.extname(pattern)).split('*').map((s) => s.replace(/[{}]/g, '')).join('{name}');
@@ -773,7 +824,7 @@ app.whenReady().then(() => {
   if (cli.fullscreen || cli.slideshow) cliJob = { mode: 'view', fullscreen: !!cli.fullscreen, slideshow: !!cli.slideshow };
   const files = filesFromArgs(process.argv);
   pendingFiles.unshift(...files);
-  for (const f of pendingFiles) { grant(f); grantDir(path.dirname(f)); }
+  for (const f of pendingFiles) { grant(f); grantDir(path.dirname(f), true); }
   serveApp();
   registerIpc();
   try { setupDisplayMedia(); } catch (e) { console.warn('display media handler', e); }

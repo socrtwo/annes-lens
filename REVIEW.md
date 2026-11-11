@@ -28,9 +28,33 @@ checked by reading and by the suites still passing, not by a test of their own.
   for a new file's size to settle over two checks before acting on it.
 - **Security: S1, S3.** File names, folder names and captions are escaped wherever they go into dialogs, and
   data embedded in generated pages' scripts cannot close the script element.
+- **Security: S2.** Desktop permissions separate reading from writing. Saving, copying or moving into a folder and
+  making a subfolder need a folder the user picked in a folder dialog or allows in a native question; going up the
+  folder tree stops at the home folder; hidden files and folders are neither made nor entered; the app's settings
+  folder (remembered folders, the External Tools program list) is never listed, read or written. Still as before, by
+  design: the page can read pictures in any folder the tree reaches and, with Show All Files, the other visible
+  files there. `tests/unit/desktopGrants.test.ts` runs the main process's handlers with Electron stubbed; all six of
+  its tests fail on the old code.
+- **Security: S6, S8, S9, S10.** No request can end a sharing server (`GET //`, malformed escapes: answered 400 or
+  404). Album uploads are pictures only, streamed to disk, at most three at once and 500 per album, and discarded
+  when sharing stops while they are on their way. Rooms and the phone remote end with the window that started them.
+  The relay limits rooms (in all and per address) and guests per room; a guest that stops reading gets the latest
+  state when it catches up, not a queue.
 - **Hangs on crafted files: R1 to R8.** 7z, xz, tar, OpenEXR, FITS (and Rice tiles), BMP, DDS, GIF code size,
   DICOM segmented palettes and presentation-state drawing all bound their counts and loops.
+- **Hangs: R10.** RAW sensor sizes are checked against the data present before anything is allocated (families, DNG,
+  lossless JPEG).
 - **Wrong results: W1, W2.** Interlaced GIFs; median cut with one dominant color.
+- **Wrong results: W5, W6.** Packed RAW layouts that were never checked against a real file are refused (Samsung's,
+  Olympus's, Nikon's little-endian one) instead of decoded to noise; the support report runs the reader's own header
+  path, so it cannot say yes to a file the reader refuses (compressed PEF, ORF and SRW, Canon sRAW); README and
+  ROADMAP name the codings that were checked, not makers. The 14 corpus files still match LibRaw sample for sample.
+- **Wrong results: W7, W8.** CSC on faces 3 and 4, and non-zenithal projections with the reference point at a
+  celestial pole. New astropy fixtures cover every CSC face; with wcslib's single-precision order followed exactly,
+  CSC now agrees with astropy to 4e-10 arcsecond on 2,600 random points, so its looser test tolerance is gone.
+- **Interface: U11.** Following a shared view no longer loses the newest state, stops when its window is closed,
+  asks one request at a time (more slowly while the host is unreachable); the relay's album page shows the thumbnails
+  it has and offers nothing that would fail.
 - **Interface: U1, U2, U5.** Esc closes the app only with that option on; the shortcut handler stands aside
   for a control reached with Tab, for lists and the map, for an open menu, and for a picture larger than the
   window (the arrows move it); release builds of the desktop app carry their runtimes, and staging fails
@@ -181,7 +205,9 @@ These are in code or statements from commit 59af882:
 - R10: the RAW readers have no size checks.
 - S6, S8, S9, S10, U11: the sharing servers and the follow logic.
 - Unverified: `homecomputer.ts:111` may read NEOchrome's lower color limit from the wrong nibble; the
-  fixture was written with the same assumption as the reader.
+  fixture was written with the same assumption as the reader. *Since:* the format description could not be fetched
+  from this environment, so the question is still open; the reader now takes the range from the smaller to the larger
+  nibble, which is the same colors under either reading.
 
 ## 8. Structural causes and what would remove whole classes
 

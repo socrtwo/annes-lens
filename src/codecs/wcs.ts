@@ -129,7 +129,7 @@ function celestialPole(w: Wcs): [number, number] {
   }
   const sdp = Math.sin(dp * D2R), cdp = Math.cos(dp * D2R);
   let ap: number;
-  if (Math.abs(d0) >= 90 - 1e-9) ap = a0 - (d0 > 0 ? (phip - phi0 - 180) : (phi0 - phip)); // the reference point at a celestial pole
+  if (Math.abs(d0) >= 90 - 1e-9) ap = a0; // the reference point at a celestial pole: the native pole's longitude is CRVAL1 (wcslib's celset; the formula below is 0/0 there)
   else ap = a0 - Math.atan2(ct0 * sdphi, st0 * cdp - ct0 * sdp * cdphi) * R2D;
   return [ap, dp];
 }
@@ -379,11 +379,14 @@ function inverseProjection(w: Wcs, ix: number, iy: number): [number, number] | n
  * TSC is gnomonic on each face; QSC (O'Neill & Laubscher's quadrilateralized cube) is equal-area.
  */
 function cubeDirection(p: string, xf0: number, yf0: number): [number, number, number] | null {
-  let xf = xf0, yf = yf0;
+  // wcslib works CSC in single precision from the start (the position in face units is rounded before the face is taken
+  // off), TSC and QSC in double; the same order here gives its positions to the last digit.
+  const r = p === 'CSC' ? Math.fround : (v: number): number => v;
+  let xf = r(xf0), yf = r(yf0);
   if (Math.abs(xf) <= 1) { if (Math.abs(yf) > 3) return null; } else if (Math.abs(xf) > 7 || Math.abs(yf) > 1) return null;
-  if (xf < -1) xf += 8;
+  if (xf < -1) xf = r(xf + 8);
   let face: number;
-  if (xf > 5) { face = 4; xf -= 6; } else if (xf > 3) { face = 3; xf -= 4; } else if (xf > 1) { face = 2; xf -= 2; } else if (yf > 1) { face = 0; yf -= 2; } else if (yf < -1) { face = 5; yf += 2; } else face = 1;
+  if (xf > 5) { face = 4; xf = r(xf - 6); } else if (xf > 3) { face = 3; xf = r(xf - 4); } else if (xf > 1) { face = 2; xf = r(xf - 2); } else if (yf > 1) { face = 0; yf = r(yf - 2); } else if (yf < -1) { face = 5; yf = r(yf + 2); } else face = 1;
   if (p === 'TSC') {
     const q = 1 / Math.sqrt(1 + xf * xf + yf * yf);
     switch (face) {
@@ -403,13 +406,13 @@ function cubeDirection(p: string, xf0: number, yf0: number): [number, number, nu
       const z0 = f(p00 + f(a * f(p10 + f(a * f(p20 + f(a * f(p30 + f(a * f(p40 + f(a * f(p50 + f(a * p60)))))))))))), z1 = f(p01 + f(a * f(p11 + f(a * f(p21 + f(a * f(p31 + f(a * f(p41 + f(a * p51)))))))))), z2 = f(p02 + f(a * f(p12 + f(a * f(p22 + f(a * f(p32 + f(a * p42)))))))), z3 = f(p03 + f(a * f(p13 + f(a * f(p23 + f(a * p33)))))), z4 = f(p04 + f(a * f(p14 + f(a * p24)))), z5 = f(p05 + f(a * p15)), z6 = p06;
       return f(z0 + f(b * f(z1 + f(b * f(z2 + f(b * f(z3 + f(b * f(z4 + f(b * f(z5 + f(b * z6))))))))))));
     };
-    const chi = f(xf32 + f(xf32 * f(f(1 - xx) * series(xx, yy)))), psi = f(yf32 + f(yf32 * f(f(1 - yy) * series(yy, xx))));
-    const t = 1 / Math.sqrt(chi * chi + psi * psi + 1);
+    const chi = f(xf32 + f(f(xf32 * f(1 - xx)) * series(xx, yy))), psi = f(yf32 + f(f(yf32 * f(1 - yy)) * series(yy, xx)));
+    const t = 1 / Math.sqrt(f(f(chi * chi) + f(psi * psi)) + 1); // χ² + ψ² in single precision, the rest in double, as wcslib has it
     switch (face) {
       case 1: return [t, chi * t, psi * t];
       case 2: return [-chi * t, t, psi * t];
-      case 3: return [-t, -chi * t, -psi * t];
-      case 4: return [chi * t, -t, -psi * t];
+      case 3: return [-t, -chi * t, psi * t]; // n keeps the sign of ψ on every equatorial face (wcslib: n = -ψ·l with l = -t)
+      case 4: return [chi * t, -t, psi * t];
       case 5: return [-psi * -t, -chi * -t, -t];
       default: return [-psi * t, chi * t, t];
     }

@@ -94,7 +94,7 @@ write('wcs-hpx-polar.fits', {**zen, 'CTYPE1': 'RA---HPX', 'CTYPE2': 'DEC--HPX', 
 write('wcs-hpx-south.fits', {**zen, 'CTYPE1': 'RA---HPX', 'CTYPE2': 'DEC--HPX', 'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': -40.5, 'CRPIX2': 110.5}, note='HEALPix, a southern polar facet off center')
 proj('XPH', {'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 20.5, 'CRPIX2': 15.5}, note='HEALPix polar (butterfly)')
 write('wcs-xph-wing.fits', {**zen, 'CTYPE1': 'RA---XPH', 'CTYPE2': 'DEC--XPH', 'CDELT1': -1.0, 'CDELT2': 1.0, 'CRPIX1': 80.5, 'CRPIX2': -60.5}, note='butterfly, out on a wing')
-for code in ('TSC', 'QSC'):
+for code in ('TSC', 'QSC', 'CSC'):  # every face of each cube: the first CSC fixture only reached faces whose signs happened to be right
     cube = {**zen, 'CTYPE1': f'RA---{code}', 'CTYPE2': f'DEC--{code}', 'CRVAL2': 0.0, 'CDELT1': -1.0, 'CDELT2': 1.0}
     write(f'wcs-{code.lower()}-north.fits', {**cube, 'CRPIX1': 20.5, 'CRPIX2': -50.5}, note=f'{code} on the north polar face')
     write(f'wcs-{code.lower()}-south.fits', {**cube, 'CRPIX1': 20.5, 'CRPIX2': 110.5}, note=f'{code} on the south polar face')
@@ -102,6 +102,10 @@ for code in ('TSC', 'QSC'):
     write(f'wcs-{code.lower()}-wrap.fits', {**cube, 'CRPIX1': 250.5, 'CRPIX2': 15.5}, note=f'{code} with the layout wrapping at negative x')
 write('wcs-tpv.fits', {**base, 'CTYPE1': 'RA---TPV', 'CTYPE2': 'DEC--TPV', 'PV1_0': 0.0001, 'PV1_1': 1.0, 'PV1_2': 0.002, 'PV1_4': 0.03, 'PV1_5': -0.01, 'PV1_6': 0.02, 'PV1_7': 0.5, 'PV2_0': -0.0002, 'PV2_1': 1.0, 'PV2_2': -0.003, 'PV2_4': -0.02, 'PV2_5': 0.015, 'PV2_6': 0.01, 'PV2_10': 0.4}, note='TAN with TPV polynomial distortion')
 write('wcs-cop-lonpole.fits', {**zen, 'CTYPE1': 'RA---COP', 'CTYPE2': 'DEC--COP', 'PV2_1': 45.0, 'PV2_2': 25.0, 'CRVAL2': 10.0, 'LONPOLE': 160.0, 'CDELT1': -0.1, 'CDELT2': 0.1}, note='conic with CRVAL2 below θa and LONPOLE 160')
+# Non-zenithal projections with the reference point at a celestial pole (the native pole's longitude is then CRVAL1;
+# wcslib accepts only LONPOLE = φ0 there, so there is no fixture with another LONPOLE).
+write('wcs-car-pole.fits', {**car, 'CRVAL2': 90.0}, note='plate carrée with the reference point at the north celestial pole')
+write('wcs-mer-south-pole.fits', {**car, 'CTYPE1': 'RA---MER', 'CTYPE2': 'DEC--MER', 'CRVAL2': -90.0}, note='Mercator with the reference point at the south celestial pole')
 with open(os.path.join(OUT, 'wcs.json'), 'w') as f:
     json.dump(manifest, f, indent=1, sort_keys=True)
 for k, v in manifest.items():

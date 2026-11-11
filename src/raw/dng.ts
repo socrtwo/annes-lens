@@ -7,6 +7,7 @@
  * balance, as-shot neutral or white point, baseline exposure and orientation.
  */
 import { readIfd, type IfdEntry } from '../codecs/tiff';
+import { checkSensor } from './limits';
 import { decodeLjpeg } from './ljpeg';
 
 export interface DngRaw {
@@ -67,6 +68,7 @@ export function readDng(u8: Uint8Array): DngRaw {
   if ((tag(r, 339)?.[0] || 1) === 3) throw new Error('Floating-point DNG is not supported');
   if (comp !== 1 && comp !== 7) throw new Error(comp === 34892 ? 'Lossy-compressed DNG is not supported yet' : comp === 8 ? 'Deflate-compressed (floating-point) DNG is not supported yet' : `DNG compression ${comp} is not supported`);
   if ((tag(r, 284)?.[0] || 1) !== 1 && spp > 1) throw new Error('Planar DNG data is not supported');
+  checkSensor('DNG', width, height, spp, u8.length, 1); // no coding here holds a sample in less than a bit
   const data = new Uint16Array(width * height * spp);
   // Pieces: strips (full width) or tiles.
   const tw = tag(r, 322)?.[0], tl = tag(r, 323)?.[0];
@@ -120,7 +122,8 @@ export function readDng(u8: Uint8Array): DngRaw {
   let crop: DngRaw['crop'] = null;
   // ActiveArea (top, left, bottom, right) is applied here; DefaultCrop is relative to it.
   let out = data, W = width, Hh = height, blackRow = dvv ? Float32Array.from(dvv) : null, blackCol = dh ? Float32Array.from(dh) : null;
-  if (area && area.length === 4 && (area[0] || area[1] || area[2] !== height || area[3] !== width)) {
+  // An ActiveArea outside the image is ignored (the whole image is then the active one).
+  if (area && area.length === 4 && area[0] >= 0 && area[1] >= 0 && area[2] > area[0] && area[3] > area[1] && area[2] <= height && area[3] <= width && (area[0] || area[1] || area[2] !== height || area[3] !== width)) {
     const [t, l, b, rr] = area; W = rr - l; Hh = b - t; out = new Uint16Array(W * Hh * spp);
     for (let y = 0; y < Hh; y++) out.set(data.subarray(((t + y) * width + l) * spp, ((t + y) * width + l + W) * spp), y * W * spp);
   }

@@ -55,6 +55,10 @@ describe('Atari ST (references: netpbm)', () => {
     const neoC = decodeAtariSt(fx('neo-cycle.neo'), 'neo-cycle.neo').pages[0].frames; // NEOchrome words: the same colors to the left, 4 VBLs
     expect(neoC.length).toBe(7); expect(neoC[0].delay).toBe(67); expect(diff(neoC[1].raster, ref('neo-cycle-f1.png'))).toBe(0);
     expect(decodeAtariSt(fx('neo.neo'), 'neo.neo').pages[0].frames.length).toBe(1);
+    // The limits' two nibbles the other way round name the same range of colors: the same animation.
+    const swapped = fx('neo-cycle.neo').slice(); swapped[49] = ((swapped[49] & 15) << 4) | (swapped[49] >> 4);
+    const neoS = decodeAtariSt(swapped, 'neo-cycle.neo').pages[0].frames;
+    expect(neoS.length).toBe(7); expect(diff(neoS[1].raster, neoC[1].raster)).toBe(0);
   });
   it('Degas high and medium resolution', () => {
     expect(diff(first(decodeAtariSt(fx('mono.pi3'), 'mono.pi3')), ref('mono.png'))).toBe(0);

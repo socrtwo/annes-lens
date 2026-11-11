@@ -4,13 +4,15 @@
  */
 import { describe, it, expect, afterAll } from 'vitest';
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseShareAddress, relayRoom, viewSignature, dataUrlBytes, randomToken } from '../../src/commands/netshare';
+import { parseShareAddress, relayRoom, viewSignature, dataUrlBytes, randomToken, latestOnly, retryDelay } from '../../src/commands/netshare';
 
 const require = createRequire(import.meta.url);
-const { startShare } = require('../../electron/netshare.cjs');
+const { startShare, pushEvent, MAX_UPLOAD, MAX_ACTIVE_UPLOADS } = require('../../electron/netshare.cjs');
+const { startRemote } = require('../../electron/remote.cjs');
 const started: { stop?: () => void; close?: () => void }[] = [];
 afterAll(() => { for (const s of started) (s.stop || s.close)?.(); });
 const text = async (r: Response) => r.text();
@@ -86,5 +88,113 @@ describe('the relay', () => {
     expect((await fetch(`http://127.0.0.1:${r.port}/a/${token}/state`)).status).toBe(404); // the kind is part of the room
     expect(await text(await fetch(`http://127.0.0.1:${r.port}/`))).toMatch(/1 room/);
     expect(r.rooms()).toBe(1);
+  });
+});
+
+/** A raw request whose body the test sends in pieces: resolves with the status, or 'closed' when the server ends the connection. */
+function rawPost(port: number, path: string, headers: Record<string, string | number> = {}) {
+  const req = http.request({ host: '127.0.0.1', port, path, method: 'POST', headers });
+  const done = new Promise<number | 'closed'>((resolve) => { req.on('response', (r) => { r.resume(); resolve(r.statusCode!); }); req.on('error', () => resolve('closed')); });
+  return { req, done };
+}
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe('requests that used to end the server', () => {
+  it('answers an address that does not parse, and a malformed escape, and goes on serving', async () => {
+    const s = await startShare(0); started.push(s);
+    const room = s.album({ name: 'A', items: [{ id: 'i1', name: 'one.png', thumb: 'data:image/jpeg;base64,/9j/AA==', path: null }] });
+    const root = `http://127.0.0.1:${s.port}`, base = `${root}/a/${room.token}/`;
+    expect((await fetch(`${root}//`)).status).toBe(400);
+    expect((await fetch(`${base}thumb/%E0%A4%A`)).status).toBe(404); expect((await fetch(`${base}file/%`)).status).toBe(404);
+    expect((await fetch(`${base}thumb/i1`)).status).toBe(200);
+
+    const remote = await startRemote(() => undefined, 0); started.push(remote);
+    expect((await fetch(`http://127.0.0.1:${remote.port}//`)).status).toBe(400);
+    expect((await fetch(remote.urls[0].replace(/^http:\/\/[^/:]+/, 'http://127.0.0.1') + 'state')).status).toBe(200);
+
+    // @ts-ignore the relay is a plain script without a declaration file
+    const { startRelay } = await import('../../scripts/relay.mjs');
+    const r = await startRelay(0); started.push(r);
+    expect((await fetch(`http://127.0.0.1:${r.port}//`)).status).toBe(400);
+    expect((await fetch(`http://127.0.0.1:${r.port}/`)).status).toBe(200);
+  });
+});
+
+describe('what guests may add to a shared album', () => {
+  it('takes pictures only, a few at a time, never more than the limit, and nothing once sharing has stopped', async () => {
+    const s = await startShare(0); started.push(s);
+    const dir = mkdtempSync(join(tmpdir(), 'qn-share-up-')), added: string[] = [];
+    const room = s.album({ name: 'Trip', items: [], contribute: true, contribDir: dir, onAdded: (x: { name: string }) => added.push(x.name) });
+    const path = `/a/${room.token}/add`, base = `http://127.0.0.1:${s.port}${path}`;
+    // Programs, pages and scriptable pictures are refused by name.
+    for (const name of ['run.exe', 'page.html', 'drawing.svg', 'noext', 'photo.jpg.sh']) expect((await fetch(`${base}?name=${name}`, { method: 'POST', body: 'x' })).status).toBe(415);
+    expect((await fetch(`${base}?name=ok.JPG`, { method: 'POST', body: 'x' })).status).toBe(200);
+    // Too large by its own declaration: refused before a byte is stored.
+    const big = rawPost(s.port, `${path}?name=big.png`, { 'content-length': MAX_UPLOAD + 1 }); big.req.flushHeaders();
+    expect(await big.done).toBe(413); big.req.destroy();
+    // Too large without saying so (chunked): cut off at the limit, and no part of it stays in the folder.
+    const chunk = Buffer.alloc(1024 * 1024, 7), long = rawPost(s.port, `${path}?name=long.png`);
+    long.req.on('error', () => undefined); long.req.setMaxListeners(0);
+    let shut = false; long.req.once('close', () => { shut = true; });
+    for (let i = 0; i < MAX_UPLOAD / chunk.length + 2 && !shut; i++) if (!long.req.write(chunk)) await Promise.race([new Promise((r) => long.req.once('drain', r)), wait(200)]);
+    long.req.end(); expect([413, 'closed']).toContain(await long.done);
+    // Only so many uploads at once.
+    const open = Array.from({ length: MAX_ACTIVE_UPLOADS }, (_, i) => { const u = rawPost(s.port, `${path}?name=slow${i}.png`); u.req.write('abc'); return u; });
+    await wait(150);
+    expect((await fetch(`${base}?name=extra.png`, { method: 'POST', body: 'x' })).status).toBe(429);
+    // Sharing stops while they are on their way: none of them is written.
+    room.stop();
+    for (const u of open) { u.req.end('def'); expect([410, 404, 'closed']).toContain(await u.done); }
+    await wait(150);
+    expect(readdirSync(dir).sort()).toEqual(['ok.JPG']);
+    expect(added).toEqual(['ok.JPG']);
+  });
+});
+
+describe('guests that do not read', () => {
+  it('get the latest state when they catch up, not every state in between', () => {
+    const written: string[] = []; let full = false; const drains: (() => void)[] = [];
+    const c = { write: (line: string) => { written.push(line); return !full; }, once: (_e: string, cb: () => void) => { drains.push(cb); } };
+    pushEvent(c, 'a'); full = true; pushEvent(c, 'b');          // b is accepted but fills the buffer
+    for (const x of ['c', 'd', 'e']) pushEvent(c, x);             // nothing is written while the guest is stalled
+    expect(written).toEqual(['a', 'b']);
+    full = false; drains.shift()!();                              // the guest reads again: only the newest goes out
+    expect(written).toEqual(['a', 'b', 'e']);
+    pushEvent(c, 'f'); expect(written).toEqual(['a', 'b', 'e', 'f']); expect(drains).toHaveLength(0);
+  });
+
+  it('are limited in number per room', async () => {
+    // @ts-ignore the relay is a plain script without a declaration file
+    const { startRelay } = await import('../../scripts/relay.mjs');
+    const r = await startRelay(0, { maxRooms: 2, roomsPerAddress: 2, maxGuests: 1 }); started.push(r);
+    const put = (token: string, key: string, state: object) => fetch(`http://127.0.0.1:${r.port}/s/${token}/state`, { method: 'PUT', headers: { authorization: `Bearer ${key}` }, body: JSON.stringify(state) });
+    const [t1, t2, t3] = [randomToken(), randomToken(), randomToken()];
+    expect((await put(t1, 'k', { kind: 'view' })).status).toBe(204); expect((await put(t2, 'k', { kind: 'view' })).status).toBe(204);
+    expect((await put(t3, 'k', { kind: 'view' })).status).toBe(429);            // no place for a third room
+    expect((await put(t1, 'k', { kind: 'view', n: 2 })).status).toBe(204);       // the rooms that exist go on working
+    const ctl = new AbortController(), first = await fetch(`http://127.0.0.1:${r.port}/s/${t1}/events`, { signal: ctl.signal });
+    expect(first.status).toBe(200); expect((await fetch(`http://127.0.0.1:${r.port}/s/${t1}/events`)).status).toBe(503);
+    ctl.abort();
+    expect(r.rooms()).toBe(2);
+  });
+});
+
+describe('following a shared view', () => {
+  it('never loses the newest state while an earlier one is being applied', async () => {
+    const applied: number[] = []; let release: () => void = () => undefined;
+    const on = latestOnly<number>(async (n) => { applied.push(n); if (n === 1) await new Promise<void>((r) => { release = r; }); });
+    on(1); on(2); on(3); on(4);                  // 2 and 3 are superseded while 1 is applied
+    expect(applied).toEqual([1]);
+    release(); await wait(10);
+    expect(applied).toEqual([1, 4]);
+    on(5); await wait(10); expect(applied).toEqual([1, 4, 5]);
+    // A failing state does not stop the ones after it; a follower that has stopped applies nothing.
+    let alive = true; const seen: number[] = [];
+    const on2 = latestOnly<number>(async (n) => { if (n === 1) throw new Error('x'); seen.push(n); }, () => alive);
+    on2(1); await wait(5); on2(2); await wait(5); alive = false; on2(3); await wait(5);
+    expect(seen).toEqual([2]);
+  });
+  it('asks again more slowly while the host cannot be reached', () => {
+    expect([0, 1, 2, 3, 4, 9].map(retryDelay)).toEqual([400, 800, 1600, 3200, 5000, 5000]);
   });
 });

@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readRaw, rawSupport, unpackBe, unpackLe, unpack16, commonShift, decodeArw2, decodeKodak65000, decodeNikon, decodeNikonYuv, sonyDecrypt, GENERIC_COLOR_MATRIX } from '../../src/raw/families';
 import { develop } from '../../src/raw/develop';
+import { decodeLjpeg } from '../../src/raw/ljpeg';
 
 // A small TIFF writer: entries [tag, type, values]; strings and byte blobs as arrays; data blobs placed after the IFD.
 type Entry = [number, number, number[]];
@@ -152,15 +153,15 @@ describe('RAW families: files', () => {
     expect(rawSupport(file, 'test.pef')).toEqual({ ok: true, family: 'PEF' });
     expect(readRaw(file).model).toBe('PENTAX *ist DL'); // no name: the Make tag decides the family
   });
-  it('reads Epson-padded rows, Nikon little-endian packing, Samsung three-sample CFA and a Sony-style 16-bit file', () => {
+  it('reads Epson-padded rows, Nikon 16-bit words, Samsung three-sample CFA and a Sony-style 16-bit file', () => {
     // Epson: 32769 with a pad byte after every 10 pixels; W = 10 keeps one pad per row.
     const ew = 10, eh = 4, ev = ramp(ew * eh, (i) => (i * 97) & 0xfff), erows = new Uint8Array(16 * eh);
     for (let y = 0; y < eh; y++) erows.set(packBe(ev.slice(y * ew, (y + 1) * ew), 12), y * 16);
     const erf = tiff([[256, 4, [ew]], [257, 4, [eh]], [258, 3, [12]], [259, 3, [32769]], [262, 3, [32803]], [271, 2, str('SEIKO EPSON CORP.')], [273, 4, [0x80000000]], [277, 3, [1]], [279, 4, [erows.length]], [33422, 1, [0, 1, 1, 2]]], false, { blobs: [erows] });
     expect([...readRaw(erf, 'a.erf').data]).toEqual(ev);
-    // Nikon: compression 34713 at 1.5 bytes per pixel is little-endian packed 12-bit; black from tag 0x3d would need a maker note, so it stays 0.
-    const nd = packLe(vals, 12);
-    const nef = tiff([[256, 4, [W]], [257, 4, [H]], [258, 3, [12]], [259, 3, [34713]], [262, 3, [32803]], [271, 2, str('NIKON CORPORATION')], [273, 4, [0x80000000]], [277, 3, [1]], [279, 4, [nd.length]], [33422, 1, [2, 1, 1, 0]]], true, { blobs: [nd] });
+    // Nikon: 12-bit samples packed most significant bit first in a big-endian file (the D1H's layout).
+    const nd = packBe(vals, 12);
+    const nef = tiff([[256, 4, [W]], [257, 4, [H]], [258, 3, [12]], [259, 3, [1]], [262, 3, [32803]], [271, 2, str('NIKON CORPORATION')], [273, 4, [0x80000000]], [277, 3, [1]], [279, 4, [nd.length]], [33422, 1, [2, 1, 1, 0]]], false, { blobs: [nd] });
     const n = readRaw(nef, 'a.nef'); expect([...n.data]).toEqual(vals); expect(n.cfa).toEqual([2, 1, 1, 0]);
     // Nikon 16-bit words are big-endian even in a little-endian file, shifted up by four.
     const nd16 = be16(vals.map((v) => v << 4));
@@ -175,12 +176,44 @@ describe('RAW families: files', () => {
     const sr2 = tiff([[254, 4, [1]], [259, 3, [6]], [330, 4, [0]]], true, { subIfds: [[[254, 4, [0]], [256, 4, [W]], [257, 4, [H]], [258, 3, [14]], [259, 3, [1]], [262, 3, [32803]], [273, 4, [0x80000000]], [277, 3, [1]], [279, 4, [sr.length]], [33422, 1, [1, 0, 2, 1]]]], blobs: [sr] });
     const t = readRaw(sr2, 'a.sr2'); expect([...t.data]).toEqual(vals); expect(t.cfa).toEqual([1, 0, 2, 1]);
   });
+  it('refuses packed layouts that were never checked against a real file, and says so before Develop RAW is offered', () => {
+    // The same header fields describe other makers' packings, which differ: decoding them the Nikon or Pentax way gives noise without any error.
+    const packed = (make: string, comp: number, le: boolean, data: Uint8Array) => tiff([[256, 4, [W]], [257, 4, [H]], [258, 3, [12]], [259, 3, [comp]], [262, 3, [32803]], [271, 2, str(make)], [273, 4, [0x80000000]], [277, 3, [1]], [279, 4, [data.length]], [33422, 1, [0, 1, 1, 2]]], le, { blobs: [data] });
+    const cases: [Uint8Array, string, RegExp][] = [
+      [packed('NIKON CORPORATION', 34713, true, packLe(vals, 12)), 'a.nef', /has not been checked against a sample file/],  // Nikon's little-endian packing
+      [packed('SAMSUNG', 32769, true, packBe(vals, 12)), 'a.srw', /Samsung's packed or compressed codings/],                // the NX1000's layout
+      [packed('OLYMPUS IMAGING CORP.', 1, true, packBe(vals, 12)), 'a.orf', /Olympus's packed or compressed coding/],
+      [packed('OLYMPUS IMAGING CORP.', 1, true, packBe(vals, 12).subarray(0, 40)), 'b.orf', /Olympus's packed or compressed coding/], // compressed: fewer bytes than any packing
+      [packed('PENTAX', 65535, false, packBe(vals, 12).subarray(0, 30)), 'a.pef', /Pentax's compressed coding \(K10D and later/],
+      [packed('SONY', 1, true, packBe(vals, 12)), 'a.arw', /has not been checked against a sample file/],
+    ];
+    for (const [file, name, why] of cases) {
+      const s = rawSupport(file, name);
+      expect(s.ok, name).toBe(false); expect(s.why, name).toMatch(why);
+      expect(() => readRaw(file, name), name).toThrow(why);   // the report and the reader say the same
+    }
+  });
+  it('checks every sensor size against the data present before allocating for it', () => {
+    const t0 = Date.now();
+    // A 48-byte Minolta file claiming 12,000 × 12,000 pixels.
+    const mrw = new Uint8Array(48), mdv = new DataView(mrw.buffer); mrw.set([0, 0x4d, 0x52, 0x4d], 0); mdv.setUint32(4, 40); mrw.set([0, 0x50, 0x52, 0x44], 8); mdv.setUint32(12, 24); mdv.setUint16(24, 12000); mdv.setUint16(26, 12000); mrw[33] = 12; mrw[34] = 0x59;
+    expect(rawSupport(mrw, 'a.mrw')).toMatchObject({ ok: false }); expect(() => readRaw(mrw, 'a.mrw')).toThrow(/too few for 12000×12000/);
+    // A TIFF family file whose header claims more than any sensor holds, and one whose strips are far too short.
+    const huge = tiff([[256, 4, [60000]], [257, 4, [60000]], [258, 3, [16]], [259, 3, [1]], [262, 3, [32803]], [273, 4, [8]], [277, 3, [1]], [279, 4, [16]], [33422, 1, [0, 1, 1, 2]]], true);
+    expect(() => readRaw(huge, 'a.arw')).toThrow(/larger than this module reads/);
+    const short = tiff([[256, 4, [4000]], [257, 4, [3000]], [258, 3, [12]], [259, 3, [7]], [262, 3, [32803]], [273, 4, [8]], [277, 3, [1]], [279, 4, [16]], [33422, 1, [0, 1, 1, 2]]], true);
+    expect(() => readRaw(short, 'a.dcr')).toThrow(/too few for 4000×3000/);
+    // A lossless JPEG frame header of 65535 × 65535 with a few bytes behind it.
+    const lj = Uint8Array.from([0xff, 0xd8, 0xff, 0xc4, 0, 20, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xc3, 0, 11, 12, 0xff, 0xff, 0xff, 0xff, 1, 1, 0x11, 0, 0xff, 0xda, 0, 8, 1, 1, 0, 1, 0, 0, 1, 2, 3]);
+    expect(() => decodeLjpeg(lj)).toThrow(/too few for 65535×65535|larger than this module reads/);
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
   it('refuses the families it cannot decode with a reason, and plain TIFFs named like RAW files', () => {
     expect(rawSupport(Uint8Array.from([0, 0, 0, 0x18, ...str('ftypcrx ').slice(0, 8)]), 'a.cr3')).toMatchObject({ ok: false, family: 'CR3' });
     expect(rawSupport(Uint8Array.from(str('FOVb').slice(0, 4).concat(new Array(20).fill(0))), 'a.x3f').why).toMatch(/Foveon/);
     expect(rawSupport(tiff([[256, 4, [4]]], true), 'a.iiq').why).toMatch(/Phase One/);
     const rgb = tiff([[256, 4, [2]], [257, 4, [2]], [258, 3, [8, 8, 8]], [262, 3, [2]], [273, 4, [8]], [277, 3, [3]], [279, 4, [12]]], true);
-    expect(() => readRaw(rgb, 'scan.nef')).toThrow(/no sensor image/);
+    expect(() => readRaw(rgb, 'scan.nef')).toThrow(/no sensor image/); expect(rawSupport(rgb, 'scan.nef')).toMatchObject({ ok: false, why: expect.stringMatching(/no sensor image/) });
   });
   it('reads Minolta MRW blocks', () => {
     const prd = new Uint8Array(24); prd.set(str('27730001').slice(0, 8), 0); prd[8] = H >> 8; prd[9] = H & 255; prd[10] = W >> 8; prd[11] = W & 255; prd[16] = 16; prd[17] = 12; prd[18] = 0x52;
@@ -231,7 +264,7 @@ describe('RAW families: files', () => {
     expect(r.asShotNeutral!.map((x) => +x.toFixed(4))).toEqual([+(264 / 487).toFixed(4), 1, +(264 / 523).toFixed(4)]);
     const newer = tiff([[2, 3, [W]], [3, 3, [H]], [0xb, 3, [34316]], [0x2d, 3, [6]], [0x118, 4, [0x80000000]]], true, { magic: [0x55, 0], blobs: [data] });
     expect(() => readRaw(newer, 'b.rw2')).toThrow(/raw format 6/);
-    expect(rawSupport(newer, 'b.rwl')).toEqual({ ok: true, family: 'RWL' });
+    expect(rawSupport(newer, 'b.rwl')).toMatchObject({ ok: false, family: 'RWL', why: expect.stringMatching(/raw format 6/) }); // said before Develop RAW is offered, not after
   });
   it('develops a family file through the DNG pipeline with the generic matrix', () => {
     const d = packBe(vals, 12);

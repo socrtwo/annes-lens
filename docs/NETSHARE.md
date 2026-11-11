@@ -30,7 +30,9 @@ the secret), `cache-control: no-store`, and no cookies.
 | `GET events` | server-sent events: the state at once, then every change (`data: <json>`) |
 | `PUT` or `POST state` with `authorization: Bearer <key>` | *relay only*: the host's update (the desktop server is fed in-process); `401` without a key, `403` with another room's key, `400` for non-JSON, at most 8 MB |
 | `GET thumb/<id>`, `GET file/<id>` | *album, desktop server only*: a JPEG thumbnail; the picture file itself |
-| `POST add?name=<file name>` (body: the file) | *album, desktop server only, when additions are allowed*: saves into the chosen folder (names made safe, never overwriting, at most 64 MB) and adds the picture to the album; `403` when not allowed |
+| `POST add?name=<file name>` (body: the file) | *album, desktop server only, when additions are allowed*: saves into the chosen folder (names made safe, never overwriting, at most 64 MB, streamed to disk) and adds the picture to the album. Pictures only, by name (`415` for anything else: programs, pages, SVG); at most 3 uploads at once and 500 per shared album (`429`); `413` when too large or empty; `410` when sharing stopped while the upload was on its way (nothing is kept); `403` when additions are not allowed |
+
+**Limits.** A request whose address does not parse is answered `400` by every server. Each room serves at most 64 event streams (`503` beyond that); a guest that stops reading gets the latest state when it catches up, not every state in between. The relay holds at most 64 rooms, 8 made from one address (`429` with `retry-after`; set `RELAY_MAX_ROOMS`, `RELAY_ROOMS_PER_ADDRESS`, `RELAY_MAX_GUESTS` to change them), and frees a room a minute after its host says it has stopped. In the desktop app, rooms and the phone remote end with the window that started them.
 
 **View state**: `{ kind: "view", name, index, total, caption, rel, nx, ny, key, picture, size, sig }` —
 `rel` is the zoom relative to fitting the whole picture, `nx`/`ny` the view's center as fractions of the

@@ -4,6 +4,8 @@
  * precision from 2 to 16 bits, restart intervals and the point transform. Output is the frame's
  * samples in order (each row: x0c0 x0c1 … x1c0 …), which a DNG tile then reads row by row.
  */
+import { checkSensor } from './limits';
+
 export interface LjpegFrame { width: number; height: number; comps: number; precision: number; data: Uint16Array }
 
 interface Huff { lookup: Int32Array; maxcode: Int32Array; valptr: Int32Array; mincode: Int32Array; vals: Uint8Array }
@@ -62,6 +64,8 @@ export function decodeLjpeg(u8: Uint8Array): LjpegFrame {
   }
   if (!width || !height || !comps) throw new Error('Lossless JPEG without a frame header');
   const huffs = scanTables.map((t) => { const h = tables[t]; if (!h) throw new Error('Missing Huffman table'); return h; });
+  // Every sample costs at least one bit of Huffman code: a frame larger than the data left can hold is a damaged or crafted header.
+  checkSensor('Lossless JPEG', width, height, comps, u8.length - p, 1);
   const data = new Uint16Array(width * height * comps), rowLen = width * comps, mask = (1 << precision) - 1;
   // Bit reader with byte stuffing; stops at markers (returning zeros), which a restart then skips.
   let bitBuf = 0, bitCnt = 0, marker = false;

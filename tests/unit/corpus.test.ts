@@ -38,10 +38,11 @@ describe.skipIf(!manifest)('the downloadable corpus (tests/corpus)', () => {
           const support = rawSupport(u8, f.name), ref = refs[f.name];
           if (REFUSED.has(id!.family)) expect(support.ok, `${id!.family} is refused with a reason`).toBe(false);
           else {
-            expect(support.ok).toBe(true);
-            let r: ReturnType<typeof readRaw> | null = null;
-            try { r = readRaw(u8, f.name); } catch (e: any) { expect(String(e?.message), 'a refusal the reader explains').toMatch(/sRAW and mRAW|no sensor image/); } // Canon's sRAW and film-scanner NEFs
-            if (!r) return;
+            // What the support report says is what the reader does: refused files are refused by both, with the same reason.
+            let r: ReturnType<typeof readRaw> | null = null, refusal = '';
+            try { r = readRaw(u8, f.name); } catch (e: any) { refusal = String(e?.message); }
+            expect(support.ok, 'the support report agrees with the reader').toBe(!!r);
+            if (!r) { expect(refusal, 'a refusal the reader explains').toMatch(/sRAW and mRAW|no sensor image/); expect(support.why).toBe(refusal); return; } // Canon's sRAW and film-scanner NEFs
             expect(r.width).toBeGreaterThan(100); expect(r.height).toBeGreaterThan(100);
             if (ref && !ref.skipped && ref.bin && r.samples === 1) {
               expect([r.width, r.height], 'the full sensor size LibRaw reports').toEqual([ref.rawWidth, ref.rawHeight]);

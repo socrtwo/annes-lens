@@ -14,6 +14,25 @@ const path = require('path');
 const crypto = require('crypto');
 
 const MAX_UPLOAD = 64 * 1024 * 1024;
+const MAX_ACTIVE_UPLOADS = 3;   // per room, at once (each streams to disk)
+const MAX_ROOM_UPLOADS = 500;   // per room, for as long as it is shared
+const MAX_GUESTS = 64;          // event streams per room
+/** What a guest may add to an album: pictures by name (the page offers image/* only). Programs, scripts, SVG and HTML are refused. */
+const UPLOAD_NAME = /\.(jpe?g|jpe|png|gif|webp|avif|heic|heif|tiff?|bmp|jxl|dng|cr2|cr3|nef|arw|orf|rw2|raf|pef|srw)$/i;
+/** The request's address, or null when it does not parse (`GET //` and the like): answered 400, never an exception in the server. */
+const urlOf = (req) => { try { return new URL(req.url, 'http://x'); } catch { return null; } };
+/** decodeURIComponent that returns null for a malformed escape. */
+const decode = (s) => { try { return decodeURIComponent(s); } catch { return null; } };
+/**
+ * Writes an event to a guest's stream. A guest that is not reading (a stalled phone, a suspended tab) gets the latest
+ * state when it catches up; states are not queued for it without limit.
+ */
+function pushEvent(c, line) {
+  if (c._qnBlocked) { c._qnNext = line; return; }
+  if (!c.write(line)) { c._qnBlocked = true; c.once('drain', () => { c._qnBlocked = false; const n = c._qnNext; c._qnNext = null; if (n) pushEvent(c, n); }); }
+}
+/** A request handler that answers 400 when the handler throws, so that no request can end the process. */
+const guarded = (fn) => (req, res) => { try { fn(req, res); } catch { try { if (!res.headersSent) res.writeHead(400); res.end(); } catch { /* the socket is gone */ } } };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** The guest page of a shared view: the picture fills the window at the host's relative zoom and center. */
@@ -35,6 +54,7 @@ function place() {
   img.style.transform = 'translate(' + (vw / 2 - cx * z) + 'px,' + (vh / 2 - cy * z) + 'px) scale(' + z + ')';
 }
 function show(s) {
+  if (s.ended) { $('st').textContent = 'The host stopped sharing.'; es.close(); return; }
   state = s; const img = $('pic');
   if (s.picture && img.dataset.key !== s.key) { img.dataset.key = s.key; img.onload = () => { natural = [img.naturalWidth, img.naturalHeight]; place(); }; img.src = s.picture; }
   $('name').textContent = s.name || ''; $('idx').textContent = s.total ? s.index + ' / ' + s.total : ''; $('cap').textContent = s.caption || '';
@@ -59,13 +79,21 @@ const ALBUM_SCRIPT = (base) => `'use strict';
 const $ = (id) => document.getElementById(id);
 function show(s) {
   $('title').textContent = s.name || 'Shared album'; $('count').textContent = s.items ? s.items.length + ' picture' + (s.items.length === 1 ? '' : 's') : '';
-  $('st').textContent = s.name ? '' : 'waiting for the host…'; $('up').hidden = !s.contribute;
+  // Through a relay (files: false) the state carries the thumbnails; downloads and additions need the host's own address.
+  const relayed = s.files === false;
+  if (s.ended) es.close();
+  $('st').textContent = s.ended ? 'The host stopped sharing this album.' : s.name ? (relayed ? 'thumbnails only through the relay' : '') : 'waiting for the host…'; $('up').hidden = !s.contribute || relayed;
   const grid = $('grid'); grid.replaceChildren();
   for (const it of s.items || []) {
     const f = document.createElement('figure'), img = document.createElement('img'), c = document.createElement('figcaption'), a = document.createElement('a');
-    img.src = '${base}thumb/' + encodeURIComponent(it.id); img.alt = it.name; img.loading = 'lazy';
-    a.href = '${base}file/' + encodeURIComponent(it.id); a.download = it.name; a.textContent = it.name; a.title = it.name + (it.size ? ' · ' + (it.size / 1048576).toFixed(1) + ' MB' : '');
-    c.append(a); f.append(img, c); grid.append(f);
+    img.alt = it.name; img.loading = 'lazy';
+    if (relayed) { if (typeof it.thumb === 'string' && it.thumb.indexOf('data:image/') === 0) img.src = it.thumb; c.textContent = it.name; }
+    else {
+      img.src = '${base}thumb/' + encodeURIComponent(it.id);
+      a.href = '${base}file/' + encodeURIComponent(it.id); a.download = it.name; a.textContent = it.name; a.title = it.name + (it.size ? ' · ' + (it.size / 1048576).toFixed(1) + ' MB' : '');
+      c.append(a);
+    }
+    f.append(img, c); grid.append(f);
   }
 }
 $('file').onchange = async () => {
@@ -92,8 +120,9 @@ function lanAddresses() {
  */
 function startShare(port = 0) {
   const rooms = new Map(); // token → { kind, state, clients, ...album fields }
-  const server = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://x');
+  const server = http.createServer(guarded((req, res) => {
+    const u = urlOf(req);
+    if (!u) { res.writeHead(400); res.end(); return; }
     const m = u.pathname.match(/^\/(s|a)\/([0-9a-f]{32})\/(.*)$/);
     const room = m && rooms.get(m[2]);
     const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
@@ -108,16 +137,17 @@ function startShare(port = 0) {
     if (req.method === 'GET' && rest === 'app.js') { res.writeHead(200, { ...headers, 'content-type': 'text/javascript' }); res.end(room.kind === 's' ? VIEW_SCRIPT(base) : ALBUM_SCRIPT(base)); return; }
     if (req.method === 'GET' && rest === 'state') { const since = u.searchParams.get('since'); if (since && room.state.sig && since === room.state.sig) { res.writeHead(304, headers); res.end(); return; } return json(200, room.state); }
     if (req.method === 'GET' && rest === 'events') {
+      if (room.clients.size >= MAX_GUESTS) { res.writeHead(503, headers); res.end(); return; }
       res.writeHead(200, { ...headers, 'content-type': 'text/event-stream', connection: 'keep-alive' });
-      res.write(`data: ${JSON.stringify(room.state)}\n\n`); room.clients.add(res); req.on('close', () => room.clients.delete(res)); return;
+      pushEvent(res, `data: ${JSON.stringify(room.state)}\n\n`); room.clients.add(res); req.on('close', () => room.clients.delete(res)); return;
     }
     if (room.kind === 'a') {
       const item = (id) => (room.items || []).find((it) => it.id === id);
       let mm = rest.match(/^thumb\/(.+)$/);
-      if (req.method === 'GET' && mm) { const it = item(decodeURIComponent(mm[1])); if (!it || !it.thumb) { res.writeHead(404, headers); res.end(); return; } const b = Buffer.from(it.thumb.replace(/^data:[^,]*,/, ''), 'base64'); res.writeHead(200, { ...headers, 'content-type': 'image/jpeg', 'content-length': b.length }); res.end(b); return; }
+      if (req.method === 'GET' && mm) { const it = item(decode(mm[1])); if (!it || !it.thumb) { res.writeHead(404, headers); res.end(); return; } const b = Buffer.from(it.thumb.replace(/^data:[^,]*,/, ''), 'base64'); res.writeHead(200, { ...headers, 'content-type': 'image/jpeg', 'content-length': b.length }); res.end(b); return; }
       mm = rest.match(/^file\/(.+)$/);
       if (req.method === 'GET' && mm) {
-        const it = item(decodeURIComponent(mm[1])); if (!it || !it.path) { res.writeHead(404, headers); res.end(); return; }
+        const it = item(decode(mm[1])); if (!it || !it.path) { res.writeHead(404, headers); res.end(); return; }
         let st; try { st = fs.statSync(it.path); } catch { res.writeHead(404, headers); res.end(); return; }
         res.writeHead(200, { ...headers, 'content-type': it.mime || 'application/octet-stream', 'content-length': st.size, 'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(it.name)}` });
         fs.createReadStream(it.path).on('error', () => res.destroy()).pipe(res); return;
@@ -125,25 +155,54 @@ function startShare(port = 0) {
       if (req.method === 'POST' && rest === 'add') {
         if (!room.contribute || !room.contribDir) { res.writeHead(403, headers); res.end(); return; }
         const name = path.basename(String(u.searchParams.get('name') || 'picture')).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 200) || 'picture';
-        const chunks = []; let size = 0;
-        req.on('data', (c) => { size += c.length; if (size > MAX_UPLOAD) { req.destroy(); return; } chunks.push(c); });
-        req.on('end', () => {
-          if (size > MAX_UPLOAD || !size) { res.writeHead(413, headers); res.end(); return; }
-          let target = path.join(room.contribDir, name), k = 1;
+        // Pictures only, a few at a time, and no more than the room's allowance.
+        if (!UPLOAD_NAME.test(name)) { res.writeHead(415, headers); res.end(); return; }
+        if (room.uploads.size >= MAX_ACTIVE_UPLOADS || room.added + room.uploads.size >= MAX_ROOM_UPLOADS) { res.writeHead(429, headers); res.end(); return; }
+        if (Number(req.headers['content-length']) > MAX_UPLOAD) { res.writeHead(413, { ...headers, connection: 'close' }); res.end(); return; }
+        // The upload streams into a hidden part file in the folder (not into memory) and gets its name only when it is
+        // complete and the album is still shared; a room closed meanwhile discards it.
+        const dir = room.contribDir, tmp = path.join(dir, `.upload-${crypto.randomBytes(6).toString('hex')}.part`);
+        const out = fs.createWriteStream(tmp, { flags: 'wx' });
+        let size = 0, settled = false;
+        const up = { cancel: () => fail(410) };
+        const drop = () => fs.rm(tmp, { force: true }, () => undefined);
+        const reply = (code, body) => {
+          if (res.headersSent || res.destroyed) return;
+          if (code === 200) { res.writeHead(200, { ...headers, 'content-type': 'application/json' }); res.end(JSON.stringify(body)); }
+          else { res.writeHead(code, { ...headers, connection: 'close' }); res.end(() => req.destroy()); }
+        };
+        // A failed upload stops writing; its part file is removed when the stream has closed (below).
+        const fail = (code) => { if (settled) return; settled = true; room.uploads.delete(up); req.unpipe(out); out.destroy(); reply(code); };
+        room.uploads.add(up);
+        req.on('data', (c) => { size += c.length; if (size > MAX_UPLOAD) fail(413); });
+        req.on('close', () => { if (!req.complete) fail(400); });
+        out.on('error', () => fail(500));
+        out.on('close', () => {
+          if (settled || !out.writableFinished) { fail(500); drop(); return; }
+          settled = true; room.uploads.delete(up);
+          if (!size) { drop(); return reply(413); }
+          if (rooms.get(room.token) !== room || !room.contribute || room.contribDir !== dir) { drop(); return reply(410); }
           const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
-          while (fs.existsSync(target)) target = path.join(room.contribDir, `${stem} (${++k})${ext}`);
-          try { fs.writeFileSync(target, Buffer.concat(chunks)); } catch { res.writeHead(500, headers); res.end(); return; }
-          res.writeHead(200, { ...headers, 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, name: path.basename(target) }));
+          let target = '';
+          for (let k = 1; ; k++) {
+            target = path.join(dir, k === 1 ? name : `${stem} (${k})${ext}`);
+            try { fs.copyFileSync(tmp, target, fs.constants.COPYFILE_EXCL); break; } // never replaces a file that is there
+            catch (e) { if (e && e.code === 'EEXIST' && k < 10000) continue; drop(); return reply(500); }
+          }
+          drop(); room.added++;
+          reply(200, { ok: true, name: path.basename(target) });
           if (room.onAdded) room.onAdded({ path: target, name: path.basename(target), size });
         });
+        req.pipe(out);
         return;
       }
     }
     res.writeHead(404, headers); res.end();
-  });
-  const broadcast = (room) => { const line = `data: ${JSON.stringify(room.state)}\n\n`; for (const c of room.clients) c.write(line); };
-  const open = (kind) => { const token = crypto.randomBytes(16).toString('hex'); const room = { kind, token, state: {}, clients: new Set() }; rooms.set(token, room); return room; };
-  const close = (room) => { for (const c of room.clients) c.end(); room.clients.clear(); rooms.delete(room.token); };
+  }));
+  const broadcast = (room) => { const line = `data: ${JSON.stringify(room.state)}\n\n`; for (const c of room.clients) pushEvent(c, line); };
+  const open = (kind) => { const token = crypto.randomBytes(16).toString('hex'); const room = { kind, token, state: {}, clients: new Set(), uploads: new Set(), added: 0 }; rooms.set(token, room); return room; };
+  // Closing a room ends its guests' streams and discards uploads still on their way.
+  const close = (room) => { rooms.delete(room.token); for (const c of room.clients) c.end(); room.clients.clear(); for (const up of [...room.uploads]) up.cancel(); };
   return new Promise((resolve, reject) => {
     server.on('error', reject);
     server.listen(port, '0.0.0.0', () => {
@@ -164,4 +223,4 @@ function startShare(port = 0) {
     });
   });
 }
-module.exports = { startShare, lanAddresses, MAX_UPLOAD, esc, viewPage: VIEW_PAGE, viewScript: VIEW_SCRIPT, albumPage: ALBUM_PAGE, albumScript: ALBUM_SCRIPT };
+module.exports = { startShare, lanAddresses, MAX_UPLOAD, MAX_ACTIVE_UPLOADS, MAX_ROOM_UPLOADS, MAX_GUESTS, UPLOAD_NAME, urlOf, pushEvent, guarded, esc, viewPage: VIEW_PAGE, viewScript: VIEW_SCRIPT, albumPage: ALBUM_PAGE, albumScript: ALBUM_SCRIPT };

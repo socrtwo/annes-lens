@@ -2587,6 +2587,15 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
   // The album: shared with thumbnails; opened as a folder in the follower; the host's stop ends both.
   const albA = await pa.evaluate(async (relayUrl) => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); const r = await qn.exec('browse.shareAlbum', { album: 'Seaside and hills', quiet: true, relay: relayUrl }); for (let i = 0; i < 60; i++) { const st = await (await fetch(r.relayUrl + 'state')).json(); if (st.items?.length && st.items.every((it) => it.thumb)) break; await wait(100); } return r; }, relayUrl);
   const albSt = await (await fetch(albA.relayUrl + 'state')).json();
+  // A plain browser at the relay address: the thumbnails come from the state; no download links or upload box (those
+  // need the host's own address), and nothing on the page asks the relay for a file it does not have.
+  const pPlain = await browser.newPage({ viewport: { width: 900, height: 600 } }); const plain404 = [];
+  pPlain.on('response', (r) => { if (r.status() >= 400) plain404.push(new URL(r.url()).pathname.split('/').slice(3).join('/')); });
+  await pPlain.goto(albA.relayUrl); await pPlain.waitForFunction(() => document.querySelectorAll('#grid figure').length === 2, null, { timeout: 15000 });
+  await pPlain.waitForFunction(() => [...document.querySelectorAll('#grid img')].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 15000 }).catch(() => undefined);
+  const plain = await pPlain.evaluate(() => ({ title: document.getElementById('title').textContent, thumbs: [...document.querySelectorAll('#grid img')].map((i) => i.src.startsWith('data:image/jpeg') && i.naturalWidth > 0), links: document.querySelectorAll('#grid a').length, upload: !document.getElementById('up').hidden, note: document.getElementById('st').textContent }));
+  await pPlain.close();
+  check('shared album through the relay in a plain browser: thumbnails shown, nothing offered that would fail', [plain, plain404], [{ title: 'Seaside and hills', thumbs: [true, true], links: 0, upload: false, note: 'thumbnails only through the relay' }, []]);
   const albF = await pFollow.evaluate(async (base) => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = await qn.exec('browse.openSharedAlbum', { url: base, quiet: true });
