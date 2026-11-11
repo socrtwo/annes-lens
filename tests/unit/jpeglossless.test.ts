@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { readJpegCoefficients, writeJpegCoefficients, transformCoefficients, cropCoefficients, trimToGrid, isPerfect, toGrayscale, optimalTable, opForOrientation, losslessTransform, ZIGZAG, type JpegCoefficients } from '../../src/codecs/jpegLossless';
 import { readExif } from '../../src/meta/exif';
 
@@ -138,5 +139,33 @@ describe('lossless JPEG', () => {
     const g = readJpegCoefficients(cut);
     expect(g.warnings.length).toBeGreaterThan(0);
     expect(g.width).toBe(64);
+  });
+});
+
+describe('what follows the picture in the file', () => {
+  const base = () => new Uint8Array(readFileSync('tests/fixtures/jpeg/base-420.jpg'));
+  const join = (...parts: Uint8Array[]) => { const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+  const ends = (hay: Uint8Array, tail: Uint8Array) => hay.length >= tail.length && tail.every((v, i) => hay[hay.length - tail.length + i] === v);
+  it('keeps a motion photo\'s video and says so', () => {
+    const video = Uint8Array.from([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, ...Array(4000).fill(7)]);
+    const r = losslessTransform(join(base(), video), 'rot90');
+    expect(ends(r.bytes, video)).toBe(true);
+    expect(r.warnings.join(' ')).toMatch(/4 KB stored after the picture .* were kept as they were/);
+    const plain = losslessTransform(base(), 'rot90');
+    expect(r.bytes.length).toBe(plain.bytes.length + video.length); expect(plain.warnings).toEqual([]);
+    expect(readJpegCoefficients(r.bytes).width).toBe(plain.width);                           // the picture itself is the same turned picture
+  });
+  it('leaves out a second picture (a gain map) with its index, and says so', () => {
+    const b = base(), second = b.slice();
+    // An MPF index segment after SOI, as an HDR photo carries for its gain map.
+    const mpf = Uint8Array.from([0xff, 0xe2, 0, 18, 0x4d, 0x50, 0x46, 0, 0x49, 0x49, 42, 0, 8, 0, 0, 0, 0, 0, 0, 0]);
+    const hdr = join(b.subarray(0, 2), mpf, b.subarray(2), second);
+    const r = losslessTransform(hdr, 'flipH');
+    expect(r.warnings.join(' ')).toMatch(/A second picture stored after the main one .* was left out/);
+    expect(r.bytes.length).toBe(losslessTransform(b, 'flipH').bytes.length);                 // no gain map, no index
+    let has = false; for (let i = 0; i + 4 < r.bytes.length; i++) if (r.bytes[i] === 0x4d && r.bytes[i + 1] === 0x50 && r.bytes[i + 2] === 0x46 && r.bytes[i + 3] === 0) has = true;
+    expect(has).toBe(false);
+    // Padding after the end marker is neither kept nor mentioned.
+    expect(losslessTransform(join(b, new Uint8Array(64)), 'none').warnings).toEqual([]);
   });
 });

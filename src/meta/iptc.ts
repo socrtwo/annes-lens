@@ -71,15 +71,45 @@ export function parseIim(u8: Uint8Array): IptcFields {
   return out;
 }
 
-/** Builds an IPTC-IIM block (UTF-8) from fields. */
-export function buildIim(f: IptcFields): Uint8Array {
+/** UTF-8 bytes cut to at most `max`, at a character boundary (never inside a character). */
+export function clipUtf8(b: Uint8Array, max: number): Uint8Array {
+  if (b.length <= max) return b;
+  let end = max; while (end > 0 && (b[end] & 0xc0) === 0x80) end--;
+  return b.subarray(0, end);
+}
+/** The datasets of an IIM block as they are stored: record, number, bytes; and whether the block declares UTF-8. */
+function rawDatasets(u8: Uint8Array): { sets: { rec: number; ds: number; data: Uint8Array }[]; utf8: boolean } {
+  const sets: { rec: number; ds: number; data: Uint8Array }[] = []; let utf8 = false, p = 0;
+  while (p + 5 <= u8.length) {
+    if (u8[p] !== 0x1c) { p++; continue; }
+    const rec = u8[p + 1], ds = u8[p + 2]; let len = (u8[p + 3] << 8) | u8[p + 4], q = p + 5;
+    if (len & 0x8000) { const n = len & 0x7fff; len = 0; for (let i = 0; i < n; i++) len = len * 256 + u8[q + i]; q += n; }
+    const data = u8.subarray(q, Math.min(u8.length, q + len));
+    if (rec === 1 && ds === 90) utf8 = str(data, 0, 3) === '\x1b%G';
+    sets.push({ rec, ds, data }); p = q + len;
+  }
+  return { sets, utf8 };
+}
+/**
+ * Builds an IPTC-IIM block (UTF-8) from fields. `previous`: the block being replaced; the datasets in it that this
+ * app has no field for (urgency, subject codes, the by-line's contact fields, a program's own records) are carried
+ * over as they were, their text converted to UTF-8 when the old block was not.
+ */
+export function buildIim(f: IptcFields, previous?: Uint8Array): Uint8Array {
   const enc = new TextEncoder();
-  const ds = (rec: number, n: number, data: Uint8Array) => concat([Uint8Array.from([0x1c, rec, n, data.length >> 8, data.length & 255]), data]);
+  const ds = (rec: number, n: number, data: Uint8Array) => (data.length < 0x8000
+    ? concat([Uint8Array.from([0x1c, rec, n, data.length >> 8, data.length & 255]), data])
+    : concat([Uint8Array.from([0x1c, rec, n, 0x80, 4, data.length >>> 24, (data.length >> 16) & 255, (data.length >> 8) & 255, data.length & 255]), data]));
   const parts: Uint8Array[] = [ds(1, 90, ascii('\x1b%G')), ds(2, 0, Uint8Array.from([0, 4]))];
+  const old = previous ? rawDatasets(previous) : { sets: [], utf8: true };
+  const BINARY = new Set([0, 125, 200, 201, 202]); // record version, rasterized caption, preview: not text
+  const keep = (x: { rec: number; ds: number; data: Uint8Array }) => (old.utf8 || x.rec !== 2 || BINARY.has(x.ds) ? x.data : enc.encode(new TextDecoder('latin1').decode(x.data)));
+  for (const x of old.sets) if (x.rec === 1 && x.ds !== 90 && x.ds !== 0) parts.push(ds(1, x.ds, x.data)); // the envelope's other datasets
   for (const [n, key] of ORDER) {
     const v = f[key]; if (!v || (Array.isArray(v) && !v.length)) continue;
-    for (const item of Array.isArray(v) ? v : [v]) { const b = enc.encode(item).subarray(0, n === 120 ? 2000 : 255); if (b.length) parts.push(ds(2, n, b)); }
+    for (const item of Array.isArray(v) ? v : [v]) { const b = clipUtf8(enc.encode(item), n === 120 ? 2000 : 255); if (b.length) parts.push(ds(2, n, b)); }
   }
+  for (const x of old.sets) if ((x.rec === 2 && x.ds !== 0 && !DATASETS[x.ds]) || x.rec > 2) parts.push(ds(x.rec, x.ds, keep(x)));
   return concat(parts);
 }
 
@@ -100,9 +130,10 @@ export function writeIptc(u8: Uint8Array, fields: IptcFields | null): Uint8Array
   const segs = jpegSegments(u8);
   const app13 = segs.find((s) => s.marker === 0xed && str(u8, s.start + 4, 14) === 'Photoshop 3.0\0');
   let res: Resource[] = app13 ? parseResources(u8.subarray(app13.start + 18, app13.start + 2 + app13.len)) : [];
+  const previous = res.find((r) => r.id === 0x0404)?.data;
   res = res.filter((r) => r.id !== 0x0404);
   const any = fields && Object.values(fields).some((v) => (Array.isArray(v) ? v.length : !!v));
-  if (any) res.unshift({ id: 0x0404, name: new Uint8Array(0), data: buildIim(fields!) });
+  if (any) res.unshift({ id: 0x0404, name: new Uint8Array(0), data: buildIim(fields!, previous) });
   const body = res.length ? concat([ascii('Photoshop 3.0\0'), buildResources(res)]) : null;
   const seg = body && body.length + 2 <= 65535 ? concat([Uint8Array.from([0xff, 0xed, (body.length + 2) >> 8, (body.length + 2) & 255]), body]) : new Uint8Array(0);
   if (app13) return concat([u8.subarray(0, app13.start), seg, u8.subarray(app13.start + 2 + app13.len)]);

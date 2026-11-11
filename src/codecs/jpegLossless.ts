@@ -19,6 +19,8 @@ export interface JpegCoefficients {
   segments: JpegSegment[];
   adobeTransform: number | null;
   restartInterval: number;
+  /** What the file holds after the picture's end marker (a gain map or other second picture, a motion photo's video); empty when nothing. */
+  trailer?: Uint8Array;
   warnings: string[];
   /** How much of the first full scan was decoded (MCUs or blocks), for recovery reports. */
   decodedUnits: number; totalUnits: number;
@@ -108,7 +110,7 @@ export function readJpegCoefficients(u8: Uint8Array): JpegCoefficients {
     if (u8[p] !== 0xff) { out.warnings.push(`Unexpected byte at ${p}; skipping to the next marker`); while (p < u8.length && u8[p] !== 0xff) p++; continue; }
     const m = u8[p + 1];
     if (m === 0xff) { p++; continue; }
-    if (m === 0xd9) break;
+    if (m === 0xd9) { out.trailer = u8.subarray(p + 2); break; }
     if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01) { p += 2; continue; }
     const len = (u8[p + 2] << 8) | u8[p + 3];
     const seg = u8.subarray(p + 4, p + 2 + len);
@@ -609,7 +611,21 @@ export function losslessTransform(u8: Uint8Array, op: LosslessOp, opts: WriteOpt
   if (opts.orientation !== undefined) {
     for (const s of f.segments) if (s.marker === 0xe1 && s.data[0] === 0x45 && s.data[1] === 0x78) { const exif = s.data.subarray(6); patchOrientation(exif, opts.orientation); }
   }
-  return { bytes: writeJpegCoefficients(f, opts), perfect, warnings: f.warnings, width: f.width, height: f.height };
+  // What followed the picture in the file. A second picture (an HDR gain map, a depth map) would have to be turned and
+  // cropped with the first to stay in register, which this does not do: it is left out, with its index, and the result
+  // says so. Anything else (a motion photo's video, found from the end of the file) is carried over as it was.
+  const t = f.trailer, kb = t ? Math.max(1, Math.round(t.length / 1024)) : 0;
+  const second = !!t && t.length > 4 && t[0] === 0xff && t[1] === 0xd8, other = !!t && !second && t.some((b) => b !== 0);
+  if (second) {
+    f.segments = f.segments.filter((s) => !(s.marker === 0xe2 && s.data[0] === 0x4d && s.data[1] === 0x50 && s.data[2] === 0x46 && s.data[3] === 0)); // the MPF index pointing at it
+    f.warnings.push(`A second picture stored after the main one (an HDR gain map, a depth map or a large preview; ${kb} KB) was left out: it cannot be turned or cropped with the picture`);
+  }
+  let bytes = writeJpegCoefficients(f, opts);
+  if (other) {
+    const joined = new Uint8Array(bytes.length + t!.length); joined.set(bytes); joined.set(t!, bytes.length); bytes = joined;
+    f.warnings.push(`${kb} KB stored after the picture (a motion photo's video, for example) were kept as they were`);
+  }
+  return { bytes, perfect, warnings: f.warnings, width: f.width, height: f.height };
 }
 
 function patchOrientation(exif: Uint8Array, value: number): void {

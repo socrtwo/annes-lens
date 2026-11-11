@@ -202,7 +202,7 @@ describe('WBMP', () => {
 });
 
 describe('PSD', () => {
-  function psd(opts: { mode: number; channels: number; depth: number; planes: number[][]; rle?: boolean; w: number; h: number; layers?: string[] }): Uint8Array {
+  function psd(opts: { mode: number; channels: number; depth: number; planes: number[][]; rle?: boolean; w: number; h: number; layers?: string[]; mergedAlpha?: boolean }): Uint8Array {
     const be16 = (v: number) => [v >> 8, v & 255], be32 = (v: number) => [(v >>> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255];
     const out = [...text('8BPS'), ...be16(1), 0, 0, 0, 0, 0, 0, ...be16(opts.channels), ...be32(opts.h), ...be32(opts.w), ...be16(opts.depth), ...be16(opts.mode)];
     out.push(...be32(0)); // color mode data
@@ -217,7 +217,7 @@ describe('PSD', () => {
         while ((extra.length - 8) % 4) extra.push(0);
         rec.push(...be32(extra.length), ...extra);
       }
-      const li = [...be16(opts.layers.length), ...rec];
+      const li = [...be16((opts.mergedAlpha ? -opts.layers.length : opts.layers.length) & 0xffff), ...rec]; // a negative count: the first extra channel is the composite's transparency
       const lm = [...be32(li.length), ...li];
       out.push(...be32(lm.length), ...lm);
     } else out.push(...be32(0));
@@ -238,7 +238,7 @@ describe('PSD', () => {
     expect(pixel(d.pages[0].frames[0].raster, 0, 0)).toEqual(RED);
     expect(pixel(d.pages[0].frames[0].raster, 1, 0)).toEqual(GREEN);
     expect(d.pages[0].dpi).toEqual([300, 300]);
-    const rgba = decodePsd(psd({ mode: 3, channels: 4, depth: 8, w: 1, h: 2, planes: [[0, 0], [0, 0], [255, 255], [255, 10]], rle: true, layers: ['Background', 'Text'] }));
+    const rgba = decodePsd(psd({ mode: 3, channels: 4, depth: 8, w: 1, h: 2, planes: [[0, 0], [0, 0], [255, 255], [255, 10]], rle: true, layers: ['Background', 'Text'], mergedAlpha: true }));
     expect(pixel(rgba.pages[0].frames[0].raster, 0, 1)).toEqual([0, 0, 255, 10]);
     expect(rgba.pages[0].hasAlpha).toBe(true);
     expect(rgba.info.Layers).toBe('2: Background, Text');
@@ -385,5 +385,38 @@ describe('sniffing and encoders', () => {
     const r = raster(2, 1, [RED, BLUE]);
     expect(pixel(decodeTga(await encodeRaster(r, 'tga')).pages[0].frames[0].raster, 1, 0)).toEqual(BLUE);
     expect(pixel(decodeQoi(await encodeRaster(r, 'qoi')).pages[0].frames[0].raster, 1, 0)).toEqual(BLUE);
+  });
+});
+
+describe('alpha channels that are not transparency', () => {
+  const le16 = (v: number) => [v & 255, v >> 8], le32 = (v: number) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+  const be16 = (v: number) => [v >> 8, v & 255], be32 = (v: number) => [(v >>> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255];
+  /** A 2 × 1, 32-bit BI_RGB bitmap (what the Windows clipboard writes) with the given top bytes. */
+  const bmp32 = (a0: number, a1: number) => Uint8Array.from([0x42, 0x4d, ...le32(62), 0, 0, 0, 0, ...le32(54), ...le32(40), ...le32(2), ...le32(1), ...le16(1), ...le16(32), ...le32(0), ...le32(8), ...le32(2835), ...le32(2835), ...le32(0), ...le32(0), 10, 20, 30, a0, 40, 50, 60, a1]);
+  /** A 2 × 1, 32-bit uncompressed true-color TGA (descriptor: 8 alpha bits, top-left origin). */
+  const tga32 = (a0: number, a1: number) => Uint8Array.from([0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 32, 0x28, 10, 20, 30, a0, 40, 50, 60, a1]);
+  it('32-bit BMP and TGA whose alpha is zero in every pixel are opaque; real alpha is kept', async () => {
+    const { decodeBmp } = await import('../../src/codecs/bmp');
+    const b = decodeBmp(bmp32(0, 0)).pages[0];
+    expect([...b.frames[0].raster.data]).toEqual([30, 20, 10, 255, 60, 50, 40, 255]); expect(b.hasAlpha).toBe(false);
+    const b2 = decodeBmp(bmp32(0, 128)).pages[0];
+    expect([b2.frames[0].raster.data[3], b2.frames[0].raster.data[7], b2.hasAlpha]).toEqual([0, 128, true]);
+    const t = decodeTga(tga32(0, 0)).pages[0];
+    expect([...t.frames[0].raster.data]).toEqual([30, 20, 10, 255, 60, 50, 40, 255]); expect(t.hasAlpha).toBe(false);
+    const t2 = decodeTga(tga32(0, 128)).pages[0];
+    expect([t2.frames[0].raster.data[3], t2.frames[0].raster.data[7], t2.hasAlpha]).toEqual([0, 128, true]);
+    const t3 = decodeTga(tga32(255, 255)).pages[0]; expect(t3.hasAlpha).toBe(false);
+  });
+  it('PSD: the extra channel of a file with layers is a saved selection unless the layer count is negative', () => {
+    // 2 × 1 RGB, 8 bits, 4 channels; layer section: a layer count and nothing else (the reader only needs its sign).
+    const psd = (count: number) => Uint8Array.from([0x38, 0x42, 0x50, 0x53, 0, 1, 0, 0, 0, 0, 0, 0, ...be16(4), ...be32(1), ...be32(2), ...be16(8), ...be16(3), ...be32(0), ...be32(0),
+      ...be32(6), ...be32(2), ...be16(count & 0xffff), ...be16(0), 200, 100, 150, 50, 25, 75, 0, 255]);
+    const sel = decodePsd(psd(1));       // one layer: the fourth channel is a selection
+    expect([...sel.pages[0].frames[0].raster.data]).toEqual([200, 150, 25, 255, 100, 50, 75, 255]); expect(sel.pages[0].hasAlpha).toBe(false);
+    expect(sel.info['Extra channel']).toMatch(/saved selection/);
+    const tr = decodePsd(psd(-1));       // negative count: it is the composite's transparency
+    expect([tr.pages[0].frames[0].raster.data[3], tr.pages[0].frames[0].raster.data[7]]).toEqual([0, 255]);
+    const flat = decodePsd(psd(0));      // no layers: as before, the channel is taken as transparency (what most writers mean)
+    expect(flat.pages[0].frames[0].raster.data[3]).toBe(0);
   });
 });

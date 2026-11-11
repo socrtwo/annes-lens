@@ -62,6 +62,18 @@ checked by reading and by the suites still passing, not by a test of their own.
 - **Hangs: R10.** RAW sensor sizes are checked against the data present before anything is allocated (families, DNG,
   lossless JPEG).
 - **Wrong results: W1, W2.** Interlaced GIFs; median cut with one dominant color.
+- **Wrong results: W3, W4.** The TIFF horizontal predictor is undone for 16-, 32- and 64-bit samples in either byte
+  order, and in a copy when the data is uncompressed (new fixtures written with tifffile). 32-bit BMP and TGA whose
+  alpha is zero in every pixel open opaque; a PSD's extra channel is taken as transparency only when the layer count
+  says so (my own PSD test had been written with the wrong assumption and was corrected).
+- **Wrong results: W16 to W19, and S11.** XMP attribute values end at the quote they began with. Shift Dates and
+  Remove Location replace the EXIF block alone (`replaceExif`), leaving the multi-picture index, extended XMP and
+  content credentials where they were. Remove Location overwrites the GPS directory and its values (checked with
+  Pillow: no GPS, the coordinates gone from the bytes, the file the same length). Strip removes PNG `caBX` and WebP
+  `C2PA` chunks. The IPTC writer carries over the datasets it has no field for and cuts text between characters. An
+  XMP packet too large for a JPEG segment is refused with a reason. Lossless transforms keep a motion photo's video,
+  leave out a gain map with its index, and say which. Writing regions keeps the people named without a region.
+  Not done: extended XMP for packets over 64 KB; a gain map is dropped by a lossless transform, not transformed.
 - **Wrong results: W5, W6.** Packed RAW layouts that were never checked against a real file are refused (Samsung's,
   Olympus's, Nikon's little-endian one) instead of decoded to noise; the support report runs the reader's own header
   path, so it cannot say yes to a file the reader refuses (compressed PEF, ORF and SRW, Canon sRAW); README and

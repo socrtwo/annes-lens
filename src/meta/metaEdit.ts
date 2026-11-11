@@ -42,7 +42,9 @@ export function setXmp(u8: Uint8Array, format: string, xmp: Uint8Array | null): 
   if (format === 'jpeg') {
     const segs = jpegSegments(u8);
     const old = segs.find((s) => s.marker === 0xe1 && str(u8, s.start + 4, 29) === XMP_HEAD);
-    const neu = xmp && xmp.length + 31 <= 65535 ? seg(0xe1, concat([ascii(XMP_HEAD), xmp])) : new Uint8Array(0);
+    // One JPEG segment holds 64 KB. A longer packet is refused aloud: writing nothing in its place, as this did, lost the picture's metadata while the result said "written".
+    if (xmp && xmp.length + 31 > 65535) throw new Error(`The metadata (${Math.round(xmp.length / 1024)} KB of XMP) is larger than the 64 KB a JPEG holds in one piece; nothing was changed. Use a sidecar file for this picture (Metadata ▸ Sidecar Mode)`);
+    const neu = xmp ? seg(0xe1, concat([ascii(XMP_HEAD), xmp])) : new Uint8Array(0);
     if (old) return concat([u8.subarray(0, old.start), neu, u8.subarray(old.start + 2 + old.len)]);
     if (!neu.length) return u8;
     let at = 2; for (const s of segs) { if (s.marker === 0xe0 || (s.marker === 0xe1 && str(u8, s.start + 4, 4) === 'Exif')) at = s.start + 2 + s.len; else break; }
@@ -108,10 +110,24 @@ function findEntry(exif: Uint8Array, ifd: number, tag: number): number {
   for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (e + 12 > exif.length) break; if (t.dv.getUint16(e, t.le) === tag) return e; }
   return -1;
 }
-/** A copy of the EXIF block without the GPS IFD entry in IFD0 (the IFD's bytes stay but are unreachable). */
+/**
+ * A copy of the EXIF block without its GPS data: the GPS directory and every value it points to are overwritten with
+ * zeros, and its entry is taken out of IFD0. (Taking out the entry alone left the coordinates in the file for anyone
+ * who looked at the bytes.) The block keeps its length, so nothing else in the file moves.
+ */
 export function removeGpsFromExif(exif: Uint8Array): Uint8Array {
   const out = exif.slice(); const t = tiffView(out); if (!t) return out;
   const e = findEntry(out, t.ifd0, 0x8825); if (e < 0) return out;
+  const SIZE: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
+  const gps = t.dv.getUint32(e + 8, t.le);
+  if (gps > 0 && gps + 2 <= out.length) {
+    const count = Math.min(t.dv.getUint16(gps, t.le), Math.floor((out.length - gps - 2) / 12));
+    for (let i = 0; i < count; i++) {
+      const at = gps + 2 + i * 12, bytes = (SIZE[t.dv.getUint16(at + 2, t.le)] || 1) * t.dv.getUint32(at + 4, t.le);
+      if (bytes > 4) { const v = t.dv.getUint32(at + 8, t.le); if (v < out.length) out.fill(0, v, Math.min(out.length, v + bytes)); }
+    }
+    out.fill(0, gps, Math.min(out.length, gps + 2 + count * 12 + 4));
+  }
   const n = t.dv.getUint16(t.ifd0, t.le), end = t.ifd0 + 2 + n * 12;
   out.copyWithin(e, e + 12, end + 4); // shift the later entries and the next-IFD pointer up
   out.fill(0, end - 12 + 4, end + 4);
@@ -162,6 +178,23 @@ export function minimalExif(o: { orientation?: number; artist?: string; copyrigh
   return out;
 }
 
+/**
+ * A copy of the file with its EXIF block replaced and nothing else touched: every other segment or chunk stays where
+ * it was (the multi-picture index and gain map of an HDR photo, a motion photo's markers, extended XMP, content
+ * credentials). stripMeta rebuilds the file from the parts it knows and is for removing things, not for edits.
+ */
+export function replaceExif(u8: Uint8Array, format: string, exif: Uint8Array): Uint8Array {
+  if (format === 'jpeg') {
+    const s = jpegSegments(u8).find((x) => x.marker === 0xe1 && str(u8, x.start + 4, 6) === 'Exif\0\0');
+    if (!s) return u8;
+    if (exif.length + 8 > 65535) throw new Error('The EXIF block is larger than a JPEG holds in one piece; nothing was changed');
+    return concat([u8.subarray(0, s.start), seg(0xe1, concat([ascii('Exif\0\0'), exif])), u8.subarray(s.start + 2 + s.len)]);
+  }
+  if (format === 'png') { const chunks = pngChunks(u8); if (!chunks || !chunks.some((c) => c.type === 'eXIf')) return u8; return buildPng(chunks.map((c) => (c.type === 'eXIf' ? { type: 'eXIf', data: exif } : c))); }
+  if (format === 'webp') { const m = extractMeta(u8); return m.exif ? injectWebpMeta(u8, { exif, icc: m.icc, xmp: m.xmp }) : u8; }
+  return u8;
+}
+
 // Strip --------------------------------------------------------------------------------------------
 export interface KeepOptions { exif?: boolean; orientation?: boolean; icc?: boolean; xmp?: boolean; iptc?: boolean; comment?: boolean; copyright?: boolean; /** An XMP packet to write instead of the original (e.g. one with only dc:rights). */ xmpReplacement?: Uint8Array | null; exifReplacement?: Uint8Array | null }
 
@@ -170,7 +203,7 @@ function stripWebp(u8: Uint8Array, keep: KeepOptions): Uint8Array {
   const next: PictureMeta = { exif: keep.exif ? m.exif : keep.exifReplacement || undefined, icc: keep.icc ? m.icc : undefined, xmp: keep.xmp ? m.xmp : keep.xmpReplacement || undefined };
   // Rebuild from the chunks, dropping metadata; injectWebpMeta re-adds what is kept.
   const chunks: Uint8Array[] = []; let p = 12;
-  while (p + 8 <= u8.length) { const type = str(u8, p, 4); const len = (u8[p + 4] | (u8[p + 5] << 8) | (u8[p + 6] << 16) | (u8[p + 7] << 24)) >>> 0; if (!['EXIF', 'XMP ', 'ICCP'].includes(type)) chunks.push(u8.subarray(p, p + 8 + len + (len & 1))); p += 8 + len + (len & 1); }
+  while (p + 8 <= u8.length) { const type = str(u8, p, 4); const len = (u8[p + 4] | (u8[p + 5] << 8) | (u8[p + 6] << 16) | (u8[p + 7] << 24)) >>> 0; if (!['EXIF', 'XMP ', 'ICCP', 'C2PA'].includes(type)) chunks.push(u8.subarray(p, p + 8 + len + (len & 1))); p += 8 + len + (len & 1); }
   const payload = concat(chunks); const out = new Uint8Array(12 + payload.length); out.set(u8.subarray(0, 12)); out.set(payload, 12);
   const size = payload.length + 4; out[4] = size & 255; out[5] = (size >> 8) & 255; out[6] = (size >> 16) & 255; out[7] = (size >>> 24) & 255;
   if (out[12] === 0x56 && out[13] === 0x50 && out[14] === 0x38 && out[15] === 0x58) out[20] &= ~0x2c; // clear ICC/EXIF/XMP flags in VP8X
@@ -219,7 +252,7 @@ export function stripMeta(u8: Uint8Array, format: string, keep: KeepOptions): Ui
       if (isXmpItxt(c)) { if (xmpOut) { kept.push({ type: 'iTXt', data: concat([ascii('XML:com.adobe.xmp\0\0\0\0\0'), xmpOut]) }); xmpOut = undefined; } continue; }
       if (c.type === 'iCCP') { if (keep.icc) kept.push(c); continue; }
       if (c.type === 'tEXt' || c.type === 'zTXt' || c.type === 'iTXt') { if (keep.comment && pngTextKey(c) === 'Comment') kept.push(c); continue; }
-      if (c.type === 'tIME') continue;
+      if (c.type === 'tIME' || c.type === 'caBX') continue; // caBX: content credentials (they carry the AI prompt and a thumbnail of the source picture)
       kept.push(c);
     }
     const idx = kept.findIndex((c) => c.type === 'IDAT' || c.type === 'PLTE' || c.type === 'IEND');

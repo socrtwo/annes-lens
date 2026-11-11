@@ -60,8 +60,9 @@ function prefixFor(xml: string, ns: string): string {
 function readText(xml: string, p: string, name: string): string | undefined {
   const el = xml.match(new RegExp(`<${esc(p)}:${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${esc(p)}:${name}>`));
   if (el) { const inner = el[1]; const li = inner.match(/<rdf:li[^>]*>([\s\S]*?)<\/rdf:li>/); return unescapeXml((li ? li[1] : inner).trim()); }
-  const at = xml.match(new RegExp(`\\s${esc(p)}:${name}=["']([^"']*)["']`));
-  return at ? unescapeXml(at[1]) : undefined;
+  // An attribute's value ends at the quote it began with: "Coeur d'Alene" holds an apostrophe.
+  const at = xml.match(new RegExp(`\\s${esc(p)}:${name}=(?:"([^"]*)"|'([^']*)')`));
+  return at ? unescapeXml(at[1] ?? at[2]) : undefined;
 }
 function readList(xml: string, p: string, name: string): string[] | undefined {
   const el = xml.match(new RegExp(`<${esc(p)}:${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${esc(p)}:${name}>`));
@@ -107,7 +108,7 @@ export function emptyXmp(): string {
 }
 
 function removeProp(xml: string, p: string, name: string): string {
-  return xml.replace(new RegExp(`\\s*<${esc(p)}:${name}(?:\\s[^>]*)?>[\\s\\S]*?</${esc(p)}:${name}>`, 'g'), '').replace(new RegExp(`\\s*<${esc(p)}:${name}(?:\\s[^>]*)?/>`, 'g'), '').replace(new RegExp(`\\s${esc(p)}:${name}=["'][^"']*["']`, 'g'), '');
+  return xml.replace(new RegExp(`\\s*<${esc(p)}:${name}(?:\\s[^>]*)?>[\\s\\S]*?</${esc(p)}:${name}>`, 'g'), '').replace(new RegExp(`\\s*<${esc(p)}:${name}(?:\\s[^>]*)?/>`, 'g'), '').replace(new RegExp(`\\s${esc(p)}:${name}=(?:"[^"]*"|'[^']*')`, 'g'), '');
 }
 function ensureNs(xml: string, p: string, uri: string): string {
   if (new RegExp(`xmlns:${esc(p)}=`).test(xml)) return xml;
@@ -190,7 +191,7 @@ export interface Region {
 export interface RegionDoc { dims: { w: number; h: number } | null; regions: Region[] }
 
 const numAttr = (s: string, name: string): number | undefined => { const m = s.match(new RegExp(`${esc(name)}=["']\\s*([-\\d.]+)`)); return m ? +m[1] : undefined; };
-const strAttr = (s: string, name: string): string | undefined => { const m = s.match(new RegExp(`${esc(name)}=["']([^"']*)`)); return m ? unescapeXml(m[1]) : undefined; };
+const strAttr = (s: string, name: string): string | undefined => { const m = s.match(new RegExp(`${esc(name)}=(?:"([^"]*)"|'([^']*)')`)); return m ? unescapeXml(m[1] ?? m[2]) : undefined; };
 
 /** Reads the MWG region list (named areas) and the Anne's Lens person links on them. */
 export function readRegions(xml: string | null | undefined): RegionDoc {
@@ -219,10 +220,14 @@ export function readRegions(xml: string | null | undefined): RegionDoc {
 export function writeRegions(xml: string | null | undefined, regions: Region[], dims: { w: number; h: number } | null): string {
   let out = xml && /<rdf:Description/.test(xml) ? xml : emptyXmp();
   if (!/<\/rdf:Description>/.test(out)) out = out.replace(/<rdf:Description\b([^>]*)\/>/, '<rdf:Description$1>\n  </rdf:Description>');
+  // PersonInImage lists everyone in the picture, named areas or not: the names that did not come from the old regions
+  // stay, and the new regions' names join them.
+  const was = new Set(readRegions(out).regions.map((r) => r.name).filter(Boolean));
   out = out.replace(/\s*<mwg-rs:Regions[\s\S]*?<\/mwg-rs:Regions>/g, '');
   const ext = prefixFor(out, 'Iptc4xmpExt');
+  const others = (ext ? readList(out, ext, 'PersonInImage') || [] : []).filter((n) => !was.has(n));
   out = removeProp(out, ext, 'PersonInImage');
-  if (!regions.length) return out;
+  if (!regions.length) { if (others.length) { out = ensureNs(out, 'Iptc4xmpExt', NS.Iptc4xmpExt); out = insert(out, listEl(prefixFor(out, 'Iptc4xmpExt'), 'PersonInImage', 'bag', others)); } return out; }
   for (const ns of ['mwg-rs', 'stArea', 'stDim', 'Iptc4xmpExt']) out = ensureNs(out, ns, NS[ns]);
   const li = regions.map((r) => {
     const link = (r.personId ? ` lens:PersonId="${escapeXml(r.personId)}"` : '') + (r.born ? ` lens:PersonBorn="${escapeXml(r.born)}"` : '') + (r.died ? ` lens:PersonDied="${escapeXml(r.died)}"` : '');
@@ -232,7 +237,7 @@ export function writeRegions(xml: string | null | undefined, regions: Region[], 
   const dimEl = dims ? `\n   <mwg-rs:AppliedToDimensions stDim:w="${dims.w}" stDim:h="${dims.h}" stDim:unit="pixel"/>` : '';
   const block = `<mwg-rs:Regions rdf:parseType="Resource">${dimEl}\n   <mwg-rs:RegionList>\n    <rdf:Bag>\n${li}\n    </rdf:Bag>\n   </mwg-rs:RegionList>\n  </mwg-rs:Regions>`;
   out = insert(out, block);
-  const people = [...new Set(regions.map((r) => r.name).filter(Boolean))];
-  if (people.length) out = insert(out, listEl(ext, 'PersonInImage', 'bag', people));
+  const people = [...new Set([...others, ...regions.map((r) => r.name).filter(Boolean)])];
+  if (people.length) out = insert(out, listEl(prefixFor(out, 'Iptc4xmpExt'), 'PersonInImage', 'bag', people));
   return out;
 }

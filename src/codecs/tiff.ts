@@ -145,9 +145,10 @@ async function decodePage(u8: Uint8Array, tags: Map<number, IfdEntry>, le: boole
       return decodeCcitt(src, pw, rows, { compression: comp as 2 | 3 | 4, t4Options: t4, t6Options: t6, lsbFirst });
     }
     if (comp === 50001) return webpPiece(src, pw, rows, n);
-    const dec = await inflateChunk(src, comp, rb * rows);
+    let dec = await inflateChunk(src, comp, rb * rows);
     if (pred === 3) return undoFloatPredictor(dec, bits / 8, n, pw, rows, le);
-    undoPredictor(dec, pred, bits, n, pw, rows, rb);
+    if (pred === 2 && dec.buffer === u8.buffer) dec = dec.slice(); // uncompressed: the predictor is undone in a copy, not in the file's own bytes
+    undoPredictor(dec, pred, bits, n, pw, rows, rb, le);
     return dec;
   };
   // Reads every strip or tile of one plane (planar files) or of the whole page.
@@ -253,12 +254,26 @@ async function decodePage(u8: Uint8Array, tags: Map<number, IfdEntry>, le: boole
   return { width: w, height: h, frames: [{ raster: out, delay: 0 }], loops: 0, bitDepth: (bps[0] || bits) * spp, paletteSize: photo === 3 && map ? map.length / 3 : undefined, hasAlpha, dpi, notes };
 }
 
-function undoPredictor(dec: Uint8Array, pred: number, bits: number, spp: number, w: number, rows: number, rowBytes: number): void {
+/**
+ * Undoes the horizontal predictor (Predictor 2) in place: each sample is the difference from the one `spp` samples
+ * before it in its row, as a whole sample in the file's byte order (8, 16, 32 or 64 bits; sums wrap).
+ */
+function undoPredictor(dec: Uint8Array, pred: number, bits: number, spp: number, w: number, rows: number, rowBytes: number, le = true): void {
   if (pred !== 2) return;
   if (bits === 8) {
     for (let y = 0; y < rows; y++) { const r = y * rowBytes; for (let x = spp; x < w * spp && r + x < dec.length; x++) dec[r + x] = (dec[r + x] + dec[r + x - spp]) & 255; }
-  } else if (bits === 16) {
-    for (let y = 0; y < rows; y++) { const r = y * rowBytes; for (let x = spp; x < w * spp; x++) { const i = r + x * 2, j = r + (x - spp) * 2; if (i + 1 >= dec.length) break; const v = (dec[i] | (dec[i + 1] << 8)) + (dec[j] | (dec[j + 1] << 8)); dec[i] = v & 255; dec[i + 1] = (v >> 8) & 255; } }
+    return;
+  }
+  if (bits !== 16 && bits !== 32 && bits !== 64) return;
+  // Wider samples: add byte by byte from the least significant end with a carry, which is the sum modulo the sample's range in any width.
+  const B = bits / 8, first = le ? 0 : B - 1, step = le ? 1 : -1;
+  for (let y = 0; y < rows; y++) {
+    const r = y * rowBytes;
+    for (let x = spp; x < w * spp; x++) {
+      const i = r + x * B, j = r + (x - spp) * B; if (i + B > dec.length) break;
+      let carry = 0;
+      for (let b = 0, k = first; b < B; b++, k += step) { const v = dec[i + k] + dec[j + k] + carry; dec[i + k] = v & 255; carry = v >> 8; }
+    }
   }
 }
 

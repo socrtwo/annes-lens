@@ -81,8 +81,12 @@ export function decodeDib(u8: Uint8Array, pixelOffset: number | null, icon: bool
       }
     }
   }
-  // 32-bit DIBs without an alpha mask often still carry alpha in the top byte (icons); an all-zero top byte means none.
-  if (bpp === 32 && dmask[3] && !anyAlpha) for (let i = 3; i < d.length; i += 4) d[i] = 255;
+  // 32-bit DIBs without an alpha mask often still carry alpha in the top byte (icons); a top byte that is zero in every
+  // pixel means there is none (what the clipboard and most programs write), not a picture that is transparent throughout.
+  if (bpp === 32 && dmask[3] && anyAlpha) {
+    let allZero = true; for (let i = 3; i < d.length; i += 4) if (d[i]) { allZero = false; break; }
+    if (allZero) { for (let i = 3; i < d.length; i += 4) d[i] = 255; anyAlpha = false; }
+  }
   let hasAlpha = anyAlpha;
   if (icon && !(bpp === 32 && anyAlpha)) {
     const maskStride = Math.ceil(w / 32) * 4;

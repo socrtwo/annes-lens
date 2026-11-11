@@ -15,7 +15,7 @@ import { h } from '../ui/dom';
 import { readMeta, patchXmp, patchBytes, forTargets, metaTargets, bytesAndFormat, propsOf } from '../picture/metadata';
 import { parseXmp, updateXmp, scrubXmp, type XmpProps, type Citation } from '../meta/xmp';
 import { readIptc, writeIptc, type IptcFields } from '../meta/iptc';
-import { getComment, setComment, stripMeta, removeGpsFromExif, hasGpsIfd, exifDates, mapExifDates, minimalExif, detectProvenance, sha, md5, parseExifDate, formatExifDate, canEmbed, decodeText, setXmp } from '../meta/metaEdit';
+import { getComment, setComment, stripMeta, replaceExif, removeGpsFromExif, hasGpsIfd, exifDates, mapExifDates, minimalExif, detectProvenance, sha, md5, parseExifDate, formatExifDate, canEmbed, decodeText, setXmp } from '../meta/metaEdit';
 import { extractMeta } from '../meta/metaWrite';
 import { readExif } from '../meta/exif';
 import { openDocuments, openExternal, saveAs, writeClipboardText, readClipboardText } from '../platform/native';
@@ -228,7 +228,7 @@ def([
       if (!r) return;
       const fn = (d: Date) => mapDate(d, r);
       await forTargets(app, 'Dates changed', async (e) => {
-        const rb = await patchBytes(app, e, (b, f) => { const m = extractMeta(b); if (!m.exif) return b; const next = mapExifDates(m.exif, (old) => { const d = parseExifDate(old); const nd = d ? fn(d) : null; return nd ? formatExifDate(nd) : old; }); return stripMeta(b, f, { icc: true, iptc: true, comment: true, xmp: true, exifReplacement: next }); });
+        const rb = await patchBytes(app, e, (b, f) => { const m = extractMeta(b); if (!m.exif) return b; const next = mapExifDates(m.exif, (old) => { const d = parseExifDate(old); const nd = d ? fn(d) : null; return nd ? formatExifDate(nd) : old; }); return replaceExif(b, f, next); });
         if (rb === 'failed' || rb === 'canceled') return rb;
         const cur2 = (await readMeta(app, e))?.props || {};
         const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -264,7 +264,7 @@ def([
     id: 'meta.removeGps', icon: 'location_off', noRecord: true, isEnabled: canEdit, tip: 'Removes GPS from EXIF and the location fields from XMP',
     run: async (app) => {
       await forTargets(app, 'Location removed', async (e) => {
-        const rb = await patchBytes(app, e, (b, f) => { const m = extractMeta(b); let out = b; if (m.exif && hasGpsIfd(m.exif)) out = stripMeta(out, f, { icc: true, iptc: true, comment: true, xmp: true, exifReplacement: removeGpsFromExif(m.exif) }); if (m.xmp) out = setXmp(out, f, utf8(scrubXmp(decodeText(m.xmp), { location: true }))); return out; });
+        const rb = await patchBytes(app, e, (b, f) => { const m = extractMeta(b); let out = b; if (m.exif && hasGpsIfd(m.exif)) out = replaceExif(out, f, removeGpsFromExif(m.exif)); if (m.xmp) out = setXmp(out, f, utf8(scrubXmp(decodeText(m.xmp), { location: true }))); return out; });
         if (rb === 'failed' || rb === 'canceled') return rb;
         const view = await readMeta(app, e);
         if (view?.sidecar) return patchXmp(app, e, (xml) => scrubXmp(xml || '', { location: true }));

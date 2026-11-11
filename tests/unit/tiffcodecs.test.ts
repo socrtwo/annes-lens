@@ -55,3 +55,31 @@ describe('TIFF: ZSTD, LZMA and L*a*b* (tifffile + imagecodecs; LittleCMS for Lab
     for (const [n, tol, mean] of [['lab-cie.tif', 12, 0.6], ['lab-icc.tif', 12, 0.6], ['lab-icc16.tif', 1, 0.01]] as const) { const r = await compare(n, 'planar-rgb.png'); expect(r.max, `${n} mean ${r.mean}`).toBeLessThanOrEqual(tol); expect(r.mean).toBeLessThan(mean); }
   });
 });
+
+describe('TIFF: the horizontal predictor (files written with tifffile)', () => {
+  it('16-bit samples in either byte order', async () => {
+    for (const n of ['pred-le16.tif', 'pred-be16.tif']) { const r = await compare(n, 'pred.png'); expect(r.max, n).toBe(0); expect(r.warnings, n).toEqual([]); }
+  });
+  it('32-bit samples in either byte order give the picture of the same data stored without the predictor', async () => {
+    const plain = (await decodeTiff(fx('nopred-le32.tif'))).pages[0].frames[0].raster;
+    expect(new Set(plain.data.filter((_, i) => i % 4 === 0)).size).toBeGreaterThan(100);            // a real picture, not one flat tone
+    for (const n of ['pred-le32.tif', 'pred-be32.tif']) {
+      const r = (await decodeTiff(fx(n))).pages[0].frames[0].raster;
+      expect([r.width, r.height], n).toEqual([plain.width, plain.height]);
+      let diff = 0; for (let i = 0; i < r.data.length; i++) if (r.data[i] !== plain.data[i]) diff++;
+      expect(diff, n).toBe(0);
+    }
+  });
+  it('uncompressed data with a predictor is decoded without changing the file\'s own bytes', async () => {
+    // 4 × 2 gray, 8-bit, uncompressed, Predictor 2: stored differences 10,+1,+1,+1 / 200,-50,-50,-50.
+    const le16 = (v: number) => [v & 255, v >> 8], le32 = (v: number) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+    const tags: [number, number, number][] = [[256, 3, 4], [257, 3, 2], [258, 3, 8], [259, 3, 1], [262, 3, 1], [273, 4, 0], [277, 3, 1], [278, 3, 2], [279, 4, 8], [317, 3, 2]];
+    const dataAt = 8 + 2 + tags.length * 12 + 4;
+    const file = Uint8Array.from([0x49, 0x49, 42, 0, 8, 0, 0, 0, ...le16(tags.length), ...tags.flatMap(([t, ty, v]) => [...le16(t), ...le16(ty), ...le32(1), ...le32(t === 273 ? dataAt : v)]), ...le32(0), 10, 1, 1, 1, 200, 206, 206, 206]);
+    const before = file.slice();
+    const r = (await decodeTiff(file)).pages[0].frames[0].raster;
+    expect([...r.data.filter((_, i) => i % 4 === 0)]).toEqual([10, 11, 12, 13, 200, 150, 100, 50]);
+    expect([...file]).toEqual([...before]);                                                   // decoding twice gives the same picture
+    expect([...(await decodeTiff(file)).pages[0].frames[0].raster.data.filter((_, i) => i % 4 === 0)]).toEqual([10, 11, 12, 13, 200, 150, 100, 50]);
+  });
+});

@@ -46,6 +46,9 @@ export function decodePsd(u8: Uint8Array): DecodeResult {
   // Layer and mask information: list the layer names.
   const lmLen = psb ? Number(dv.getBigUint64(p)) : dv.getUint32(p); p += psb ? 8 : 4;
   const layers: string[] = [];
+  // Whether the first channel after the color channels is the composite's transparency. A file with layers says so by a
+  // negative layer count; with a positive count that channel is a saved selection or mask, not transparency.
+  let extraIsSelection = false;
   try {
     if (lmLen > 0) {
       let r = p;
@@ -54,6 +57,7 @@ export function decodePsd(u8: Uint8Array): DecodeResult {
         let count = dv.getInt16(r); r += 2;
         const mergedAlpha = count < 0; count = Math.abs(count);
         if (mergedAlpha) info['Merged alpha'] = 'the first alpha channel is the composite\'s transparency';
+        else if (count > 0) extraIsSelection = true;
         for (let i = 0; i < count && r + 34 <= u8.length; i++) {
           r += 16; // rectangle
           const nch = dv.getUint16(r); r += 2;
@@ -112,7 +116,8 @@ export function decodePsd(u8: Uint8Array): DecodeResult {
   };
   const total = w * h;
   const colorChannels = mode === 3 ? 3 : mode === 4 ? 4 : mode === 9 ? 3 : 1;
-  const alphaPlane = planes.length > colorChannels ? planes[colorChannels] : null;
+  const alphaPlane = planes.length > colorChannels && !extraIsSelection ? planes[colorChannels] : null;
+  if (planes.length > colorChannels && extraIsSelection) info['Extra channel'] = 'a saved selection or mask (not the picture\'s transparency), not shown';
   for (let i = 0; i < total; i++) {
     const o = i * 4;
     let r = 0, g = 0, b = 0;

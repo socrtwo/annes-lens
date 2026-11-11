@@ -89,8 +89,9 @@ export function decodeTga(u8: Uint8Array): DecodeResult {
   let hasAlpha = false;
   // 32-bit files carry alpha whether or not the descriptor counts its bits (many writers leave them 0).
   const alphaUsed = base === 2 ? depth === 32 || (depth === 16 && alphaBits > 0) : base === 3 ? depth === 16 : !!palette && cmapBits === 32;
-  if (alphaUsed) { for (let k = 3; k < d.length; k += 4) if (d[k] !== 255) { hasAlpha = true; break; } }
-  // A 32-bit file whose alpha channel is all zero is almost always meant to be opaque.
+  // A 32-bit file whose alpha channel is zero in every pixel is meant to be opaque (the writer left the channel
+  // unused); alpha counts only when some pixel has any and some pixel is not fully opaque.
+  if (alphaUsed) { let some = false, notOpaque = false; for (let k = 3; k < d.length; k += 4) { if (d[k]) some = true; if (d[k] !== 255) notOpaque = true; if (some && notOpaque) break; } hasAlpha = some && notOpaque; }
   if (!hasAlpha) for (let k = 3; k < d.length; k += 4) d[k] = 255;
   notes.push(`${base === 1 ? 'color-mapped' : base === 3 ? 'grayscale' : 'true color'} ${depth}-bit${rle ? ', RLE' : ''}${topDown ? ', top-down' : ''}${rightToLeft ? ', right-to-left' : ''}`);
   const info: Record<string, string> = {};

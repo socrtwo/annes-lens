@@ -129,6 +129,7 @@ def([
       if (!r) return;
       const out = losslessTransform(pic.bytes, 'none', { crop: { x: +r.x || 0, y: +r.y || 0, width: +r.w || g.width, height: +r.h || g.height } });
       if (r.how === 'overwrite' && !(await confirmDialog('Write Back', `Replace ${pic.name} on disk with the cropped file? The pixels outside the crop are gone from the file after writing.`, 'Write'))) return;
+      if (out.warnings.length) toast(`Note: ${out.warnings[0]}`, { ms: 6000 });
       await deliver(app, from, out.bytes, r.how, `-crop${out.width}x${out.height}`);
     },
   },
@@ -145,6 +146,7 @@ def([
       const how = pic.entry.uri ? (await confirmDialog('Lossless Auto-Rotate', `Rotate ${pic.name} upright (${OPS.find((x) => x.value === op)!.label.toLowerCase()}) and write it back losslessly?${exact ? '' : ' The size is not a multiple of the block grid, so a partial edge strip stays in place.'}`, 'Rotate and Write') ? 'overwrite' : null) : 'saveAs';
       if (!how) return;
       const out = losslessTransform(pic.bytes, op, { orientation: 1 });
+      if (out.warnings.length) toast(`Note: ${out.warnings[0]}`, { ms: 6000 });
       await deliver(app, from, out.bytes, how, '-upright');
     },
   },
