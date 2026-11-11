@@ -11,6 +11,7 @@ export function makeRaster(width: number, height: number): Raster {
 }
 
 import type { Wcs } from './wcs';
+import { latin1 } from './limits';
 
 export interface DecodedPage {
   width: number;
@@ -42,4 +43,4 @@ export interface DecodeResult {
 }
 
 /** Reads a 4-byte big-endian tag as ASCII. */
-export const ascii = (u8: Uint8Array, o: number, n: number): string => String.fromCharCode(...u8.subarray(o, o + n));
+export const ascii = (u8: Uint8Array, o: number, n: number): string => latin1(u8, o, o + n);

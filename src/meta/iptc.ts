@@ -2,12 +2,13 @@
  * IPTC-IIM (the Photoshop APP13 "8BIM" 0x0404 resource in JPEG files): reading the record 2 datasets
  * Anne's Lens edits and writing them back, keeping the other Photoshop resources in the segment.
  */
+import { latin1 } from '../codecs/limits';
 
 export interface IptcFields { title?: string; keywords?: string[]; byline?: string; bylineTitle?: string; city?: string; state?: string; country?: string; headline?: string; credit?: string; source?: string; copyright?: string; caption?: string; writer?: string; dateCreated?: string; instructions?: string; category?: string }
 const DATASETS: Record<number, keyof IptcFields> = { 5: 'title', 25: 'keywords', 80: 'byline', 85: 'bylineTitle', 90: 'city', 95: 'state', 101: 'country', 105: 'headline', 110: 'credit', 115: 'source', 116: 'copyright', 120: 'caption', 122: 'writer', 55: 'dateCreated', 40: 'instructions', 15: 'category' };
 const ORDER: [number, keyof IptcFields][] = [[5, 'title'], [15, 'category'], [25, 'keywords'], [40, 'instructions'], [55, 'dateCreated'], [80, 'byline'], [85, 'bylineTitle'], [90, 'city'], [95, 'state'], [101, 'country'], [105, 'headline'], [110, 'credit'], [115, 'source'], [116, 'copyright'], [120, 'caption'], [122, 'writer']];
 
-const str = (u8: Uint8Array, o: number, n: number) => String.fromCharCode(...u8.subarray(o, Math.min(u8.length, o + n)));
+const str = (u8: Uint8Array, o: number, n: number) => latin1(u8, o, o + n);
 const ascii = (s: string) => Uint8Array.from([...s].map((c) => c.charCodeAt(0) & 255));
 function concat(parts: Uint8Array[]): Uint8Array { const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; }
 

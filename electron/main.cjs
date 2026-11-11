@@ -505,19 +505,22 @@ function registerIpc() {
   const os = require('node:os');
   const run = (cmd, args, opts = {}) => new Promise((res) => execFile(cmd, args, { timeout: opts.timeout || 60000, maxBuffer: 64 * 1024 * 1024, windowsHide: true, ...opts }, (err, stdout, stderr) => res({ err, stdout: String(stdout || ''), stderr: String(stderr || '') })));
   const which = (cmd) => new Promise((res) => execFile(process.platform === 'win32' ? 'where' : 'which', [cmd], { windowsHide: true }, (err) => res(!err)));
-  const ps = (script) => run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { timeout: 180000 });
+  // Scripts for PowerShell and AppleScript have fixed text; names and numbers go beside them (osscripts.cjs).
+  const osx = require('./osscripts.cjs');
+  const runScript = (c, opts = {}) => run(c.cmd, c.args, { ...opts, env: { ...process.env, ...c.env } });
+  const ps = (script) => runScript(osx.powershell(script), { timeout: 180000 });
   const tempPng = (prefix) => path.join(app.getPath('userData'), `${prefix}-${Date.now()}.png`);
 
   handle('setWallpaper', async ({ data, which: target }) => {
     const file = tempPng('wallpaper');
     fs.writeFileSync(file, Buffer.from(String(data || ''), 'base64'));
     if (process.platform === 'win32') {
-      const r = await ps(`Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class W { [DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(int a, int b, string c, int d); }'; [W]::SystemParametersInfo(20, 0, '${file.replace(/'/g, "''")}', 3)`);
+      const r = await runScript(osx.setWallpaperWin(file), { timeout: 180000 });
       if (r.err) throw new Error(r.stderr.trim() || r.err.message);
       return { ok: true, how: 'SystemParametersInfo' };
     }
     if (process.platform === 'darwin') {
-      const r = await run('osascript', ['-e', `tell application "System Events" to set picture of every desktop to POSIX file "${file.replace(/"/g, '\\"')}"`]);
+      const r = await runScript(osx.setWallpaperMac(file));
       if (r.err) throw new Error(r.stderr.trim() || r.err.message);
       return { ok: true, how: 'System Events' };
     }
@@ -539,12 +542,13 @@ function registerIpc() {
     const st = fs.statSync(p);
     const info = { path: p, size: st.size, mtime: st.mtimeMs, ctime: st.birthtimeMs || st.ctimeMs, mode: (st.mode & 0o777).toString(8), uid: st.uid, gid: st.gid, os: process.platform };
     if (process.platform === 'win32') {
-      const child = spawnProc('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', `$s = New-Object -ComObject Shell.Application; $f = $s.Namespace('${path.dirname(p).replace(/'/g, "''")}').ParseName('${path.basename(p).replace(/'/g, "''")}'); $f.InvokeVerb('Properties'); Start-Sleep -Seconds 900`], { detached: true, stdio: 'ignore', windowsHide: true });
+      const c = osx.showPropertiesWin(path.dirname(p), path.basename(p));
+      const child = spawnProc(c.cmd, c.args, { detached: true, stdio: 'ignore', windowsHide: true, env: { ...process.env, ...c.env } });
       child.unref();
       return { ...info, opened: true };
     }
     if (process.platform === 'darwin') {
-      const r = await run('osascript', ['-e', `tell application "Finder" to open information window of (POSIX file "${p.replace(/"/g, '\\"')}" as alias)`, '-e', 'tell application "Finder" to activate']);
+      const r = await runScript(osx.showPropertiesMac(p));
       return { ...info, opened: !r.err };
     }
     return { ...info, opened: false };
@@ -592,7 +596,7 @@ function registerIpc() {
         const r = await run('scanimage', args, { timeout: 300000 });
         if (r.err) throw new Error(r.stderr.trim() || r.err.message);
       } else if (process.platform === 'win32') {
-        const r = await ps(`$m = New-Object -ComObject WIA.DeviceManager; $info = $null; foreach ($d in $m.DeviceInfos) { if ($d.Type -eq 1 -and (('${String(device || '').replace(/'/g, "''")}' -eq '') -or ($d.DeviceID -eq '${String(device || '').replace(/'/g, "''")}'))) { $info = $d; break } }; if ($info -eq $null) { throw 'No scanner' }; $dev = $info.Connect(); $item = $dev.Items.Item(1); foreach ($p in $item.Properties) { if ($p.PropertyID -eq 6146) { $p.Value = ${gray ? 2 : 1} }; if ($p.PropertyID -eq 6147 -or $p.PropertyID -eq 6148) { $p.Value = ${res} } }; $img = $item.Transfer('{B96B3CAF-0728-11D3-9D7B-0000F81EF32E}'); $img.SaveFile('${file.replace(/'/g, "''")}')`);
+        const r = await runScript(osx.scanWin(String(device || ''), gray, res, file), { timeout: 180000 });
         if (r.err) throw new Error(r.stderr.trim() || r.err.message);
       } else throw new Error('Scanning through the system is not available on this platform');
       const data = fs.readFileSync(file);

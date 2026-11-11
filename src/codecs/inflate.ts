@@ -3,6 +3,7 @@
  * optional zlib (RFC 1950) and gzip headers, no checksum enforcement. When the stream is truncated or
  * corrupt it returns everything decoded up to that point and says why it stopped.
  */
+import { MAX_UNPACKED } from './limits';
 
 export interface InflateResult { data: Uint8Array; complete: boolean; error?: string }
 
@@ -52,8 +53,12 @@ class In {
 
 let fixedLit: Tree | null = null, fixedDist: Tree | null = null;
 
-/** Inflates raw deflate data, or a zlib/gzip stream (detected by its header). `expected` sizes the output buffer. */
-export function inflate(src: Uint8Array, expected = 0): InflateResult {
+/**
+ * Inflates raw deflate data, or a zlib/gzip stream (detected by its header). `expected` is a hint for the output
+ * buffer (it is not believed beyond a multiple of the input, and the buffer grows as needed); `limit` is the most the
+ * stream may produce: past it the result is what was produced, marked incomplete with an error.
+ */
+export function inflate(src: Uint8Array, expected = 0, limit = MAX_UNPACKED): InflateResult {
   let start = 0;
   if (src.length >= 2 && (src[0] & 0x0f) === 8 && ((src[0] << 8) | src[1]) % 31 === 0) start = 2; // zlib
   else if (src.length >= 10 && src[0] === 0x1f && src[1] === 0x8b) { // gzip
@@ -64,9 +69,12 @@ export function inflate(src: Uint8Array, expected = 0): InflateResult {
     if (flg & 16) { while (start < src.length && src[start]) start++; start++; }
     if (flg & 2) start += 2;
   }
-  let out = new Uint8Array(Math.max(1024, expected || src.length * 4));
+  let out = new Uint8Array(Math.max(1024, Math.min(expected || src.length * 4, limit, src.length * 64 + 65536)));
   let o = 0;
-  const grow = (need: number) => { if (o + need > out.length) { const n = new Uint8Array(Math.max(out.length * 2, o + need)); n.set(out.subarray(0, o)); out = n; } };
+  const grow = (need: number) => {
+    if (o + need > limit) throw new Error(`the data unpacks to more than ${limit >= 1048576 ? `${Math.floor(limit / 1048576)} MB` : `${limit} bytes`}`);
+    if (o + need > out.length) { const n = new Uint8Array(Math.min(limit, Math.max(out.length * 2, o + need))); n.set(out.subarray(0, o)); out = n; }
+  };
   const r = new In(src, start);
   let complete = false, error: string | undefined;
   try {

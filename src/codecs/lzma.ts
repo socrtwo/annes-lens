@@ -3,11 +3,13 @@
  * reference decoder (Igor Pavlov, public domain), and the .xz container (LZMA2 blocks; checks not
  * verified). The decoder writes into a growable buffer that is also its dictionary.
  */
+import { MAX_SOLID } from './limits';
 
 class Out {
   buf: Uint8Array; pos = 0;
-  constructor(size: number) { this.buf = new Uint8Array(Math.max(16, size)); }
-  ensure(n: number): void { if (this.pos + n <= this.buf.length) return; let s = this.buf.length * 2; while (s < this.pos + n) s *= 2; const b = new Uint8Array(s); b.set(this.buf.subarray(0, this.pos)); this.buf = b; }
+  // A size from a header is a hint: the buffer starts no larger than 16 MB and grows, up to the most a stream may hold.
+  constructor(size: number) { this.buf = new Uint8Array(Math.max(16, Math.min(Number.isFinite(size) ? size : 0, 16 << 20))); }
+  ensure(n: number): void { if (this.pos + n <= this.buf.length) return; if (this.pos + n > MAX_SOLID) throw new Error(`The data unpacks to more than ${MAX_SOLID >> 20} MB`); let s = this.buf.length * 2; while (s < this.pos + n) s *= 2; s = Math.min(s, MAX_SOLID); const b = new Uint8Array(s); b.set(this.buf.subarray(0, this.pos)); this.buf = b; }
   put(b: number): void { if (this.pos >= this.buf.length) this.ensure(1); this.buf[this.pos++] = b; }
   done(): Uint8Array { return this.buf.subarray(0, this.pos); }
 }

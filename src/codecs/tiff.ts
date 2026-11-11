@@ -15,6 +15,7 @@ import { rgbToD50, inv3, SPACES } from '../color/spaces';
 import { parseIcc } from '../color/icc';
 import { colorFn } from '../color/transform';
 import { spaceProfile } from '../color/spaces';
+import { decodeLimits, latin1 } from './limits';
 
 export function isTiff(u8: Uint8Array): boolean {
   if (u8.length < 8) return false;
@@ -38,6 +39,9 @@ export function readIfd(u8: Uint8Array, offset: number, le: boolean, big = false
   const entrySize = big ? 20 : 12;
   const base0 = offset + (big ? 8 : 2);
   const sizes: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4, 16: 8, 17: 8, 18: 8 };
+  // Values are kept as numbers: a directory may hold at most this many in all, so that a small file whose tags all point
+  // at the same megabyte cannot unfold into gigabytes. (Real directories hold thousands: strip tables, a profile.)
+  let budget = 4 << 20;
   for (let k = 0; k < Math.min(n, 4096); k++) {
     const e = base0 + k * entrySize;
     if (e + entrySize > u8.length) break;
@@ -47,7 +51,7 @@ export function readIfd(u8: Uint8Array, offset: number, le: boolean, big = false
     const vo = e + (big ? 12 : 8);
     const base = size * count <= inlineMax ? vo : big ? u64(vo) : u32(vo);
     const values: number[] = [];
-    const max = Math.min(count, 1 << 20);
+    const max = Math.min(count, 1 << 20, budget);
     for (let i = 0; i < max; i++) {
       const o = base + i * size;
       if (o + size > u8.length) break;
@@ -63,6 +67,7 @@ export function readIfd(u8: Uint8Array, offset: number, le: boolean, big = false
         default: values.push(u8[o]);
       }
     }
+    budget -= values.length;
     tags.set(tag, { tag, type, count, values });
   }
   const nextAt = base0 + n * entrySize;
@@ -80,14 +85,14 @@ export async function decodeTiff(u8: Uint8Array): Promise<DecodeResult> {
   const warnings: string[] = [];
   const info: Record<string, string> = { byteOrder: le ? 'little-endian (II)' : 'big-endian (MM)', bigTiff: big ? 'yes' : 'no' };
   const seen = new Set<number>();
-  let n = 0;
+  let n = 0, kept = 0;
   while (ifd && !seen.has(ifd) && n < 500) {
     seen.add(ifd);
     n++;
     const { tags, next } = readIfd(u8, ifd, le, big);
     ifd = next;
     if (n === 1) {
-      const str = (t: number) => { const e = tags.get(t); return e && e.type === 2 ? String.fromCharCode(...e.values.filter((c) => c)).trim() : ''; };
+      const str = (t: number) => { const e = tags.get(t); return e && e.type === 2 ? latin1(e.values.filter((c) => c)).trim() : ''; };
       for (const [t, k] of [[270, 'description'], [271, 'make'], [272, 'model'], [305, 'software'], [306, 'dateTime'], [315, 'artist'], [33432, 'copyright']] as [number, string][]) { const v = str(t); if (v) info[k] = v; }
       if (tags.has(34665)) info.exif = 'yes';
       if (tags.has(700)) info.xmp = 'yes';
@@ -96,6 +101,10 @@ export async function decodeTiff(u8: Uint8Array): Promise<DecodeResult> {
     }
     const sub = tags.get(254)?.values[0] || 0;
     if (sub & 1 && pages.length) continue; // reduced-resolution copy of an earlier page
+    // Every page is kept decoded: together they may not take more than the budget (a 40-page fax is over a gigabyte).
+    const area = (tags.get(256)?.values[0] || 0) * (tags.get(257)?.values[0] || 0);
+    if (pages.length && kept + area > decodeLimits.totalPixels) { warnings.push(`Page ${n} and the pages after it are not shown: together the pages are larger than is kept in memory at once (${pages.length} shown)`); break; }
+    kept += area;
     try {
       pages.push(await decodePage(u8, tags, le, warnings, n));
     } catch (e: any) {

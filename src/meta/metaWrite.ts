@@ -4,10 +4,11 @@
  * iCCP separately, through the platform's zlib streams) or WebP (VP8X + EXIF/XMP/ICCP chunks). The EXIF Orientation
  * tag can be reset when the pixels were turned upright before saving.
  */
+import { latin1 } from '../codecs/limits';
 
 export interface PictureMeta { exif?: Uint8Array; xmp?: Uint8Array; icc?: Uint8Array }
 
-const str = (u8: Uint8Array, o: number, n: number) => String.fromCharCode(...u8.subarray(o, Math.min(u8.length, o + n)));
+const str = (u8: Uint8Array, o: number, n: number) => latin1(u8, o, o + n);
 
 /** Metadata found in a JPEG, PNG or WebP file (other formats: none). */
 export function extractMeta(u8: Uint8Array): PictureMeta {

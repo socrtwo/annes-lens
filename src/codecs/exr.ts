@@ -338,22 +338,29 @@ function decompress(comp: number, src: Uint8Array, chs: Channel[], x0: number, y
 }
 
 /** Full-resolution float planes of one part. */
-function decodePart(u8: Uint8Array, h: Header, offsets: number[], multipart: boolean): { w: number; ht: number; data: Map<string, Float32Array> } {
+function decodePart(u8: Uint8Array, h: Header, offsets: number[], multipart: boolean, every = false): { w: number; ht: number; data: Map<string, Float32Array> } {
   const w = h.x1 - h.x0 + 1, ht = h.y1 - h.y0 + 1;
   if (w <= 0 || ht <= 0 || w * ht > 100_000_000) throw new Error('Bad or too large OpenEXR data window');
-  const data = new Map<string, Float32Array>(); for (const c of h.channels) data.set(c.name, new Float32Array(w * ht));
+  // One float plane per channel that the picture is made from (R, G, B and A of the layer shown, or Y, RY, BY, else the
+  // first channel): a file may carry dozens of others, which are read past.
+  const all = h.channels.map((c) => c.name); let layer = '';
+  if (!all.includes('R') && !all.includes('Y')) { const m = all.find((n) => /\.(R|r|red)$/.test(n)); if (m) layer = m.slice(0, m.lastIndexOf('.') + 1); }
+  const wanted = new Set([...['R', 'G', 'B', 'A'].flatMap((c) => [layer + c, layer + c.toLowerCase()]), 'Y', 'RY', 'BY', all[0]]);
+  const kept = every ? all : all.filter((n) => wanted.has(n)); // `every`: the caller asked for the channels themselves (exrChannels)
+  if (w * ht * kept.length > 300_000_000) throw new Error(`This OpenEXR picture is too large to show (${w} × ${ht}, ${kept.length} channels)`);
+  const data = new Map<string, Float32Array>(); for (const n of kept) data.set(n, new Float32Array(w * ht));
   const put = (raw: Uint8Array, bx: number, by: number, bw: number, bh: number) => {
     const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength); let o = 0;
     for (let y = by; y < by + bh; y++) for (const c of h.channels) {
       if (((y % c.ys) + c.ys) % c.ys) continue;
-      const plane = data.get(c.name)!, row = (y - h.y0) * w;
+      const plane = data.get(c.name), row = (y - h.y0) * w; // undefined: a channel that is not shown
       for (let x = bx; x < bx + bw; x++) {
         if (((x % c.xs) + c.xs) % c.xs) continue;
         if (o + BYTES[c.type] > raw.length) return;
         const v = c.type === 1 ? HALF[dv.getUint16(o, true)] : c.type === 2 ? dv.getFloat32(o, true) : dv.getUint32(o, true);
         o += BYTES[c.type];
         // Subsampled channels fill their whole cell.
-        for (let yy = y; yy < Math.min(y + c.ys, by + bh); yy++) for (let xx = x; xx < Math.min(x + c.xs, bx + bw); xx++) plane[(yy - h.y0) * w + (xx - h.x0)] = v;
+        if (plane) for (let yy = y; yy < Math.min(y + c.ys, by + bh); yy++) for (let xx = x; xx < Math.min(x + c.xs, bx + bw); xx++) plane[(yy - h.y0) * w + (xx - h.x0)] = v;
         void row;
       }
     }
@@ -404,7 +411,7 @@ function parse(u8: Uint8Array): { headers: Header[]; tables: number[][]; multipa
 
 /** The linear channel values of the first part (for tests and tools). */
 export function exrChannels(u8: Uint8Array): { width: number; height: number; channels: Map<string, Float32Array> } {
-  const { headers, tables, multipart } = parse(u8), { w, ht, data } = decodePart(u8, headers[0], tables[0], multipart);
+  const { headers, tables, multipart } = parse(u8), { w, ht, data } = decodePart(u8, headers[0], tables[0], multipart, true);
   return { width: w, height: ht, channels: data };
 }
 

@@ -12,6 +12,7 @@ import { saveAs, openDocuments } from '../platform/native';
 import { fmtSize } from '../ui/shell';
 import { printPicture } from './file';
 import { makeRaster } from '../codecs/raster';
+import { latin1 } from '../codecs/limits';
 
 /** The bytes to inspect: the open picture's file, or a file the user picks (any type). */
 async function bytesToInspect(app: App): Promise<{ name: string; bytes: Uint8Array } | null> {
@@ -29,7 +30,7 @@ interface Landmark { offset: number; label: string }
 /** Markers, chunks and IFDs with their offsets, for "jump to". */
 export function landmarks(u8: Uint8Array): Landmark[] {
   const out: Landmark[] = [{ offset: 0, label: 'Start of file' }];
-  const str = (o: number, n: number) => String.fromCharCode(...u8.subarray(o, Math.min(u8.length, o + n)));
+  const str = (o: number, n: number) => latin1(u8, o, o + n);
   if (u8[0] === 0xff && u8[1] === 0xd8) {
     const names: Record<number, string> = { 0xc0: 'SOF0 baseline', 0xc1: 'SOF1', 0xc2: 'SOF2 progressive', 0xc4: 'DHT', 0xdb: 'DQT', 0xdd: 'DRI', 0xda: 'SOS scan data', 0xe0: 'APP0 JFIF', 0xe1: 'APP1', 0xe2: 'APP2', 0xed: 'APP13 IPTC', 0xee: 'APP14 Adobe', 0xfe: 'COM comment', 0xd9: 'EOI' };
     let p = 2;

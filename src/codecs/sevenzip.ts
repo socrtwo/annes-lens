@@ -7,6 +7,7 @@
 import { lzmaDecode, lzma2Decode } from './lzma';
 import { bzip2Decode } from './bzip2';
 import { Ppmd7, Range7z } from './ppmd';
+import { checkUnpacked, MAX_SOLID } from './limits';
 
 export interface SevenEntry { name: string; size: number; mtime: number; folder: number; offset: number }
 interface Coder { id: string; props: Uint8Array; nIn: number; nOut: number }
@@ -198,6 +199,7 @@ export class SevenZip {
       const packStart = 32 + s.packPos + s.packSizes.slice(0, packIndex).reduce((a, b) => a + b, 0);
       let data = this.u8.subarray(packStart, packStart + s.packSizes[packIndex]);
       // Follow the chain from the coder that reads the packed stream to the one whose output is unbound.
+      for (const size of f.unpackSizes) checkUnpacked(size, 'A block of this 7z archive', MAX_SOLID); // sizes from the header size the buffers below
       let coder = f.packed[0];
       for (let guard = 0; guard < f.coders.length; guard++) {
         data = await runCoder(f.coders[coder], data, f.unpackSizes[coder]);

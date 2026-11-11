@@ -4,6 +4,7 @@
  * the frames that were complete and a warning.
  */
 import { makeRaster, type DecodeResult, type Raster } from './raster';
+import { framesWithin } from './limits';
 
 export function isGif(u8: Uint8Array): boolean {
   return u8.length > 6 && u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x38 && (u8[4] === 0x37 || u8[4] === 0x39) && u8[5] === 0x61;
@@ -23,7 +24,7 @@ export function decodeGif(u8: Uint8Array): DecodeResult {
   const gctSize = packed & 0x80 ? 1 << ((packed & 7) + 1) : 0;
   if (gctSize) { gct = u8.subarray(p, p + gctSize * 3); p += gctSize * 3; }
   info.colors = gctSize ? `${gctSize} (global palette)` : 'local palettes';
-  const frames: GifFrame[] = [];
+  const frames: GifFrame[] = [], maxFrames = framesWithin(w, h);
   let loops = 1;
   let loopSeen = false;
   const comments: string[] = [];
@@ -69,6 +70,8 @@ export function decodeGif(u8: Uint8Array): DecodeResult {
         continue;
       }
       if (b !== 0x2c) { warnings.push(`Unexpected block 0x${b.toString(16)} at ${p - 1}; stopped reading`); break; }
+      // Every frame is kept as a whole picture: no more of them than the budget holds.
+      if (frames.length >= maxFrames) { warnings.push(`Only the first ${maxFrames} frames are shown: together the frames are larger than is kept in memory at once`); break; }
       // Image descriptor
       const ix = u8[p] | (u8[p + 1] << 8), iy = u8[p + 2] | (u8[p + 3] << 8);
       const iw = u8[p + 4] | (u8[p + 5] << 8), ih = u8[p + 6] | (u8[p + 7] << 8);

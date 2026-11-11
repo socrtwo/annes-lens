@@ -4,6 +4,7 @@
  * pages. Also writers for PGM, PPM and PAM.
  */
 import { makeRaster, type DecodeResult, type DecodedPage, type Raster } from './raster';
+import { latin1 } from './limits';
 
 export function isPnm(u8: Uint8Array): boolean {
   if (u8.length < 3 || u8[0] !== 0x50) return false;
@@ -24,12 +25,12 @@ class Tok {
     }
     const s = this.p;
     while (this.p < u8.length && !isWs(u8[this.p]) && u8[this.p] !== 0x23) this.p++;
-    return String.fromCharCode(...u8.subarray(s, this.p));
+    return latin1(u8, s, this.p);
   }
   int(): number { const t = this.next(); const v = parseInt(t, 10); if (!Number.isFinite(v)) throw new Error(`Bad number "${t}" in the header`); return v; }
   /** After the header of a raw format exactly one whitespace byte precedes the data. */
   skipOne(): void { if (this.p < this.u8.length && isWs(this.u8[this.p])) this.p++; }
-  line(): string { const s = this.p; while (this.p < this.u8.length && this.u8[this.p] !== 0x0a) this.p++; const t = String.fromCharCode(...this.u8.subarray(s, this.p)); this.p++; return t; }
+  line(): string { const s = this.p; while (this.p < this.u8.length && this.u8[this.p] !== 0x0a) this.p++; const t = latin1(this.u8, s, this.p); this.p++; return t; }
 }
 const isWs = (c: number) => c === 0x20 || c === 0x0a || c === 0x0d || c === 0x09 || c === 0x0b || c === 0x0c;
 

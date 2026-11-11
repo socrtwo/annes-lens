@@ -4,6 +4,7 @@
  * inflater (stored and deflate methods; encrypted and other methods are listed as unreadable).
  */
 import { inflate } from './inflate';
+import { checkUnpacked } from './limits';
 
 export interface ZipEntry { name: string; size: number; compressed: number; method: number; offset: number; mtime: number; encrypted: boolean }
 
@@ -71,6 +72,6 @@ export function readZipEntry(u8: Uint8Array, e: ZipEntry): Uint8Array {
   const start = e.offset + 30 + nameLen + extraLen;
   const data = u8.subarray(start, Math.min(u8.length, start + e.compressed));
   if (e.method === 0) return data;
-  if (e.method === 8) { const r = inflate(data, e.size); return r.data; }
+  if (e.method === 8) { checkUnpacked(e.size, e.name); const r = inflate(data, e.size, e.size > 0 ? e.size : undefined); return r.data; } // no more than the entry says it holds
   throw new Error(`${e.name}: compression method ${e.method} is not supported (only stored and deflate)`);
 }

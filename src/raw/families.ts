@@ -27,6 +27,7 @@ import { readIfd, type IfdEntry } from '../codecs/tiff';
 import { readDng, isDng, type DngRaw } from './dng';
 import { decodeLjpeg } from './ljpeg';
 import { checkSensor } from './limits';
+import { latin1 } from '../codecs/limits';
 
 type Tags = Map<number, IfdEntry>;
 
@@ -37,7 +38,7 @@ export const GENERIC_COLOR_MATRIX = [3.2406, -1.5372, -0.4986, -0.9689, 1.8758, 
 
 const v = (m: Tags | undefined, t: number) => m?.get(t)?.values;
 const n1 = (m: Tags | undefined, t: number, d = 0) => v(m, t)?.[0] ?? d;
-const text = (m: Tags | undefined, t: number) => { const x = v(m, t); return x ? String.fromCharCode(...x.filter((c) => c)).trim() : ''; };
+const text = (m: Tags | undefined, t: number) => { const x = v(m, t); return x ? latin1(x.filter((c) => c)).trim() : ''; };
 const bytesOf = (m: Tags | undefined, t: number) => { const x = v(m, t); return x ? Uint8Array.from(x) : null; };
 const ext = (name: string) => (name.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
 const dvOf = (u8: Uint8Array) => new DataView(u8.buffer, u8.byteOffset, u8.byteLength);

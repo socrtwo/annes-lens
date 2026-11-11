@@ -8,9 +8,15 @@
  * hashes and signature as sound and the signer as not on their trust list, which is the truth. The reader parses a
  * store back, checks the hashes and the signature with the embedded certificate (the ingredients' manifests too),
  * and reports what it found for the details pane.
+ *
+ * What the reader can and cannot say. It can say that the picture, its record and the signature still match: nothing
+ * changed since whoever holds the certificate's key signed it. It cannot say who that is. The certificate travels in
+ * the file and anyone can make one carrying any name; saying who signed needs a list of trusted issuers, which the app
+ * does not have. So a signer is reported as verified only when the certificate is this device's own (the same bytes
+ * as the one in the keystore); every other name is shown as the certificate's claim, not as a fact.
  */
 import { cborEncode, cborDecode, Tagged } from './cbor';
-import { selfSignedCertificate, readCertificate, type CertInfo } from './der';
+import { selfSignedCertificate, readCertificate, ecdsaDerToRaw, type CertInfo } from './der';
 import { crc32 } from './metaWrite';
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -229,7 +235,8 @@ export interface ManifestInfo {
   title?: string; format?: string; generator?: string; instanceID?: string; label: string;
   actions: { action: string; when?: string; softwareAgent?: string; digitalSourceType?: string; description?: string; parameters?: Record<string, unknown> }[];
   ingredients: IngredientInfo[];
-  signer?: CertInfo & { der: Uint8Array };
+  /** The signing certificate. `certificate`: whether its own signature checks out against its issuer's key (itself when self-signed, the next one in the file's chain otherwise); null when that could not be checked. `issuerInFile`: the issuer's certificate came with the file. Neither says the name is true. */
+  signer?: CertInfo & { der: Uint8Array; certificate: boolean | null; issuerInFile: boolean };
   /** What checked out: the file hash, the assertion hashes, the signature. */
   checks: { hash: boolean | null; assertions: boolean; signature: boolean | null };
   problems: string[];
@@ -324,7 +331,12 @@ async function verifyManifest(storeBytes: Uint8Array, m: Box, file: Uint8Array |
       const certDer: Uint8Array | undefined = Array.isArray(chain) ? chain[0] : chain instanceof Uint8Array ? chain : undefined;
       if (certDer) {
         const cert = readCertificate(certDer);
-        info.signer = { ...cert, der: certDer };
+        // The certificate's own signature, by its issuer's key: its own when it is self-signed, else the next certificate in the file.
+        const issuerDer: Uint8Array | undefined = cert.selfSigned ? certDer : Array.isArray(chain) && chain[1] instanceof Uint8Array ? chain[1] : undefined;
+        const certificate = issuerDer ? await certificateSignature(cert, issuerDer) : null;
+        info.signer = { ...cert, der: certDer, certificate, issuerInFile: !cert.selfSigned && !!issuerDer };
+        if (certificate === false) problems.push('the certificate\'s own signature does not match');
+        if (Date.parse(cert.notBefore) > Date.now()) problems.push(`the certificate is not valid before ${cert.notBefore.slice(0, 10)}`);
         if (alg === -7) {
           const key = await crypto.subtle.importKey('spki', cert.spki as BufferSource, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
           const sigStructure = cborEncode(['Signature1', prot, new Uint8Array(0), claimBytes]);
@@ -334,6 +346,14 @@ async function verifyManifest(storeBytes: Uint8Array, m: Box, file: Uint8Array |
       } else problems.push('no certificate in the signature');
     } catch (e) { problems.push(`the signature could not be read: ${(e as Error).message}`); }
   } else problems.push('no signature');
+}
+
+/** Whether a certificate's signature verifies with its issuer's public key (ECDSA P-256 with SHA-256); null when the algorithm is another one or the issuer cannot be read. */
+async function certificateSignature(cert: CertInfo, issuerDer: Uint8Array): Promise<boolean | null> {
+  try {
+    const key = await crypto.subtle.importKey('spki', readCertificate(issuerDer).spki as BufferSource, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, ecdsaDerToRaw(cert.signature) as BufferSource, cert.tbs as BufferSource);
+  } catch { return null; }
 }
 
 /** Reads and verifies the active manifest of a file; null when it has none. */
@@ -350,11 +370,25 @@ export async function readManifest(u8: Uint8Array): Promise<ManifestInfo | null>
   return info;
 }
 
-/** One line for the details pane. */
-export function describeManifest(m: ManifestInfo): string {
-  const ok = m.checks.hash === true && m.checks.assertions && m.checks.signature === true;
-  const who = m.signer ? `${m.signer.subject}${m.signer.organization ? ` (${m.signer.organization})` : ''}${m.signer.selfSigned ? ', self-signed' : ''}` : 'unknown signer';
+/**
+ * How a signer is to be described: verified only when the certificate is this device's own (`ownCert`, the same bytes);
+ * otherwise the name is the certificate's claim.
+ */
+export function describeSigner(signer: ManifestInfo['signer'], ownCert?: Uint8Array | null): string {
+  if (!signer) return 'no signer';
+  const name = `“${signer.subject || 'no name'}${signer.organization ? ` (${signer.organization})` : ''}”`;
+  if (ownCert && same(ownCert, signer.der)) return `signed on this device (${name})`;
+  const issued = signer.selfSigned ? 'self-signed' : `issued by “${signer.issuer || 'no name'}”${signer.issuerInFile ? '' : ', whose certificate is not in the file'}`;
+  const expired = Date.parse(signer.notAfter) < Date.now() ? `, expired ${signer.notAfter.slice(0, 10)}` : '';
+  return `signer not verified: the certificate names ${name}, ${issued}${expired}; a certificate can carry any name, and this one is not checked against a list of trusted issuers`;
+}
+
+/** One line for the details pane. `ownCert`: this device's signing certificate, when the keystore has one. */
+export function describeManifest(m: ManifestInfo, ownCert?: Uint8Array | null): string {
+  const ok = m.checks.hash === true && m.checks.assertions && m.checks.signature === true && m.signer?.certificate !== false && !m.problems.length;
   const acts = m.actions.map((a) => `${a.action.replace(/^c2pa\./, '')}${a.digitalSourceType ? ` (${a.digitalSourceType.replace(/^.*\//, '')})` : ''}${a.softwareAgent ? ` by ${a.softwareAgent}` : ''}${a.when ? ` on ${a.when.slice(0, 10)}` : ''}`).join('; ');
-  const ings = m.ingredients.map((i) => `from ${i.title || 'an untitled picture'}${i.manifest ? ` (its own credentials ${!i.manifest.found ? 'missing' : i.manifest.signature && i.manifest.assertions ? 'valid' : 'not valid'}${i.manifest.signer ? `, signed by ${i.manifest.signer}` : ''})` : ''}`).join('; ');
-  return `${ok ? 'valid' : m.problems.length ? `not valid: ${m.problems.join(', ')}` : 'partly checked'}; signed by ${who}; ${acts || 'no actions'}${ings ? `; ${ings}` : ''}${m.generator ? `; made by ${m.generator}` : ''}`;
+  const ings = m.ingredients.map((i) => `from ${i.title || 'an untitled picture'}${i.manifest ? ` (its own credentials ${!i.manifest.found ? 'missing' : i.manifest.signature && i.manifest.assertions ? 'unchanged' : 'changed or damaged'}${i.manifest.signer ? `, certificate naming “${i.manifest.signer}”` : ''})` : ''}`).join('; ');
+  // "Unchanged" is what the hashes and the signature show; who signed is a separate statement (see describeSigner).
+  const state = ok ? 'unchanged since it was signed' : m.problems.length ? `changed or damaged: ${m.problems.join(', ')}` : 'partly checked';
+  return `${state}; ${describeSigner(m.signer, ownCert)}; ${acts || 'no actions'}${ings ? `; ${ings}` : ''}${m.generator ? `; made by ${m.generator}` : ''}`;
 }

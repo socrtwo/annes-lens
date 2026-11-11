@@ -133,6 +133,11 @@ export const OPEN_MIMES = ['image/*', ...new Set(FORMATS.map((f) => f.mime)), 'a
 const at = (u8: Uint8Array, o: number, s: string) => { for (let i = 0; i < s.length; i++) if (u8[o + i] !== s.charCodeAt(i)) return false; return true; };
 
 /** The format of `u8` from its first bytes (the name only settles formats without a magic number), or null. */
+/** This device's Content Credentials certificate, when the keystore is open and has one (it is not unlocked for this: a locked keystore means signers show as not verified). */
+async function ownSigningCertificate(): Promise<Uint8Array | null> {
+  try { const { getExtra } = await import('../ai/keystore'); const stored = getExtra('c2pa.signer'); return stored ? Uint8Array.from(atob(JSON.parse(stored).cert), (c) => c.charCodeAt(0)) : null; } catch { return null; }
+}
+
 export function sniff(u8: Uint8Array, name = ''): FormatInfo | null {
   if (u8.length < 4) return null;
   if (isPsd(u8)) return formatById('psd')!;
@@ -374,7 +379,7 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
   if (media) pic.media = { kind: media.kind, mime: media.mime, duration: media.duration, title: media.tags.title };
   if (exif?.dpi) for (const p of pic.pages) if (!p.dpi) p.dpi = exif.dpi;
   // EXIF orientation: the platform decodes with imageOrientation 'none', so the pixels are as stored.
-  if (fmt.id === 'jpeg' || fmt.id === 'png' || fmt.id === 'webp') { try { const { findManifestStore, readManifest, describeManifest } = await import('../meta/c2pa'); if (findManifestStore(u8)) { const m = await readManifest(u8); if (m) decoded.info['Content Credentials'] = describeManifest(m); } } catch (e) { decoded.info['Content Credentials'] = `present but unreadable (${(e as Error).message})`; } }
+  if (fmt.id === 'jpeg' || fmt.id === 'png' || fmt.id === 'webp') { try { const { findManifestStore, readManifest, describeManifest } = await import('../meta/c2pa'); if (findManifestStore(u8)) { const m = await readManifest(u8); if (m) decoded.info['Content Credentials'] = describeManifest(m, await ownSigningCertificate()); } } catch (e) { decoded.info['Content Credentials'] = `present but unreadable (${(e as Error).message})`; } }
   const ops = decodeOptions.autoRotate && fmt.id !== 'tiff' && fmt.id !== 'raw' ? orientationOps(pic.orientation) : [];
   if (ops.length && typeof document !== 'undefined') { pic.pages = pic.pages.map((pg) => ops.reduce((acc, op) => transformPage(acc, op), pg)); pic.orientationApplied = true; }
   return pic;

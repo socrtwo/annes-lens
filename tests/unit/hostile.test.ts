@@ -95,3 +95,130 @@ describe('wrong results fixed with them', () => {
     expect(p.colors.some((c) => c[0] > 250 && c[1] > 250 && c[2] > 250)).toBe(true);
   });
 });
+
+// ---- Memory: what one small file may make the decoders hold ------------------------------------------------------
+import { readFileSync } from 'node:fs';
+import { deflateRawSync } from 'node:zlib';
+import { decodeTiff, readIfd } from '../../src/codecs/tiff';
+import { decodeUtahRle } from '../../src/codecs/workstation';
+import { inflate } from '../../src/codecs/inflate';
+import { readZip, readZipEntry } from '../../src/codecs/zip';
+import { decodeLimits, latin1, checkUnpacked, MAX_UNPACKED } from '../../src/codecs/limits';
+import { decodeDicom } from '../../src/codecs/dicom';
+import { decodeIff } from '../../src/codecs/retro';
+import { decodePnm } from '../../src/codecs/pnm';
+
+/** A little-endian TIFF of `pages` gray 8-bit pages of w × h (uncompressed), with an optional ImageDescription on the first. */
+function grayTiff(pages: number, w: number, h: number, description = ''): Uint8Array {
+  const parts: number[] = [0x49, 0x49, 42, 0, 8, 0, 0, 0];
+  const le16 = (v: number) => [v & 255, v >> 8];
+  for (let p = 0; p < pages; p++) {
+    const tags: [number, number, number, number][] = [[256, 3, 1, w], [257, 3, 1, h], [258, 3, 1, 8], [259, 3, 1, 1], [262, 3, 1, 1], [273, 4, 1, 0], [277, 3, 1, 1], [278, 3, 1, h], [279, 4, 1, w * h]];
+    if (p === 0 && description) tags.push([270, 2, description.length + 1, 0]);
+    tags.sort((a, b) => a[0] - b[0]);
+    const ifdAt = parts.length, dataAt = ifdAt + 2 + tags.length * 12 + 4, descAt = dataAt + w * h, next = p === pages - 1 ? 0 : descAt + (p === 0 && description ? description.length + 1 : 0);
+    parts.push(...le16(tags.length));
+    for (const [tag, type, count, value] of tags) parts.push(...le16(tag), ...le16(type), ...le32(count), ...le32(tag === 273 ? dataAt : tag === 270 ? descAt : value));
+    parts.push(...le32(next));
+    for (let i = 0; i < w * h; i++) parts.push((p * 40 + i) & 255);
+    if (p === 0 && description) { for (let i = 0; i < description.length; i++) parts.push(description.charCodeAt(i)); parts.push(0); }
+  }
+  return Uint8Array.from(parts);
+}
+
+describe('a small file cannot make the decoders hold gigabytes', () => {
+  it('TIFF: a megabyte whose 4,096 tags each claim a million values', async () => {
+    const u8 = new Uint8Array(1 << 20); u8.set([0x49, 0x49, 42, 0, 8, 0, 0, 0]); const dv = new DataView(u8.buffer);
+    dv.setUint16(8, 4096, true);
+    for (let k = 0; k < 4096; k++) { const e = 10 + k * 12; dv.setUint16(e, 1000 + k, true); dv.setUint16(e + 2, 1, true); dv.setUint32(e + 4, 1000000, true); dv.setUint32(e + 8, 0, true); }
+    const r = await within(4000, () => readIfd(u8, 8, true));
+    expect(r.ok).toBe(true);
+    let total = 0; for (const t of r.value!.tags.values()) total += t.values.length;
+    expect(total).toBeLessThanOrEqual(4 << 20); expect(r.value!.tags.size).toBe(4096);
+  });
+  it('TIFF: pages beyond the budget are left out and said so; a very long description is read', async () => {
+    const keep = decodeLimits.totalPixels;
+    try {
+      decodeLimits.totalPixels = 250;                                  // 10 × 10 pages: two fit, the third does not
+      const d = await decodeTiff(grayTiff(5, 10, 10));
+      expect(d.pages.length).toBe(2);
+      expect(d.warnings.join(' ')).toMatch(/Page 3 and the pages after it are not shown/);
+      decodeLimits.totalPixels = keep;
+      expect((await decodeTiff(grayTiff(5, 10, 10))).pages.length).toBe(5);
+    } finally { decodeLimits.totalPixels = keep; }
+    const long = await decodeTiff(grayTiff(1, 2, 2, 'x'.repeat(300000)));   // OME-TIFF descriptions are this long
+    expect(long.info.description.length).toBe(300000); expect(long.pages[0].width).toBe(2);
+  });
+  it('GIF: frames beyond the budget are left out and said so', () => {
+    const frame = [0x21, 0xf9, 4, 0, 5, 0, 0, 0, 0x2c, 0, 0, 0, 0, 2, 0, 2, 0, 0, 2, 2, 0x84, 0x51, 0];       // 2 × 2, four literal codes
+    const gif = Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 2, 0, 2, 0, 0x80, 0, 0, 0, 0, 0, 255, 255, 255, ...Array(20).fill(frame).flat(), 0x3b]);
+    const keep = decodeLimits.totalPixels;
+    try {
+      expect(decodeGif(gif).pages[0].frames.length).toBe(20);
+      decodeLimits.totalPixels = 4 * 6;
+      const d = decodeGif(gif);
+      expect(d.pages[0].frames.length).toBe(6); expect(d.warnings.join(' ')).toMatch(/Only the first 6 frames are shown/);
+    } finally { decodeLimits.totalPixels = keep; }
+  });
+  it('color cycling makes no more frames than its budget (and none for a picture too large to animate)', () => {
+    const iff = new Uint8Array(readFileSync('tests/fixtures/retro/cycle.iff'));
+    const full = decodeIff(iff).pages[0], keep = decodeLimits.synthPixels;
+    expect(full.frames.length).toBeGreaterThan(2);
+    try {
+      decodeLimits.synthPixels = full.width * full.height * 3;
+      expect(decodeIff(iff).pages[0].frames.length).toBe(3);
+      decodeLimits.synthPixels = 1;
+      const one = decodeIff(iff).pages[0];
+      expect(one.frames.length).toBe(1); expect(one.notes.join(' ')).toMatch(/not played \(the picture is too large to animate\)/);
+    } finally { decodeLimits.synthPixels = keep; }
+  });
+  it('inflate and zip: no more output than the limit, whatever the stream holds or the header says', () => {
+    const zeros = new Uint8Array(8 << 20), packed = new Uint8Array(deflateRawSync(zeros));     // 8 MB in about 8 KB
+    expect(packed.length).toBeLessThan(20000);
+    const all = inflate(packed); expect([all.complete, all.data.length]).toEqual([true, 8 << 20]);
+    const cut = inflate(packed, 0, 1 << 20);
+    expect(cut.complete).toBe(false); expect(cut.error).toMatch(/unpacks to more than 1 MB/); expect(cut.data.length).toBeLessThanOrEqual(1 << 20);
+    // A hint far beyond the input is not allocated up front.
+    const hinted = inflate(Uint8Array.from([0x03, 0x00]), 400 << 20); expect(hinted.data.length).toBe(0);
+    // A zip entry saying it holds 1 KB gets 1 KB, though its stream goes on for megabytes; one saying a terabyte is refused.
+    const name = [...'a.bin'].map((c) => c.charCodeAt(0));
+    const local = [0x50, 0x4b, 3, 4, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...le32(packed.length), ...le32(1024), name.length, 0, 0, 0, ...name];
+    const central = [0x50, 0x4b, 1, 2, 20, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...le32(packed.length), ...le32(1024), name.length, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...le32(0), ...name];
+    const cdAt = local.length + packed.length, end = [0x50, 0x4b, 5, 6, 0, 0, 0, 0, 1, 0, 1, 0, ...le32(central.length), ...le32(cdAt), 0, 0];
+    const zip = Uint8Array.from([...local, ...packed, ...central, ...end]);
+    const z = readZip(zip); expect(z.entries.map((e) => [e.name, e.size])).toEqual([['a.bin', 1024]]);
+    expect(readZipEntry(zip, z.entries[0]).length).toBeLessThanOrEqual(1024);
+    expect(() => readZipEntry(zip, { ...z.entries[0], size: 2 ** 40 })).toThrow(/unpacks to more than 512 MB/);
+    expect(() => checkUnpacked(MAX_UNPACKED + 1, 'x')).toThrow(); expect(() => checkUnpacked(MAX_UNPACKED, 'x')).not.toThrow();
+  });
+  it('long runs of bytes become text without overflowing the stack', () => {
+    const big = new Uint8Array(1_500_000).fill(65);
+    expect(latin1(big).length).toBe(1_500_000);
+    expect(latin1(Array.from({ length: 300000 }, () => 66)).length).toBe(300000);
+    expect(latin1(Uint8Array.from([72, 105, 0xe9, 0x80]))).toBe('Hié\u0080');                 // one character per byte, unlike a windows-1252 decoder
+    expect(latin1(big, 10, 13)).toBe('AAA');
+    // A PNM whose comment line is a megabyte long.
+    const head = [...'P5\n#'].map((c) => c.charCodeAt(0)), tail = [...'\n2 1\n255\n'].map((c) => c.charCodeAt(0));
+    const pnm = new Uint8Array(head.length + 1_000_000 + tail.length + 2); pnm.set(head); pnm.fill(0x61, head.length, head.length + 1_000_000); pnm.set(tail, head.length + 1_000_000); pnm.set([10, 200], pnm.length - 2);
+    expect(decodePnm(pnm).pages[0].width).toBe(2);
+  });
+  it('DICOM and FITS: a header describing far more than the file holds is refused before memory is taken', async () => {
+    const dcm = new Uint8Array(readFileSync('tests/fixtures/dicom/CT_small.dcm')), dv = new DataView(dcm.buffer);
+    const good = await decodeDicom(dcm.slice()); expect(good.pages[0].width).toBeGreaterThan(0);
+    // Rows (0028,0010), explicit VR little endian: 28 00 10 00 'US' 02 00 <value>.
+    let at = -1; for (let i = 0; i + 10 < dcm.length; i++) if (dcm[i] === 0x28 && dcm[i + 1] === 0 && dcm[i + 2] === 0x10 && dcm[i + 3] === 0 && dcm[i + 4] === 0x55 && dcm[i + 5] === 0x53) { at = i; break; }
+    expect(at).toBeGreaterThan(0);
+    dv.setUint16(at + 8, 60000, true);
+    const r = await within(3000, () => decodeDicom(dcm));
+    expect(r.ok).toBe(false); expect(r.error).toMatch(/far too short for the/);
+    // A FITS primary array of 12,000 × 12,000 doubles with one block of data behind it.
+    const hdr = fitsHeader([card('SIMPLE', 'T'), card('BITPIX', '-64'), card('NAXIS', '2'), card('NAXIS1', '12000'), card('NAXIS2', '12000')]);
+    const fits = new Uint8Array(hdr.length + 2880); fits.set(hdr);
+    const f = await within(3000, () => decodeFits(fits));
+    expect(f.ok ? f.value!.warnings.join(' ') : f.error).toMatch(/cut short|holds no image|no image/i);
+  });
+  it('Utah RLE: a color map larger than the file is refused', () => {
+    const u = new Uint8Array(64); u.set([0x52, 0xcc, 0, 0, 0, 0, 8, 0, 8, 0, 2, 3, 8, 3, 31]);                // 3 maps of 2^31 entries
+    expect(() => decodeUtahRle(u)).toThrow(/color map larger than the file/);
+  });
+});

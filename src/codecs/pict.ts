@@ -189,12 +189,13 @@ export function decodePict(u8: Uint8Array, o: { maxSide: number } = { maxSide: 1
     for (let i = 0; i < 100000; i++) { pts.push([x, y]); if (x === x1 && y === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x += sx; } if (e2 <= dx) { err += dx; y += sy; } }
     const pw = penW, ph = penH, box: Rect = { t: Math.min(y0, y1), l: Math.min(x0, x1), b: Math.max(y0, y1) + ph, r: Math.max(x0, x1) + pw };
     if (!pw || !ph) return;
-    // The cells the pen covers, as a grid over the line's box.
-    const gw = box.r - box.l, gh = box.b - box.t, grid = new Uint8Array(gw * gh);
-    for (const [px, py] of pts) for (let b = 0; b < ph; b++) grid.fill(1, (py - box.t + b) * gw + (px - box.l), (py - box.t + b) * gw + (px - box.l) + pw);
+    // The cells the pen covers: on each row they are one run (the line moves at most a cell at a time, the pen is a
+    // rectangle), so two numbers per row hold them; a grid over the line's box took its whole area for every line.
+    const gh = box.b - box.t, lo = new Int32Array(gh).fill(0x7fffffff), hi = new Int32Array(gh).fill(-0x80000000);
+    for (const [px, py] of pts) for (let b = 0; b < ph; b++) { const row = py - box.t + b; if (row < 0 || row >= gh) continue; if (px - box.l < lo[row]) lo[row] = px - box.l; if (px - box.l + pw > hi[row]) hi[row] = px - box.l + pw; }
     const test: Test = (X, Y) => {
       const gx = Math.floor(X) - box.l, gy = Math.floor(Y) - box.t;
-      return gx >= 0 && gy >= 0 && gx < gw && gy < gh && grid[gy * gw + gx] === 1;
+      return gy >= 0 && gy < gh && gx >= lo[gy] && gx < hi[gy];
     };
     cmds.push({ kind: 'fill', test, box, pat: pnPat, mode: penMode, fg, bg, clip });
   };

@@ -124,3 +124,29 @@ describe('what the page writes only with the user\'s say', () => {
     expect(existsSync(join(home, 'Pictures/2020/b.png'))).toBe(true);
   });
 });
+
+describe('scripts for PowerShell and AppleScript', () => {
+  it('never carry a file name in their text: names go beside the script', () => {
+    const osx = require('../../electron/osscripts.cjs');
+    // U+2019 closes a PowerShell single-quoted string just as ' does; the double quote and backslash end an AppleScript one.
+    const hostile = ['a\u2019);Start-Process calc;#.jpg', "b');Start-Process calc;#.jpg", 'c" & (do shell script "open -a Calculator") & ".jpg', 'd\\".jpg', '$(calc).jpg', '`calc`.jpg'];
+    for (const name of hostile) {
+      const dir = `C:\\Users\\me\\${name} folder`;
+      for (const c of [osx.setWallpaperWin(`${dir}\\${name}`), osx.showPropertiesWin(dir, name), osx.scanWin(name, false, 300, `${dir}\\${name}`)]) {
+        expect(c.cmd).toBe('powershell.exe');
+        const script = c.args[c.args.indexOf('-Command') + 1];
+        expect(Object.values(osx.SCRIPTS)).toContain(script);                 // one of the fixed texts, unchanged
+        expect(c.args.join('\n')).not.toContain(name);
+        expect(Object.values(c.env).some((v) => String(v).includes(name))).toBe(true); // the name travels in the environment
+        for (const k of Object.keys(c.env)) expect(script).toContain(`$env:${k}`);
+      }
+      for (const c of [osx.setWallpaperMac(`/Users/me/${name}`), osx.showPropertiesMac(`/Users/me/${name}`)]) {
+        expect(c.cmd).toBe('osascript'); expect(c.args[0]).toBe('-e');
+        expect(c.args[1]).not.toContain(name); expect(c.args[1]).toMatch(/^on run argv\n[\s\S]*item 1 of argv[\s\S]*\nend run$/);
+        expect(c.args[2]).toBe(`/Users/me/${name}`); expect(c.args).toHaveLength(3);
+      }
+    }
+    // Numbers are numbers: a resolution that is not one falls back, and an empty device means the first scanner.
+    expect(osx.scanWin('', true, 'x; calc', 'f.png').env).toEqual({ QN_DEVICE: '', QN_MODE: '2', QN_RES: '300', QN_FILE: 'f.png' });
+  });
+});

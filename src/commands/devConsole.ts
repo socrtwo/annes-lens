@@ -13,7 +13,7 @@ const p = await picture.pixels();
 for (let i = 0; i < p.data.length; i += 4) { p.data[i] = 255 - p.data[i]; p.data[i + 1] = 255 - p.data[i + 1]; p.data[i + 2] = 255 - p.data[i + 2]; }
 await picture.setPixels(p, 'Invert (script)');
 return picture.info();`;
-const HELP = 'Ctrl+Enter runs. app.exec(id, arg), app.commands(filter), app.toast(text); picture.info(), picture.pixels(), picture.setPixels({ width, height, data }, label); folder.list(), folder.current(), folder.go(index or name); print(…), sleep(ms). Every call returns a promise (use await); return shows a value; globalThis keeps values between runs. Scripts run in a worker, apart from the page: they reach the app, its settings and your files only through these calls.';
+const HELP = 'Ctrl+Enter runs. app.exec(id, arg), app.commands(filter), app.toast(text); picture.info(), picture.pixels(), picture.setPixels({ width, height, data }, label); folder.list(), folder.current(), folder.go(index or name); print(…), sleep(ms). Every call returns a promise (use await); return shows a value; globalThis keeps values between runs. Scripts run in a worker, apart from the page: they reach the app and your files only through these calls. A command that goes beyond the open picture and folder (other programs, the network, AI services, other files, batch jobs, settings, plug-ins) asks you first.';
 
 let session: { host: ScriptHost; log: HTMLElement } | null = null;
 

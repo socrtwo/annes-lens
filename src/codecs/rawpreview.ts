@@ -3,6 +3,7 @@
  * JPEG previews (the largest is shown, which is what culling needs). Development of the sensor data is
  * the optional RAW module (FORMATS-PLAN.md); this reader never pretends to decode it.
  */
+import { latin1 } from './limits';
 
 export interface RawId { family: string; make: string }
 
@@ -56,7 +57,7 @@ function ifd0Tags(u8: Uint8Array): Map<number | string, string> {
     for (let i = 0; i < Math.min(n, 200); i++) {
       const e = ifd + 2 + i * 12;
       const tag = dv.getUint16(e, le), type = dv.getUint16(e + 2, le), count = dv.getUint32(e + 4, le);
-      if (type === 2 && (tag === 0x10f || tag === 0x110)) { const off = count <= 4 ? e + 8 : dv.getUint32(e + 8, le); out.set(tag, String.fromCharCode(...u8.subarray(off, Math.min(u8.length, off + count))).replace(/\0.*$/s, '').trim()); }
+      if (type === 2 && (tag === 0x10f || tag === 0x110)) { const off = count <= 4 ? e + 8 : dv.getUint32(e + 8, le); out.set(tag, latin1(u8.subarray(off, Math.min(u8.length, off + Math.min(count, 4096)))).replace(/\0.*$/s, '').trim()); }
       else if (type === 3 && count === 1) { const v = dv.getUint16(e + 8, le); out.set(tag, String(v)); if (tag === 0x103) out.set('compression', String(v)); if (tag === 0x106) out.set('photometric', String(v)); }
       else out.set(tag, '');
     }

@@ -40,8 +40,25 @@ checked by reading and by the suites still passing, not by a test of their own.
   when sharing stops while they are on their way. Rooms and the phone remote end with the window that started them.
   The relay limits rooms (in all and per address) and guests per room; a guest that stops reading gets the latest
   state when it catches up, not a queue.
+- **Security: S4.** Content Credentials no longer reads as "valid; signed by X" for any certificate. The details
+  make two statements: *unchanged since it was signed* (hashes, signature, and now the certificate's own signature),
+  and who signed, which is stated only for this device's own certificate (the same bytes as the keystore's). Any
+  other name is shown as what the certificate says, not verified. There is still no list of trusted issuers.
+- **Security: S5.** A script or plug-in running a command that reaches beyond the open picture and folder (other
+  programs, the network, AI services, other files, batch jobs, settings, plug-ins) asks first, in a dialog the
+  worker cannot answer, naming the command and its argument.
+- **Security: S7.** PowerShell and AppleScript texts are fixed; names and numbers travel in environment variables and
+  arguments (`electron/osscripts.cjs`). Not run on Windows or macOS: checked by a test of the command lines only.
 - **Hangs on crafted files: R1 to R8.** 7z, xz, tar, OpenEXR, FITS (and Rice tiles), BMP, DDS, GIF code size,
   DICOM segmented palettes and presentation-state drawing all bound their counts and loops.
+- **Memory on crafted files: R9, R11 to R16** (`src/codecs/limits.ts`). Palette counts are bounded by the bit depth
+  and the file; TIFF pages and GIF frames together stay within a pixel budget (250 megapixels), with a warning naming
+  what is left out; color-cycling frames the app makes itself have a smaller one; DICOM and FITS refuse a header that
+  describes far more than the file holds; inflate has an output limit and does not allocate from a header's hint; zip,
+  RAR, 7z and LZMA refuse entries over 512 MB (solid blocks over 1.5 GB); a TIFF directory holds at most 4 million
+  values; EXR keeps only the planes it shows and PSD at most five; byte runs become text in pieces instead of one
+  spread; a PICT line keeps one span per row instead of a grid over its box. Not done: decoding pages on demand
+  instead of all at once (the budget is a stopgap for that), and R17, R18.
 - **Hangs: R10.** RAW sensor sizes are checked against the data present before anything is allocated (families, DNG,
   lossless JPEG).
 - **Wrong results: W1, W2.** Interlaced GIFs; median cut with one dominant color.

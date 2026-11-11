@@ -171,7 +171,7 @@ def([
         const { pickFile } = await import('../ui/dom'); const [f] = await pickFile('.js,text/javascript'); if (!f) return;
         const code = await f.text(); if (code.length > 200000) { toast('That script is larger than 200 KB.'); return; }
         const name = (code.match(/^\s*\/\/\s*@name\s+(.+)$/m)?.[1] || f.name.replace(/\.js$/i, '')).trim();
-        if (!(await confirmDialog('Add Plug-in', `Add "${name}"? It runs in the Script Console's isolated worker and can change the open picture and folder through the app's script calls.`, 'Add'))) return;
+        if (!(await confirmDialog('Add Plug-in', `Add "${name}"? It runs in the Script Console's isolated worker and can change the open picture and move through the open folder with the app's commands. Commands that go further (other programs, the network, AI services, other files, batch jobs, settings, other plug-ins) ask you each time it runs.`, 'Add'))) return;
         return app.exec('tools.plugins', { add: { name, code } });
       }
       if (!p) return;

@@ -80,14 +80,16 @@ export function decodePsd(u8: Uint8Array): DecodeResult {
   const rowBytes = depth === 1 ? Math.ceil(w / 8) : w * bytesPerSample;
   const planeBytes = rowBytes * h;
   const planes: Uint8Array[] = [];
+  // The composite uses at most five channels (CMYK and alpha); a header may claim 56, each a plane of its own.
+  const used = Math.min(channels, 5);
   if (compression === 0) {
-    for (let c = 0; c < channels; c++) { const s = p + c * planeBytes; if (s >= u8.length) { warnings.push(`Channel ${c + 1} is missing`); break; } const pl = new Uint8Array(planeBytes); pl.set(u8.subarray(s, Math.min(u8.length, s + planeBytes))); planes.push(pl); if (s + planeBytes > u8.length) warnings.push(`Channel ${c + 1} is truncated`); }
+    for (let c = 0; c < used; c++) { const s = p + c * planeBytes; if (s >= u8.length) { warnings.push(`Channel ${c + 1} is missing`); break; } const pl = new Uint8Array(planeBytes); pl.set(u8.subarray(s, Math.min(u8.length, s + planeBytes))); planes.push(pl); if (s + planeBytes > u8.length) warnings.push(`Channel ${c + 1} is truncated`); }
   } else if (compression === 1) {
     const countSize = psb ? 4 : 2;
     const counts: number[] = [];
     let r = p;
     for (let i = 0; i < channels * h; i++) { counts.push(psb ? dv.getUint32(r) : dv.getUint16(r)); r += countSize; }
-    for (let c = 0; c < channels; c++) {
+    for (let c = 0; c < used; c++) {
       const pl = new Uint8Array(planeBytes);
       let truncated = false;
       for (let y = 0; y < h; y++) {

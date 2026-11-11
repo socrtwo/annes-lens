@@ -131,6 +131,7 @@ export function decodeUtahRle(u8: Uint8Array): DecodeResult {
   const xpos = (le16(u8, 2) << 16) >> 16, ypos = (le16(u8, 4) << 16) >> 16, w = le16(u8, 6), h = le16(u8, 8);
   const flags = u8[10], ncolors = u8[11], ncmap = u8[13], cmapLen = 1 << u8[14];
   size(w, h, 'Utah RLE');
+  if (u8[14] > 16 || 15 + ncmap * cmapLen * 2 > u8.length) throw new Error('This Utah RLE file has a color map larger than the file itself');
   const hasAlpha = !!(flags & 4), noBg = !!(flags & 2), warnings: string[] = [];
   let p = 15;
   const bg: number[] = [];

@@ -9,6 +9,7 @@
 import { readIfd, type IfdEntry } from '../codecs/tiff';
 import { checkSensor } from './limits';
 import { decodeLjpeg } from './ljpeg';
+import { latin1 } from '../codecs/limits';
 
 export interface DngRaw {
   width: number; height: number;
@@ -28,7 +29,7 @@ export interface DngRaw {
 }
 
 const tag = (m: Map<number, IfdEntry>, t: number) => m.get(t)?.values;
-const text = (m: Map<number, IfdEntry>, t: number) => { const v = m.get(t)?.values; return v ? String.fromCharCode(...v.filter((c) => c)).trim() : ''; };
+const text = (m: Map<number, IfdEntry>, t: number) => { const v = m.get(t)?.values; return v ? latin1(v.filter((c) => c)).trim() : ''; };
 
 export function isDng(u8: Uint8Array): boolean {
   if (u8.length < 16) return false;

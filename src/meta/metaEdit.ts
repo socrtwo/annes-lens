@@ -6,8 +6,9 @@
  */
 import { extractMeta, injectWebpMeta, crc32, type PictureMeta } from './metaWrite';
 import { jpegSegments } from './iptc';
+import { latin1 } from '../codecs/limits';
 
-const str = (u8: Uint8Array, o: number, n: number) => String.fromCharCode(...u8.subarray(o, Math.min(u8.length, o + n)));
+const str = (u8: Uint8Array, o: number, n: number) => latin1(u8, o, o + n);
 const ascii = (s: string) => Uint8Array.from([...s].map((c) => c.charCodeAt(0) & 255));
 export function concat(parts: Uint8Array[]): Uint8Array { const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; }
 const seg = (marker: number, body: Uint8Array) => { const len = body.length + 2; return concat([Uint8Array.from([0xff, marker, len >> 8, len & 255]), body]); };

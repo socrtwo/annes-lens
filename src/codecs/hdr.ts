@@ -4,6 +4,7 @@
  * available for the Adjust tab later.
  */
 import { makeRaster, type DecodeResult } from './raster';
+import { latin1 } from './limits';
 
 export const isHdr = (u8: Uint8Array): boolean => u8.length > 16 && String.fromCharCode(...u8.subarray(0, 10)) === '#?RADIANCE' || (u8.length > 16 && String.fromCharCode(...u8.subarray(0, 6)) === '#?RGBE');
 
@@ -14,14 +15,14 @@ export function decodeHdr(u8: Uint8Array, opts: { exposure?: number } = {}): Dec
   const lines: string[] = [];
   for (;;) {
     let e = p; while (e < u8.length && u8[e] !== 0x0a) e++;
-    const line = String.fromCharCode(...u8.subarray(p, e));
+    const line = latin1(u8, p, e);
     p = e + 1;
     if (!line.length) break;
     lines.push(line);
     if (p >= u8.length) throw new Error('Header is incomplete');
   }
   let e = p; while (e < u8.length && u8[e] !== 0x0a) e++;
-  const res = String.fromCharCode(...u8.subarray(p, e)).trim();
+  const res = latin1(u8, p, e).trim();
   p = e + 1;
   const m = res.match(/^([-+])Y\s+(\d+)\s+([-+])X\s+(\d+)$/);
   if (!m) throw new Error(`Unsupported orientation "${res}"`);

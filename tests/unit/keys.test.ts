@@ -125,3 +125,29 @@ describe('Esc and Exit', () => {
     } finally { document.body.classList.remove('ql-fullscreen'); on.desktop = false; close.mockRestore(); }
   });
 });
+
+describe('what a script may run on its own', () => {
+  it('asks before commands that reach beyond the open picture and folder, once per command and argument', async () => {
+    const { ScriptHost, scriptNeedsConsent } = await import('../../src/dev/scriptHost');
+    // Changing the picture and moving in the folder is what scripts are for; the rest asks.
+    for (const id of ['image.rotateRight', 'adjust.autoLevels', 'view.next', 'file.save', 'meta.keywords', 'edit.undo']) expect(scriptNeedsConsent(id), id).toBe(false);
+    for (const id of ['view.shareView', 'tools.plugins', 'tools.external', 'file.openWith', 'file.deletePermanent', 'ai.generate', 'batch.convert', 'dev.macros', 'plugin:abc', 'file.options', 'file.openUrl', 'file.exit']) expect(scriptNeedsConsent(id), id).toBe(true);
+    const ran: [string, unknown][] = [], asked: [string, unknown][] = []; let answer = false;
+    const app: any = { exec: (id: string, arg: unknown) => { ran.push([id, arg]); return true; }, picture: null };
+    const host: any = new ScriptHost(app, () => undefined, async (_label, id, arg) => { asked.push([id, arg]); return answer; });
+    const exec = (id: string, arg?: unknown) => host.call('exec', [id, arg]).then(() => 'ran', (e: Error) => e.message);
+    expect(await exec('file.save')).toBe('ran'); expect(asked).toEqual([]);
+    // Refused: nothing runs, and the script is told why.
+    expect(await exec('file.options', { quiet: true, url: 'https://elsewhere.example' })).toMatch(/was not allowed/);
+    expect(ran).toEqual([['file.save', undefined]]);
+    // Allowed: runs, and the same call does not ask again; another argument does.
+    answer = true;
+    expect(await exec('file.options', { quiet: true, url: 'https://elsewhere.example' })).toBe('ran');
+    expect(await exec('file.options', { quiet: true, url: 'https://elsewhere.example' })).toBe('ran');
+    expect(await exec('file.options', { quiet: true, url: 'https://another.example' })).toBe('ran');
+    expect(asked.map((a) => (a[1] as any).url)).toEqual(['https://elsewhere.example', 'https://elsewhere.example', 'https://another.example']);
+    expect(ran).toHaveLength(4);
+    expect(await exec('no.such.command')).toMatch(/Unknown command/);
+    expect(await exec('dev.console')).toMatch(/cannot open itself/);
+  });
+});

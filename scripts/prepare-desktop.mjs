@@ -15,7 +15,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'electron'), { recursive: true });
 cpSync(join(root, 'dist'), join(out, 'dist'), { recursive: true });
-for (const f of ['main.cjs', 'preload.cjs', 'cli.cjs', 'cli-options.json', 'remote.cjs', 'netshare.cjs']) cpSync(join(root, 'electron', f), join(out, 'electron', f));
+for (const f of ['main.cjs', 'preload.cjs', 'cli.cjs', 'cli-options.json', 'remote.cjs', 'netshare.cjs', 'osscripts.cjs']) cpSync(join(root, 'electron', f), join(out, 'electron', f));
 cpSync(join(root, 'resources/icon-512.png'), join(out, 'electron/icon.png'));
 writeFileSync(join(out, 'package.json'), JSON.stringify({
   name: 'quilllens',

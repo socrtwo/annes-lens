@@ -13,6 +13,7 @@ import { makeRaster, type DecodeResult, type DecodedPage } from './raster';
 import { inflate } from './inflate';
 import { decodeRice, decodePlio, decodeHcompress, unshuffleBytes, ditherSequence } from './fitsTiles';
 import { parseWcs, formatWorld, pixelToWorld, type Wcs } from './wcs';
+import { latin1 } from './limits';
 
 export const isFits = (u8: Uint8Array): boolean => u8.length >= 2880 && String.fromCharCode(...u8.subarray(0, 9)) === 'SIMPLE  =';
 export const isGzipFits = (u8: Uint8Array, name: string): boolean => u8.length > 10 && u8[0] === 0x1f && u8[1] === 0x8b && /\.(fits?|fts)\.gz$/i.test(name);
@@ -26,7 +27,7 @@ export interface FitsHdu {
 }
 export interface FitsPlane { hdu: number; plane: number; width: number; height: number; values: Float64Array; blank: Uint8Array | null }
 
-const text = (u8: Uint8Array, o: number, n: number) => String.fromCharCode(...u8.subarray(o, o + n));
+const text = (u8: Uint8Array, o: number, n: number) => latin1(u8, o, o + n);
 /** A card's value as the standard writes it: a quoted string, a logical, or a number. */
 function cardValue(raw: string): string {
   const s = raw.trimStart();
@@ -118,9 +119,10 @@ export function fitsData(u8: Uint8Array, o: { maxPixels?: number; maxPlanes?: nu
     for (let z = 0; z < depth && planes.length < maxPlanes; z++) {
       if (per > budget) { warnings.push(`HDU ${hi + 1}: plane ${z + 1} and the rest are left out (too many pixels)`); break; }
       budget -= per;
-      const values = new Float64Array(per), mask = blank !== null ? new Uint8Array(per) : null;
       const base = h.dataStart + z * per * bytes;
-      if (base + per * bytes > u8.length) { warnings.push(`HDU ${hi + 1}: the data is cut short`); if (base >= u8.length) break; }
+      // A plane cut short is shown with what there is, unless hardly any of it is there (a header claiming far more than the file holds).
+      if (base + per * bytes > u8.length) { warnings.push(`HDU ${hi + 1}: the data is cut short`); if (base >= u8.length || (u8.length - base) * 16 < per * bytes) break; }
+      const values = new Float64Array(per), mask = blank !== null ? new Uint8Array(per) : null;
       for (let i = 0; i < per; i++) {
         const at = base + i * bytes;
         if (at + bytes > u8.length) { values[i] = NaN; continue; }

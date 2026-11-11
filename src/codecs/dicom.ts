@@ -455,6 +455,10 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
   const frameBytes = encapsulated ? frameFragments(pix, u8, pi.frames) : null;
   const is422 = pi.pi === 'YBR_FULL_422' && pi.spp === 3 && !encapsulated;
   const frameSize = is422 ? rows * cols * 2 * (pi.bitsAlloc / 8) : Math.ceil((rows * cols * pi.spp * pi.bitsAlloc) / 8);
+  // The size in the header against the pixel data present: a file of a kilobyte cannot hold a picture of a gigabyte.
+  // Native data must be most of a frame (a little may be cut off); compressed data cannot unfold a thousandfold.
+  const present = encapsulated ? (pix.frags || []).reduce((a: number, f: { len: number }) => a + (f.len || 0), 0) : pix.len;
+  if (frameSize > 0 && present * (encapsulated ? 1000 : 16) < frameSize) throw new Error(`The pixel data (${present} bytes) is far too short for the ${cols} × ${rows} picture the header describes`);
   const rescaleSlope = ps?.rescale ? ps.rescale.slope : nums(d, 0x28, 0x1053)[0], rescaleIntercept = ps?.rescale ? ps.rescale.intercept : nums(d, 0x28, 0x1052)[0];
   let wc = nums(d, 0x28, 0x1050)[0], ww = nums(d, 0x28, 0x1051)[0], voiFn = (str(d, 0x28, 0x1056) || 'LINEAR').toUpperCase();
   if (ps?.window) { wc = ps.window.wc; ww = ps.window.ww; voiFn = ps.window.fn; }

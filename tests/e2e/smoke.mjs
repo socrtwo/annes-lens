@@ -2130,7 +2130,7 @@ try {
     return out;
   }, AI_PORT);
   check('ai commands enabled with a service', ai.enabled, [true, true, false, true, false]);
-  check('ai: a generated picture saved as PNG carries a signed, valid C2PA manifest with the prompt, and the details show it', ai.c2pa && [ai.c2pa.checks, ai.c2pa.action, ai.c2pa.source, ai.c2pa.prompt, ai.c2pa.selfSigned, typeof ai.c2pa.info === 'string' && /^valid; signed by Anne's Lens on this device/.test(ai.c2pa.info)], [{ hash: true, assertions: true, signature: true }, 'c2pa.created', 'trainedAlgorithmicMedia', 'a bicycle', true, true], JSON.stringify(ai.c2pa));
+  check('ai: a generated picture saved as PNG carries a signed, valid C2PA manifest with the prompt, and the details show it', ai.c2pa && [ai.c2pa.checks, ai.c2pa.action, ai.c2pa.source, ai.c2pa.prompt, ai.c2pa.selfSigned, typeof ai.c2pa.info === 'string' && /^unchanged since it was signed; signed on this device \(“Anne's Lens on this device/.test(ai.c2pa.info)], [{ hash: true, assertions: true, signature: true }, 'c2pa.created', 'trainedAlgorithmicMedia', 'a bicycle', true, true], JSON.stringify(ai.c2pa));
   check('ai keys: saving a key on the web asks for a passphrase; declined, the keys are stored unencrypted and never in the settings', [ai.passDialog, ai.keysStored && ai.keysStored.mode, ai.keysStored && ai.keysStored.keys && ai.keysStored.keys.mock, ai.prefsHaveKey], ['Protect Your AI Keys', 'plain', 'k', false], JSON.stringify([ai.passDialog, ai.keysStored, ai.prefsHaveKey]));
   check('ai describe', ai.describe, 'A red rectangle on a white background.');
   check('ai alt text', ai.alt, ['A red square', 'A plain red square on a white background.']);

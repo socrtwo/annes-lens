@@ -9,6 +9,7 @@
  *   residuals) are not decoded.
  */
 import { makeRaster, type DecodeResult, type DecodedPage, type Raster } from './raster';
+import { framesWithin, decodeLimits } from './limits';
 
 const be16 = (u: Uint8Array, o: number) => (u[o] << 8) | u[o + 1];
 const be32 = (u: Uint8Array, o: number) => ((u[o] << 24) | (u[o + 1] << 16) | (u[o + 2] << 8) | u[o + 3]) >>> 0;
@@ -116,7 +117,8 @@ export function decodeIff(u8: Uint8Array): DecodeResult {
   if (cycling && cycling.length) {
     // One frame per step of the slowest-moving range's full turn would be too many: step every active range once per
     // frame (up to 256 frames), timed by the fastest range (rate 16384 = 60 steps a second).
-    const steps = Math.min(256, Math.max(...cycling.map((r) => r.high - r.low + 1)));
+    // These frames are made here, not stored in the file: a large picture gets fewer of them (or none) rather than a gigabyte.
+    const steps = Math.min(256, framesWithin(w, h, decodeLimits.synthPixels), Math.max(...cycling.map((r) => r.high - r.low + 1)));
     const delay = Math.max(20, Math.round(1000 * 16384 / (60 * Math.max(...cycling.map((r) => r.rate)))));
     let pal = cmap.map((c) => c.slice());
     for (let s = 0; s < steps; s++) {
@@ -128,7 +130,7 @@ export function decodeIff(u8: Uint8Array): DecodeResult {
         turned.forEach((c, k) => { pal[r.low + k] = c; });
       }
     }
-    notes.push(`color cycling: ${cycling.length} range${cycling.length > 1 ? 's' : ''}, played as an animation of ${frames.length} frames`);
+    notes.push(frames.length > 1 ? `color cycling: ${cycling.length} range${cycling.length > 1 ? 's' : ''}, played as an animation of ${frames.length} frames` : `color cycling: ${cycling.length} range${cycling.length > 1 ? 's' : ''}, not played (the picture is too large to animate)`);
   } else frames.push({ raster: paint(null), delay: 0 });
   const alpha = !!mask || masking === 2 || (deep && planes === 32);
   const page: DecodedPage = { width: w, height: h, frames, loops: 0, bitDepth: deep ? planes : Math.min(planes, 8), paletteSize: deep || ham ? undefined : cmap.length || undefined, hasAlpha: alpha, notes };

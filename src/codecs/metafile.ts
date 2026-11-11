@@ -60,7 +60,7 @@ async function dibImage(u8: Uint8Array, bmi: number, bits: number, usage = 0): P
   if (!w || !H || w * H > 50_000_000) return null;
   let masks = [0xff0000, 0xff00, 0xff, 0];
   if (comp === 3 || comp === 6) { masks = [dv.getUint32(palOff, true), dv.getUint32(palOff + 4, true), dv.getUint32(palOff + 8, true), comp === 6 || hs >= 56 ? dv.getUint32(palOff + 12, true) : 0]; if (hs === 40) palOff += comp === 6 ? 16 : 12; }
-  const nPal = bpp <= 8 ? clrUsed || 1 << bpp : 0;
+  const nPal = bpp <= 8 ? Math.min(clrUsed || 1 << bpp, 1 << bpp) : 0; // a palette has at most as many entries as the bit depth can index, whatever the header says
   const pal: number[][] = []; for (let i = 0; i < nPal; i++) { const o = palOff + i * palEntry; pal.push(usage === 1 ? [0, 0, 0] : [u8[o + 2], u8[o + 1], u8[o]]); }
   const img = new ImageData(w, H), d = img.data;
   const rowBytes = Math.floor((w * bpp + 31) / 32) * 4;

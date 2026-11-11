@@ -8,6 +8,12 @@
  * `folder.list()`, `folder.current()`, `folder.go(indexOrName)`; `print(...)`, `sleep(ms)`.
  * Every call returns a promise. A snippet runs as the body of an async function: `return` shows a
  * value, and `globalThis.x = …` keeps something for the next run.
+ *
+ * What a script may do on its own is what the interface says: change the open picture and move through the open
+ * folder. `app.exec` reaches every command, and some of those go further: they start other programs, use the network,
+ * send pictures to services, touch other files, or change the app (its settings, its plug-ins, its own scripts).
+ * Those ask the user first, in a dialog of the page that the worker cannot answer, naming the command and its
+ * argument; the answer holds for that command and argument until the console is closed or the plug-in's run ends.
  */
 import type { App } from '../app';
 import { allCommands } from '../commands/registry';
@@ -43,13 +49,39 @@ self.onerror = (msg) => { postMessage({ type: 'error', id: 0, text: String(msg) 
 
 export interface ScriptOutput { kind: 'print' | 'result' | 'error' | 'info'; text: string }
 
+const ASK_GROUPS = ['ai.', 'dev.', 'batch.', 'plugin:'];
+const ASK_IDS = new Set([
+  // other programs and the system
+  'file.openExternal', 'file.openWith', 'tools.external', 'file.print', 'file.quickPrint', 'file.copyShop', 'file.wallpaper', 'file.lockScreen', 'file.contactPhoto', 'file.associations', 'file.sysProperties',
+  'file.scan', 'file.batchScan', 'file.capture', 'file.captureCamera',
+  // the network
+  'file.openUrl', 'file.share', 'file.email', 'file.cast', 'view.shareView', 'view.followView', 'view.netRelay', 'browse.shareAlbum', 'browse.openSharedAlbum', 'show.remote',
+  'help.sendSample', 'help.reportIssue', 'help.checkUpdates', 'meta.reverseGeocode',
+  // files other than the open picture
+  'file.delete', 'file.deletePermanent', 'file.moveTo', 'file.copyTo', 'file.quickMove', 'file.quickCopy', 'file.rename', 'file.importCamera', 'file.importRules', 'file.encrypt', 'file.saveAll',
+  'tools.backup', 'browse.watchFolder', 'browse.maintenance', 'browse.folderManager',
+  // the app itself
+  'tools.plugins', 'file.options', 'file.exportSettings', 'file.portableMode', 'file.resetCustomizations', 'file.customizeQat', 'file.customizeRibbon', 'file.customizeMenus', 'file.customizeKeyboard', 'file.exit',
+]);
+/** Whether a script running this command needs the user's yes first: the command reaches beyond the open picture and folder. */
+export const scriptNeedsConsent = (id: string): boolean => ASK_GROUPS.some((g) => id.startsWith(g)) || ASK_IDS.has(id);
+/** Asks the user whether a script may run a command; the default is a dialog of the page. */
+export type ScriptAsk = (label: string, id: string, arg: unknown) => Promise<boolean>;
+const askInDialog: ScriptAsk = async (label, id, arg) => {
+  const { confirmDialog } = await import('../ui/dialog');
+  let shown = ''; try { shown = arg === undefined ? '' : JSON.stringify(arg); } catch { shown = String(arg); }
+  return confirmDialog('A script wants to run a command', `“${label}” (${id})${shown ? `\nwith: ${shown.length > 400 ? shown.slice(0, 400) + '…' : shown}` : ''}\nThis command reaches beyond the open picture and folder (other programs, the network, services, other files or the app's own settings). Allow it only if you expect this script to do that.`, 'Allow', 'Don\'t Allow');
+};
+
 export class ScriptHost {
   private worker: Worker | null = null;
   private url: string | null = null;
   private runs = new Map<number, (ok: boolean) => void>();
   private seq = 0;
   running = 0;
-  constructor(private app: App, private out: (o: ScriptOutput) => void) {}
+  /** Commands (with their arguments) the user allowed this host's scripts to run. */
+  private allowed = new Set<string>();
+  constructor(private app: App, private out: (o: ScriptOutput) => void, private ask: ScriptAsk = askInDialog) {}
 
   private start(): Worker {
     if (this.worker) return this.worker;
@@ -97,7 +129,15 @@ export class ScriptHost {
       case 'exec': {
         const [id, arg] = args;
         if (id === 'dev.console') throw new Error('The console cannot open itself');
-        if (!allCommands().some((c) => c.id === id)) throw new Error(`Unknown command: ${id}`);
+        const cmd = allCommands().find((c) => c.id === id) || (typeof id === 'string' && id.startsWith('plugin:') ? (await import('../commands/registry')).getCommand(id) : undefined);
+        if (!cmd) throw new Error(`Unknown command: ${id}`);
+        if (scriptNeedsConsent(id)) {
+          let key = id; try { key = `${id}\n${JSON.stringify(arg)}`; } catch { /* asked every time */ }
+          if (!this.allowed.has(key)) {
+            if (!(await this.ask(cmd.label || id, id, arg))) throw new Error(`${id} was not allowed (it reaches beyond the open picture and folder, so it asks first)`);
+            this.allowed.add(key);
+          }
+        }
         const r = app.exec(id, arg);
         if (r instanceof Promise) await r;
         return { value: true };

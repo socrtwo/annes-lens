@@ -5,6 +5,7 @@
  * and files and multi-volume archives are refused with a message.
  */
 import { Unpack3, Unpack5, UnpackOld, RarError, crc32 } from './rarunpack';
+import { checkUnpacked } from './limits';
 
 export interface RarEntry {
   name: string; size: number; packed: number; mtime: number; dir: boolean; link: boolean;
@@ -137,6 +138,7 @@ export class Rar {
     if (e.split) throw new RarError(`${e.name} continues in another volume of a multi-volume archive, which Anne's Lens does not join`);
     if (e.offset + e.packed > this.u8.length) throw new RarError(`${e.name}: the archive is cut short`);
     const hit = this.cache.get(e.index); if (hit) return hit;
+    try { checkUnpacked(e.size, e.name); } catch (err) { throw new RarError((err as Error).message); } // the header's size is what the unpackers allocate
     const packed = this.u8.subarray(e.offset, e.offset + e.packed);
     let out: Uint8Array;
     if (e.method === 0 || (e.packed === 0 && e.size === 0)) out = packed.slice(0, e.size);
