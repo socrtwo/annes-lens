@@ -79,3 +79,19 @@ describe('EPS previews', () => {
     expect(epsPreview(new TextEncoder().encode('%!PS-Adobe-3.0\n%%Title: none\nshowpage\n')).kind).toBe('none');
   });
 });
+
+describe('damaged compressed tars (R17)', () => {
+  // A tar of six 60 KB text files, compressed with Python's bz2 (level 1: 100 KB blocks), lzma (xz) and gzip; then cut at 60%.
+  for (const n of ['damage.tar.bz2', 'damage.tar.xz', 'damage.tar.gz']) it(`${n} cut short lists the files before the damage`, async () => {
+    const { untarable, readTar } = await import('../../src/codecs/tar');
+    const whole = new Uint8Array(readFileSync(`tests/fixtures/archives/${n}`));
+    const full = await untarable(whole); expect(readTar(full!.tar).entries.length).toBe(6); expect(full!.warning).toBeUndefined();
+    const cut = whole.slice(0, Math.floor(whole.length * 0.6));
+    const t = await untarable(cut);
+    expect(t?.warning, n).toMatch(/damaged after \d+ KB/);
+    const r = readTar(t!.tar), ok = r.entries.length;
+    expect(ok, n).toBeGreaterThanOrEqual(2); expect(ok).toBeLessThan(6);
+    const text = new TextDecoder().decode(t!.tar.subarray(r.entries[0].offset, r.entries[0].offset + 40));
+    expect(text).toMatch(/^file 0 line 0 value/);
+  });
+});

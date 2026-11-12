@@ -1,7 +1,7 @@
 // Desktop (Electron) checks: Next / Previous Folder on a real folder tree (siblings and parents),
 // Full Screen on Another Display (two displays faked in the main process), and Frameless Window
 // (the window is rebuilt without its frame and reopens the picture). Needs a display: run with
-// `xvfb-run -a npm run e2e:desktop` after `npm run build`.
+// `xvfb-run -a npm run e2e:desktop` after `npm run build:test` (the build with the test hooks).
 import { _electron as electron } from 'playwright';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, readdirSync } from 'node:fs';
@@ -38,6 +38,8 @@ try {
   // Native permission questions are answered "Allow" unless a test says otherwise; each one is recorded.
   await app.evaluate(({ dialog }) => { globalThis.__asks = []; globalThis.__answer = 0; dialog.showMessageBox = async (_w, o) => { globalThis.__asks.push(o.message); return { response: globalThis.__answer }; }; });
   let w = await app.firstWindow();
+  await w.waitForFunction(() => document.querySelector('.qn-viewer'), null, { timeout: 30000 }).catch(() => undefined);
+  if (!(await w.evaluate(() => !!window.qn))) throw new Error('dist/ was built without the test hooks: run npm run build:test before npm run e2e:desktop');
   await w.waitForFunction(() => window.qn && window.qn.picture?.name === 'a.png', null, { timeout: 30000 });
   const where = () => w.evaluate(() => `${qn.folder.name}:${qn.folder.length}:${qn.picture?.name}`);
   const steps = [await where()];
@@ -113,7 +115,7 @@ try {
     return { known: w1.known.length, folder: w1.folder.name };
   }, cat.photosUri);
   writeFileSync(join(lib, 'Photos/f.png'), png(9, 9, 9));
-  const cat3 = await w.evaluate(async () => { const n = await qn.exec('browse.watchFolder', 'tick'); await qn.exec('browse.catalog', 'open'); await new Promise((r) => setTimeout(r, 300)); return { n, names: qn.folder.entries.map((e) => e.name).sort() }; });
+  const cat3 = await w.evaluate(async () => { const first = await qn.exec('browse.watchFolder', 'tick'); /* first sight: the size must hold for one more check (D11) */ const n = first + await qn.exec('browse.watchFolder', 'tick'); await qn.exec('browse.catalog', 'open'); await new Promise((r) => setTimeout(r, 300)); return { n, names: qn.folder.entries.map((e) => e.name).sort() }; });
   check('desktop sidecar read and catalog of a real tree', [cat.sidecar, cat.added, cat.view], [5, 4, ['Catalog (4 pictures)', ['a.png', 'b.png', 'c.png', 'd.png']]], JSON.stringify(cat));
   check('desktop watch folder: a new picture goes into the catalog', [cat2, cat3.n, cat3.names], [{ known: 0, folder: 'Photos' }, 1, ['a.png', 'b.png', 'c.png', 'd.png', 'f.png']], JSON.stringify(cat3));
   // External Tools may only start programs picked in the system dialog; Back Up Library onto disk.

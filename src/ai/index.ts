@@ -261,7 +261,9 @@ async function deviceMakePictures(app: App, job: ImageJob, s: AiService, status?
 
 let backend: device.Backend | null = null; let backendBase = '';
 /** An explicit runtime address (a setting, or a test), or '' to use the build's local copy or the CDN. */
-export function runtimeBase(app: App): string { return app.prefs.ai.runtimeUrl || (window as any).__qnOrtBase || ''; }
+declare const __QN_TEST_HOOKS__: boolean;
+/** The on-device runtime's address: the user's setting, else (in a test build only) the one the tests set. */
+export function runtimeBase(app: App): string { return app.prefs.ai.runtimeUrl || (typeof __QN_TEST_HOOKS__ !== 'undefined' && __QN_TEST_HOOKS__ ? (window as any).__qnOrtBase : '') || ''; }
 export function deviceBackend(app: App): device.Backend {
   const b = runtimeBase(app);
   if (!backend || backendBase !== b) { backend?.release?.(); backend = device.ortBackend(b); backendBase = b; }

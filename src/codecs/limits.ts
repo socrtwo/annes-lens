@@ -32,3 +32,14 @@ export function latin1(b: ArrayLike<number>, from = 0, to = b.length): string {
   }
   return s;
 }
+
+/**
+ * A decompressor's error that keeps what was unpacked before the damage (R17): callers that can use part of the
+ * output (a tar's first files, a 7z block's first files) read `partial`; the others see an ordinary error.
+ */
+export function withPartial(e: unknown, partial: Uint8Array): Error & { partial?: Uint8Array } {
+  const err = (e instanceof Error ? e : new Error(String(e))) as Error & { partial?: Uint8Array };
+  if (partial.length && !err.partial) err.partial = partial;
+  return err;
+}
+export const partialOf = (e: unknown): Uint8Array | undefined => (e as { partial?: Uint8Array } | null)?.partial;

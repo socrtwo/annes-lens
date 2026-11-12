@@ -493,6 +493,7 @@ function registerIpc() {
     if (id) requests.set(String(id), entry);
     const timer = setTimeout(() => ctl.abort(), Math.min(Math.max(Number(timeoutMs) || 180000, 1000), 600000));
     try {
+      /** @type {Record<string, string>} */
       const h = {};
       for (const [k, v] of Object.entries(headers || {})) if (typeof v === 'string' && /^[\w-]+$/.test(k)) h[k] = v;
       const res = await net.fetch(url, { method: method === 'POST' ? 'POST' : 'GET', headers: h, body: body ? Buffer.from(String(body), 'base64') : undefined, signal: ctl.signal, redirect: 'follow' });
@@ -732,10 +733,11 @@ function serveApp() {
 
 function buildMenu() {
   const isMac = process.platform === 'darwin';
+  /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    ...(isMac ? /** @type {Electron.MenuItemConstructorOptions[]} */ ([{ role: 'appMenu' }]) : []),
     { role: 'editMenu' },
-    { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }])] },
+    { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, ...(app.isPackaged ? [] : /** @type {Electron.MenuItemConstructorOptions[]} */ ([{ role: 'toggleDevTools' }]))] },
     { role: 'windowMenu' },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

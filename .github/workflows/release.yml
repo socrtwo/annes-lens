@@ -7,7 +7,9 @@ name: Release
 #   Android (APK, AAB)                 ChromeOS can also run the APK or install the web app.
 # Run it from the Actions tab (any branch: published as a prerelease v<version>-build.<run>),
 # push a tag v<version>, or push a commit whose message contains [release] (prerelease).
-# The last option exists for environments that may push branches but not tags.
+# The last option exists for environments that may push branches but not tags; it only counts for pushes made by the
+# repository's owner, so a merged pull request or a collaborator's commit message cannot publish a release.
+# Third-party actions are pinned to commit SHAs (the tag each one was resolved from is in the comment).
 
 on:
   workflow_dispatch:
@@ -34,14 +36,14 @@ concurrency:
 jobs:
   web:
     name: Web
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.actor == github.repository_owner && contains(github.event.head_commit.message, '[release]'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run typecheck
@@ -53,7 +55,7 @@ jobs:
         run: |
           mkdir -p out
           (cd dist && zip -qr "../out/QuillLens-${{ steps.v.outputs.version }}-web.zip" .)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: QuillLens-web
           path: out/*.zip
@@ -72,8 +74,8 @@ jobs:
           - { name: Windows, os: windows-latest, args: --win }
           - { name: macOS, os: macos-latest, args: --mac }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       # The desktop build carries its runtimes (PDF, OCR, the extra decoders): the app's Content Security Policy allows no CDN.
@@ -94,7 +96,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --config electron-builder.config.cjs ${{ matrix.args }} --publish never
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: QuillLens-desktop-${{ matrix.name }}
           path: |
@@ -111,23 +113,25 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
       - run: npx cap sync ios
       - name: Build
+        env:
+          V: ${{ needs.web.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          V='${{ needs.web.outputs.version }}'
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            MARKETING_VERSION="$V" CURRENT_PROJECT_VERSION="${{ github.run_number }}" build
+            MARKETING_VERSION="$V" CURRENT_PROJECT_VERSION="$RUN_NUMBER" build
           mkdir -p out/Payload
           cp -R build/ios/Build/Products/Release-iphoneos/App.app out/Payload/
           (cd out && zip -qry "QuillLens-$V-ios-unsigned.ipa" Payload && rm -rf Payload)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: QuillLens-ios
           path: out/*.ipa
@@ -151,7 +155,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: QuillLens-*
           path: out
@@ -162,15 +166,23 @@ jobs:
           ls -la
           sha256sum QuillLens-* > SHA256SUMS.txt
       - id: meta
+        # Inputs reach the script as environment variables, never as text pasted into it.
+        env:
+          V: ${{ needs.web.outputs.version }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          RUN_NUMBER: ${{ github.run_number }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          V='${{ needs.web.outputs.version }}'
-          if [[ -n "${{ inputs.tag }}" ]]; then TAG="${{ inputs.tag }}"
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then TAG="${GITHUB_REF#refs/tags/}"; else TAG="v$V-build.${{ github.run_number }}"; fi
+          if [[ -n "$INPUT_TAG" ]]; then
+            [[ "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]] || { echo "::error::The tag input must look like v1.2.3 or v1.2.3-beta.1"; exit 1; }
+            TAG="$INPUT_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then TAG="${GITHUB_REF#refs/tags/}"; else TAG="v$V-build.$RUN_NUMBER"; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # Tags: prerelease when the version has a suffix (v1.0.0-beta.1). Manual runs: the checkbox.
           # [release] commits: always a prerelease.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then [[ "$TAG" == *-* ]] && PRE=true || PRE=false
-          elif [[ "${{ github.event_name }}" == workflow_dispatch ]]; then PRE='${{ inputs.prerelease }}'
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then PRE="$INPUT_PRERELEASE"
           else PRE=true; fi
           echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
           FAILED=""
@@ -178,7 +190,7 @@ jobs:
             [[ "${j#*:}" == success ]] || FAILED="$FAILED ${j%%:*}"
           done
           echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           target_commitish: ${{ github.sha }}

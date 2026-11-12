@@ -15,7 +15,7 @@ import { rgbToD50, inv3, SPACES } from '../color/spaces';
 import { parseIcc } from '../color/icc';
 import { colorFn } from '../color/transform';
 import { spaceProfile } from '../color/spaces';
-import { decodeLimits, latin1 } from './limits';
+import { decodeLimits, latin1, partialOf } from './limits';
 
 export function isTiff(u8: Uint8Array): boolean {
   if (u8.length < 8) return false;
@@ -142,10 +142,13 @@ async function decodePage(u8: Uint8Array, tags: Map<number, IfdEntry>, le: boole
     const rb = Math.ceil((pw * n * bits) / 8);
     if (ccitt) {
       // The codes T.4 calls white and black are the bit values 0 and 1; PhotometricInterpretation says how they look (as in libtiff).
-      return decodeCcitt(src, pw, rows, { compression: comp as 2 | 3 | 4, t4Options: t4, t6Options: t6, lsbFirst });
+      const report = { damaged: 0, error: '' };
+      const out = decodeCcitt(src, pw, rows, { compression: comp as 2 | 3 | 4, t4Options: t4, t6Options: t6, lsbFirst, report });
+      if (report.damaged) warnings.push(`${report.damaged} fax line${report.damaged === 1 ? ' is' : 's are'} damaged and left white (${report.error})`);
+      return out;
     }
     if (comp === 50001) return webpPiece(src, pw, rows, n);
-    let dec = await inflateChunk(src, comp, rb * rows);
+    let dec = await inflateChunk(src, comp, rb * rows, (msg) => warnings.push(`Page ${pageNo}: ${msg}; the rows before the damage are kept`));
     if (pred === 3) return undoFloatPredictor(dec, bits / 8, n, pw, rows, le);
     if (pred === 2 && dec.buffer === u8.buffer) dec = dec.slice(); // uncompressed: the predictor is undone in a copy, not in the file's own bytes
     undoPredictor(dec, pred, bits, n, pw, rows, rb, le);
@@ -318,11 +321,16 @@ function dpiOf(tags: Map<number, IfdEntry>): [number, number] | undefined {
   return unit === 3 ? [Math.round(xr * 2.54), Math.round(y * 2.54)] : [Math.round(xr), Math.round(y)];
 }
 
-async function inflateChunk(src: Uint8Array, comp: number, want: number): Promise<Uint8Array> {
+/** One strip or tile unpacked to `want` bytes. Data damaged part-way keeps what came before the damage (`damaged` is told; R17). */
+async function inflateChunk(src: Uint8Array, comp: number, want: number, damaged?: (msg: string) => void): Promise<Uint8Array> {
   if (comp === 50000 || comp === 34925) {
     let dec: Uint8Array;
     try { dec = comp === 50000 ? zstdDecompress(src) : xzDecode(src); }
-    catch (e) { throw new Error(`${comp === 50000 ? 'ZSTD' : 'LZMA'} data could not be read (${(e as Error).message})`); }
+    catch (e) {
+      const msg = `${comp === 50000 ? 'ZSTD' : 'LZMA'} data could not be read (${(e as Error).message})`, part = partialOf(e);
+      if (!part || !damaged) throw new Error(msg);
+      damaged(msg); dec = part;
+    }
     if (dec.length >= want) return dec.subarray(0, want);
     const out = new Uint8Array(want); out.set(dec); return out;
   }
@@ -331,16 +339,18 @@ async function inflateChunk(src: Uint8Array, comp: number, want: number): Promis
   if (comp === 5) return lzwTiff(src, want);
   // Deflate (zlib stream)
   const out = new Uint8Array(want);
+  let o = 0;
   try {
     const ds = new DecompressionStream('deflate');
     const writer = ds.writable.getWriter();
     void writer.write(src.slice()).catch(() => undefined);
     void writer.close().catch(() => undefined);
     const reader = ds.readable.getReader();
-    let o = 0;
     for (;;) { const { done, value } = await reader.read(); if (done || !value) break; const n = Math.min(value.length, want - o); out.set(value.subarray(0, n), o); o += n; if (o >= want) { void reader.cancel().catch(() => undefined); break; } }
   } catch (e: any) {
-    throw new Error(`Deflate data could not be read (${e?.message || e})`);
+    const msg = `Deflate data could not be read (${e?.message || e})`;
+    if (!o || !damaged) throw new Error(msg);
+    damaged(msg);
   }
   return out;
 }

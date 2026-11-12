@@ -7,7 +7,7 @@
 import { lzmaDecode, lzma2Decode } from './lzma';
 import { bzip2Decode } from './bzip2';
 import { Ppmd7, Range7z } from './ppmd';
-import { checkUnpacked, MAX_SOLID } from './limits';
+import { checkUnpacked, MAX_SOLID, partialOf } from './limits';
 
 export interface SevenEntry { name: string; size: number; mtime: number; folder: number; offset: number }
 interface Coder { id: string; props: Uint8Array; nIn: number; nOut: number }
@@ -131,7 +131,7 @@ async function runCoder(c: Coder, input: Uint8Array, size: number): Promise<Uint
 
 export class SevenZip {
   entries: SevenEntry[] = []; warnings: string[] = [];
-  private streams!: Streams; private cache = new Map<number, Promise<Uint8Array>>();
+  private streams!: Streams; private cache = new Map<number, Promise<Uint8Array>>(); private damage = new Map<number, string>();
   constructor(private u8: Uint8Array) {}
   static async open(u8: Uint8Array): Promise<SevenZip> { const z = new SevenZip(u8); await z.parse(); return z; }
   private async parse(): Promise<void> {
@@ -202,8 +202,15 @@ export class SevenZip {
       for (const size of f.unpackSizes) checkUnpacked(size, 'A block of this 7z archive', MAX_SOLID); // sizes from the header size the buffers below
       let coder = f.packed[0];
       for (let guard = 0; guard < f.coders.length; guard++) {
-        data = await runCoder(f.coders[coder], data, f.unpackSizes[coder]);
         const next = f.bind.find((b) => b[1] === coder);
+        try { data = await runCoder(f.coders[coder], data, f.unpackSizes[coder]); }
+        catch (e) {
+          // The last coder's output up to the damage still holds the files that lie before it (R17).
+          const part = partialOf(e);
+          if (next || !part) throw e;
+          this.damage.set(i, (e as Error)?.message || String(e));
+          return part;
+        }
         if (!next) break;
         coder = next[0];
       }
@@ -215,6 +222,7 @@ export class SevenZip {
   async read(e: SevenEntry): Promise<Uint8Array> {
     if (e.folder < 0) return new Uint8Array(0);
     const d = await this.folderData(e.folder);
+    if (e.offset + e.size > d.length) throw new Error(`This file lies in a damaged part of the archive (${this.damage.get(e.folder) || 'the data ends early'})`);
     return d.subarray(e.offset, e.offset + e.size);
   }
 }

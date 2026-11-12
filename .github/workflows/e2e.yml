@@ -1,0 +1,45 @@
+name: End-to-end
+
+# Both end-to-end suites on every push and pull request: the web app in Chromium (tests/e2e/smoke.mjs) and the
+# desktop app in Electron under a virtual display (tests/e2e/desktop.mjs), against the build with the test hooks
+# (npm run build:test; release builds carry none). Third-party actions are pinned to commit SHAs.
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Web and desktop
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Build with the test hooks
+        run: npm run build:test
+      - name: Web end-to-end
+        run: npm run e2e
+      - name: Desktop end-to-end
+        run: xvfb-run -a npm run e2e:desktop

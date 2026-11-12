@@ -206,7 +206,7 @@ function startShare(port = 0) {
   return new Promise((resolve, reject) => {
     server.on('error', reject);
     server.listen(port, '0.0.0.0', () => {
-      const p = server.address().port;
+      const p = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
       const urls = (kind, token) => lanAddresses().map((ip) => `http://${ip}:${p}/${kind}/${token}/`);
       resolve({
         port: p,

@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "pretypecheck": "node scripts/gen-plan-ts.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json",
     "pretest": "node scripts/gen-plan-ts.mjs",
     "test": "vitest run",
     "e2e": "node tests/e2e/smoke.mjs",
@@ -24,6 +24,7 @@
     "android:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease",
     "ios:sync": "npm run build && npx cap sync ios",
     "build:desktop": "node scripts/build-desktop.mjs",
+    "build:test": "node scripts/build-desktop.mjs --test",
     "desktop": "npm run build:desktop && node scripts/prepare-desktop.mjs && electron build/desktop-app",
     "desktop:dist": "npm run build:desktop && node scripts/prepare-desktop.mjs && electron-builder --config electron-builder.config.cjs",
     "icons": "node resources/gen-icon.mjs && node scripts/gen-android-icons.mjs && node scripts/gen-platform-icons.mjs"

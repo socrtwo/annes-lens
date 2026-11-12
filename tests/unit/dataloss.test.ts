@@ -98,15 +98,27 @@ describe('a folder that cannot be listed is not an empty folder', () => {
     expect(await watchTick({} as any, act)).toBe(0);
     expect((await listWatches())[0].known).toEqual(['a.jpg|10', 'b.jpg|20']);
     listing.next = { uri: 'file:///d', name: 'd', entries: [entry('a.jpg', 10), entry('b.jpg', 20), entry('c.jpg', 30)] }; // back, with one new picture
-    expect(await watchTick({} as any, act)).toBe(1);
+    expect(await watchTick({} as any, act)).toBe(0); // seen once: it may still be being written
+    expect(await watchTick({} as any, act)).toBe(1); // the same size on the next check: handled
     expect(handled).toEqual([['c.jpg']]);
     expect((await listWatches())[0].known).toEqual(['a.jpg|10', 'b.jpg|20', 'c.jpg|30']);
+  });
+  it('a picture still being written is handled once its size stops changing (D11)', async () => {
+    await saveWatches([{ id: 'w1', folder: { name: 'd', uri: 'file:///d' }, action: 'copy', known: [], created: 1 }]);
+    const handled: string[] = [];
+    const act = async (_w: Watch, fresh: { name: string; size?: number }[]) => { handled.push(...fresh.map((e) => `${e.name}:${e.size}`)); };
+    for (const size of [1000, 250000, 900000]) { listing.next = { uri: 'file:///d', name: 'd', entries: [entry('big.jpg', size)] }; expect(await watchTick({} as any, act)).toBe(0); }
+    listing.next = { uri: 'file:///d', name: 'd', entries: [entry('big.jpg', 900000)] };
+    expect(await watchTick({} as any, act)).toBe(1);
+    expect(handled).toEqual(['big.jpg:900000']);
+    expect(await watchTick({} as any, act)).toBe(0); // and only once
   });
   it('a second pass does not start while one is still running', async () => {
     await saveWatches([{ id: 'w1', folder: { name: 'd', uri: 'file:///d' }, action: 'recipe', known: [], created: 1 }]);
     listing.next = { uri: 'file:///d', name: 'd', entries: [entry('a.jpg', 10)] };
     let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
     let runs = 0;
+    await watchTick({} as any, async () => { runs++; }); // first sight: pending
     const slow = watchTick({} as any, async () => { runs++; await gate; });
     await new Promise((r) => setTimeout(r, 20));
     expect(await watchTick({} as any, async () => { runs++; })).toBe(0); // skipped: the first is still at work

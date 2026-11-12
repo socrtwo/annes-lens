@@ -3,6 +3,7 @@
  * the inverse Burrows–Wheeler transform, then the initial run-length step undone; one stream or
  * several back to back. Randomized blocks (from 0.9.0-era encoders) are refused. CRCs are not checked.
  */
+import { withPartial } from './limits';
 class Bits {
   p = 0; buf = 0; n = 0;
   constructor(private u8: Uint8Array) {}
@@ -20,12 +21,16 @@ export function bzip2Decode(u8: Uint8Array): Uint8Array {
   const b = new Bits(u8);
   let out = new Uint8Array(Math.max(1024, u8.length * 4)), o = 0;
   const put = (v: number) => { if (o >= out.length) { const n = new Uint8Array(out.length * 2); n.set(out); out = n; } out[o++] = v; };
+  // Blocks are independent: a damaged one ends the stream, and the blocks before it are kept for callers that can use them.
+  let blockStart = 0;
+  try {
   for (;;) {
     if (b.get(8) !== 0x42 || b.get(8) !== 0x5a || b.get(8) !== 0x68) throw new Error('Not bzip2 data');
     const level = b.get(8) - 0x30; if (level < 1 || level > 9) throw new Error('Bad bzip2 block size');
     const max = level * 100000, tt = new Uint32Array(max);
     for (;;) {
       const m1 = b.get(24), m2 = b.get(24);
+      blockStart = o; // every block before this one is whole
       if (m1 === 0x177245 && m2 === 0x385090) { b.get(32); break; } // end of stream
       if (m1 !== 0x314159 || m2 !== 0x265359) throw new Error('Corrupt bzip2 data (block header)');
       b.get(32); // block CRC
@@ -88,5 +93,6 @@ export function bzip2Decode(u8: Uint8Array): Uint8Array {
     let more = false; try { more = !b.end && (() => { const save = [b.p, b.buf, b.n]; const ok = b.get(8) === 0x42; [b.p, b.buf, b.n] = save; return ok; })(); } catch { more = false; }
     if (!more) break;
   }
+  } catch (e) { throw withPartial(e, out.slice(0, blockStart)); }
   return out.subarray(0, o);
 }

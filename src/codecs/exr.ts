@@ -338,7 +338,7 @@ function decompress(comp: number, src: Uint8Array, chs: Channel[], x0: number, y
 }
 
 /** Full-resolution float planes of one part. */
-function decodePart(u8: Uint8Array, h: Header, offsets: number[], multipart: boolean, every = false): { w: number; ht: number; data: Map<string, Float32Array> } {
+function decodePart(u8: Uint8Array, h: Header, offsets: number[], multipart: boolean, every = false): { w: number; ht: number; data: Map<string, Float32Array>; damaged: number; firstError: string; chunks: number } {
   const w = h.x1 - h.x0 + 1, ht = h.y1 - h.y0 + 1;
   if (w <= 0 || ht <= 0 || w * ht > 100_000_000) throw new Error('Bad or too large OpenEXR data window');
   // One float plane per channel that the picture is made from (R, G, B and A of the layer shown, or Y, RY, BY, else the
@@ -365,20 +365,27 @@ function decodePart(u8: Uint8Array, h: Header, offsets: number[], multipart: boo
       }
     }
   };
+  // A damaged or missing chunk is left black and counted; the others still decode (R17).
+  let damaged = 0, firstError = '';
   for (const off of offsets) {
-    if (!off || off >= u8.length) continue;
-    const r = new R(u8, off); if (multipart) r.i32();
-    if (h.tiled) {
-      const tx = r.i32(), ty = r.i32(), lx = r.i32(), ly = r.i32(), n = r.i32();
-      if (lx || ly) continue; // reduced levels
-      const bx = h.x0 + tx * h.tileW, by = h.y0 + ty * h.tileH, bw = Math.min(h.tileW, h.x1 - bx + 1), bh = Math.min(h.tileH, h.y1 - by + 1);
-      put(decompress(h.compression, u8.subarray(r.p, r.p + n), h.channels, bx, by, bw, bh), bx, by, bw, bh);
-    } else {
-      const y = r.i32(), n = r.i32(), bh = Math.min(LINES[h.compression], h.y1 - y + 1);
-      put(decompress(h.compression, u8.subarray(r.p, r.p + n), h.channels, h.x0, y, w, bh), h.x0, y, w, bh);
-    }
+    if (!off || off >= u8.length) { damaged++; continue; }
+    try {
+      const r = new R(u8, off); if (multipart) r.i32();
+      if (h.tiled) {
+        const tx = r.i32(), ty = r.i32(), lx = r.i32(), ly = r.i32(), n = r.i32();
+        if (lx || ly) continue; // reduced levels
+        const bx = h.x0 + tx * h.tileW, by = h.y0 + ty * h.tileH, bw = Math.min(h.tileW, h.x1 - bx + 1), bh = Math.min(h.tileH, h.y1 - by + 1);
+        if (bw <= 0 || bh <= 0 || n < 0 || r.p + n > u8.length) throw new Error('a tile outside the picture or past the end of the file');
+        put(decompress(h.compression, u8.subarray(r.p, r.p + n), h.channels, bx, by, bw, bh), bx, by, bw, bh);
+      } else {
+        const y = r.i32(), n = r.i32(), bh = Math.min(LINES[h.compression], h.y1 - y + 1);
+        if (y < h.y0 || bh <= 0 || n < 0 || r.p + n > u8.length) throw new Error('a block of lines outside the picture or past the end of the file');
+        put(decompress(h.compression, u8.subarray(r.p, r.p + n), h.channels, h.x0, y, w, bh), h.x0, y, w, bh);
+      }
+    } catch (e) { damaged++; firstError ||= (e as Error)?.message || String(e); }
   }
-  return { w, ht: ht, data };
+  if (damaged && damaged >= offsets.length) throw new Error(`Every chunk of this OpenEXR picture is damaged (${firstError || 'missing'})`);
+  return { w, ht: ht, data, damaged, firstError, chunks: offsets.length };
 }
 
 const srgb = (v: number) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
@@ -422,7 +429,10 @@ export function decodeExr(u8: Uint8Array, opts: { exposure?: number } = {}): Dec
     if (h.type && /deep/.test(h.type)) { warnings.push(`Part ${i + 1} (${h.name || 'deep'}) holds deep data, which is not shown`); return; }
     if (h.compression === 12 || h.compression > 13) { warnings.push(`Part ${i + 1}: OpenEXR ${COMPRESSION[h.compression] || h.compression} compression is not supported yet`); return; }
     if (h.levelMode === 2) warnings.push(`Part ${i + 1}: a rip map; its full-resolution level is shown`);
-    const { w, ht, data } = decodePart(u8, h, tables[i], multipart);
+    let part: ReturnType<typeof decodePart>;
+    try { part = decodePart(u8, h, tables[i], multipart); } catch (e) { warnings.push(`Part ${i + 1}: ${(e as Error)?.message || e}`); return; }
+    const { w, ht, data } = part;
+    if (part.damaged) warnings.push(`Part ${i + 1}: ${part.damaged} of ${part.chunks} chunks are damaged or missing and are left black${part.firstError ? ` (${part.firstError})` : ''}`);
     // Which channels to show.
     const names = [...data.keys()], has = (n: string) => data.has(n);
     let layer = '';

@@ -55,10 +55,12 @@ const isSig = (u8: Uint8Array, i: number) => (u8[i] === 0xff && u8[i + 1] === 0x
 export function carvePictures(u8: Uint8Array, limit = 500): Carved[] {
   const out: Carved[] = [];
   for (const j of findEmbeddedJpegs(u8, limit)) out.push({ offset: j.offset, length: j.length, format: 'jpeg', width: j.width, height: j.height });
-  let i = 0;
+  // The JPEGs in file order, passed with one cursor: the scan skips each one whole (was a search of every JPEG at every byte; R18).
+  const jpegs = out.map((c) => [c.offset, c.offset + c.length] as const).sort((a, b) => a[0] - b[0]);
+  let i = 0, k = 0;
   while (i + 12 <= u8.length && out.length < limit) {
-    const inJpeg = out.some((c) => c.format === 'jpeg' && i >= c.offset && i < c.offset + c.length);
-    if (inJpeg) { i++; continue; }
+    while (k < jpegs.length && jpegs[k][1] <= i) k++;
+    if (k < jpegs.length && i >= jpegs[k][0]) { i = jpegs[k][1]; continue; }
     const hit = pngAt(u8, i) || gifAt(u8, i) || webpAt(u8, i) || bmpAt(u8, i);
     if (hit) { out.push(hit); i = hit.offset + hit.length; continue; }
     if (tiffAt(u8, i)) { let end = i + 8; while (end + 4 <= u8.length && !isSig(u8, end)) end++; if (end - i > 64) { out.push({ offset: i, length: end - i, format: 'tiff' }); i = end; continue; } }

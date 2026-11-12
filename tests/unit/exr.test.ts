@@ -92,6 +92,22 @@ describe('OpenEXR DWAA and DWAB (lossy DCT; the library\'s own decoding as the r
     const at = u.findIndex((_, i) => sig.every((b, k) => u[i + k] === b));
     expect(at).toBeGreaterThan(300);
     new DataView(u.buffer).setUint32(at + 24, 0x7fffffff, true);
-    expect(() => decodeExr(u)).toThrow(/DWA data is damaged/);
+    // The damaged block is left black and reported; the picture's other blocks still show (R17).
+    const r = decodeExr(u);
+    expect(r.warnings.join(' ')).toMatch(/chunks are damaged or missing and are left black \(DWA data is damaged/);
+    expect(r.pages.length).toBe(1);
+  });
+});
+
+describe('damaged chunks (R17)', () => {
+  it('a damaged OpenEXR chunk is left black and reported; the rest of the picture decodes', () => {
+    const good = new Uint8Array(readFileSync('tests/fixtures/exr/float-zip.exr'));
+    const ref = decodeExr(good).pages[0];
+    const bad = good.slice(); for (let i = Math.floor(bad.length * 0.7); i < bad.length; i++) bad[i] = (i * 37) & 255;
+    const r = decodeExr(bad), pg = r.pages[0];
+    expect([pg.width, pg.height]).toEqual([ref.width, ref.height]);
+    expect(r.warnings.join(' ')).toMatch(/chunks are damaged or missing and are left black/);
+    const a = (pg.frames[0] as any).raster.data, b = (ref.frames[0] as any).raster.data;
+    expect([...a.subarray(0, ref.width * 4)]).toEqual([...b.subarray(0, ref.width * 4)]); // the first lines are intact
   });
 });

@@ -13,7 +13,7 @@ import { isPictureName } from './folder';
 
 export type WatchAction = 'catalog' | 'open' | 'copy' | 'recipe';
 export interface DirRef { name: string; uri?: string; handle?: any }
-export interface Watch { id: string; folder: DirRef; action: WatchAction; dest?: DirRef; recipe?: string; known: string[]; created: number; lastNew?: number; total?: number }
+export interface Watch { id: string; folder: DirRef; action: WatchAction; dest?: DirRef; recipe?: string; known: string[]; created: number; lastNew?: number; total?: number; /** New pictures seen once, by name and size: acted on when the next check finds the same size (D11). */ pending?: string[] }
 
 const KEY = 'watch.v1';
 export const listWatches = async (): Promise<Watch[]> => (await kvGet<Watch[]>(KEY)) || [];
@@ -28,6 +28,16 @@ const fileKey = (e: Entry) => `${e.name}|${e.size ?? ''}`;
 
 /** The pictures in a watched folder that it did not hold before (pure: `known` keys against a listing). */
 export const newOnes = (entries: Entry[], known: string[]): Entry[] => { const k = new Set(known); return entries.filter((e) => isPictureName(e.name) && !k.has(fileKey(e))); };
+
+/**
+ * New pictures split by whether they have settled: one is ready when the last check already saw it at the same size
+ * (a camera or a copy still writing it would have grown in between); the rest wait for the next check.
+ */
+export function settled(fresh: Entry[], pending: string[]): { ready: Entry[]; waiting: Entry[] } {
+  const p = new Set(pending), ready: Entry[] = [], waiting: Entry[] = [];
+  for (const e of fresh) (p.has(fileKey(e)) ? ready : waiting).push(e);
+  return { ready, waiting };
+}
 
 /** The folder's pictures, or null when it could not be listed (a drive that is away): that is not an empty folder. */
 async function listPictures(uri: string): Promise<Entry[] | null> {
@@ -53,10 +63,14 @@ export async function watchTick(app: App, act: (w: Watch, fresh: Entry[], uri: s
       const u = await dirUri(w.folder); if (!u) continue;
       const now = await listPictures(u);
       if (!now) continue; // the folder is not reachable right now: what it held is kept, so nothing counts as new when it returns
-      const fresh = newOnes(now, w.known);
-      if (!fresh.length) { w.known = now.map(fileKey); continue; }
-      try { await act(w, fresh, u); w.lastNew = Date.now(); w.total = (w.total || 0) + fresh.length; n += fresh.length; } catch (e) { console.warn('watch', e); }
-      w.known = now.map(fileKey);
+      const { ready, waiting } = settled(newOnes(now, w.known), w.pending || []);
+      w.pending = waiting.map(fileKey);
+      if (ready.length) {
+        try { await act(w, ready, u); w.lastNew = Date.now(); w.total = (w.total || 0) + ready.length; n += ready.length; } catch (e) { console.warn('watch', e); }
+      }
+      // A file still being written (its size changed since the last check) stays new until it settles.
+      const wait = new Set(w.pending);
+      w.known = now.filter((e) => !wait.has(fileKey(e))).map(fileKey);
     }
     await saveWatches(all);
     return n;

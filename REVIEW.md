@@ -24,8 +24,8 @@ checked by reading and by the suites still passing, not by a test of their own.
   Before view first, replaces the right folder entry, and only writes back what the encoder keeps; lossless and
   AI results go to the picture they were made from; "could not be read" is no longer treated as "empty" for
   keys, watched folders and the catalog; unsaved-changes tracking no longer depends on the undo depth; Batch
-  Rename, case-only rename, imported places and the Cull Mode overlay as described. Not done from D11: waiting
-  for a new file's size to settle over two checks before acting on it.
+  Rename, case-only rename, imported places and the Cull Mode overlay as described. From D11, a watched folder
+  now acts on a new file only when two checks in a row see the same size (a file still being written waits).
 - **Security: S1, S3.** File names, folder names and captions are escaped wherever they go into dialogs, and
   data embedded in generated pages' scripts cannot close the script element.
 - **Security: S2.** Desktop permissions separate reading from writing. Saving, copying or moving into a folder and
@@ -62,7 +62,7 @@ checked by reading and by the suites still passing, not by a test of their own.
   RAR, 7z and LZMA refuse entries over 512 MB (solid blocks over 1.5 GB); a TIFF directory holds at most 4 million
   values; EXR keeps only the planes it shows and PSD at most five; byte runs become text in pieces instead of one
   spread; a PICT line keeps one span per row instead of a grid over its box. Not done: decoding pages on demand
-  instead of all at once (the budget is a stopgap for that), and R17, R18.
+  instead of all at once (the budget is a stopgap for that). R17 and R18 are fixed (below).
 - **Hangs: R10.** RAW sensor sizes are checked against the data present before anything is allocated (families, DNG,
   lossless JPEG).
 - **Wrong results: W1, W2.** Interlaced GIFs; median cut with one dominant color.
@@ -136,6 +136,17 @@ checked by reading and by the suites still passing, not by a test of their own.
   writer and reports why a file failed. APNG delays over 65.5 s keep their length; the TGA writer uses one typed
   buffer and refuses sizes TGA cannot store. Window / Level previews through the same path as opening, so it works
   for presentation states and baseline-JPEG DICOM.
+
+- **Recovery and tooling: R17, R18, S14, S15, D11, section 6.** A damaged OpenEXR chunk is left black and counted
+  instead of losing the picture; damaged fax lines are left white (G3 resumes at the next EOL, G4 keeps the lines
+  before the damage); bzip2, LZMA, LZMA2 and xz errors keep what was unpacked, so a damaged .tar.gz/.tar.bz2/.tar.xz
+  lists the files before the damage, a TIFF strip keeps its rows before it, and a 7z block's files that lie before it
+  still open (that 7z path has no damaged fixture yet). Carving passes each JPEG once (32 MB with 400 JPEGs: about
+  30 s before). Workflows pin every third-party action to a commit SHA, pass the `tag` input through the environment
+  and check its form, take `[release]` only from the owner's pushes, keep write access in the jobs that publish,
+  and refuse a tagged Android release without the release keystore. `window.qn` and the `__qn*` hooks exist only
+  in builds made with `npm run build:test`; release builds expose nothing. Both end-to-end suites run in CI
+  (`.github/workflows/e2e.yml`), and `npm run typecheck` checks `electron/*.cjs` (`tsconfig.electron.json`).
 
 Everything else below is still open.
 
@@ -284,7 +295,9 @@ These are in code or statements from commit 59af882:
 - Unverified: `homecomputer.ts:111` may read NEOchrome's lower color limit from the wrong nibble; the
   fixture was written with the same assumption as the reader. *Since:* the format description could not be fetched
   from this environment, so the question is still open; the reader now takes the range from the smaller to the larger
-  nibble, which is the same colors under either reading.
+  nibble, which is the same colors under either reading. A second attempt also failed: the format pages
+  (fileformats.archiveteam.org, textfiles.com, atari-wiki.com) are not reachable from here, and RECOIL, the one
+  independent reader available, decodes NEO pictures without their color cycling.
 
 ## 8. Structural causes and what would remove whole classes
 

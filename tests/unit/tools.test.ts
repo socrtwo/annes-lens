@@ -43,3 +43,14 @@ describe('encrypted pictures', () => {
     await expect(decryptPicture(bytes, 'x')).rejects.toThrow(/Not an/);
   }, 20000);
 });
+
+it('carving 32 MB with 400 JPEGs passes each JPEG once (it took about 30 s; R18)', async () => {
+  const { carvePictures } = await import('../../src/codecs/carve');
+  // A minimal JPEG: SOI, SOF0 (8×8), SOS with one byte of data, EOI.
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0, 11, 8, 0, 8, 0, 8, 1, 1, 0x11, 0, 0xff, 0xda, 0, 8, 1, 1, 0, 0, 63, 0, 0x12, 0xff, 0xd9]);
+  const size = 32 * 1024 * 1024, u8 = new Uint8Array(size), gap = Math.floor(size / 400);
+  for (let n = 0; n < 400; n++) u8.set(jpeg, n * gap + 7);
+  const t0 = performance.now(); const found = carvePictures(u8, 1000); const ms = performance.now() - t0;
+  expect(found.filter((c) => c.format === 'jpeg').length).toBe(400);
+  expect(ms).toBeLessThan(5000);
+});

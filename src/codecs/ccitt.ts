@@ -67,7 +67,14 @@ function mode2d(b: Bits): [Mode, number] {
   throw new Error('Unsupported CCITT code (uncompressed mode or a broken line)');
 }
 
-export interface CcittOptions { compression: 2 | 3 | 4; t4Options?: number; t6Options?: number; lsbFirst?: boolean }
+export interface CcittOptions { compression: 2 | 3 | 4; t4Options?: number; t6Options?: number; lsbFirst?: boolean; /** Filled in when lines were damaged: how many, and the first error. */ report?: { damaged: number; error: string } }
+
+/** Moves past the next EOL (eleven or more zeros and a one); false at the end of the data. */
+function seekEol(b: Bits): boolean {
+  let zeros = 0;
+  while (!b.end) { const v = b.bit(); if (v === 0) zeros++; else if (zeros >= 11) return true; else zeros = 0; }
+  return false;
+}
 
 /** Decodes `rows` rows of `width` pixels. Rows the data does not reach stay white. */
 export function decodeCcitt(u8: Uint8Array, width: number, rows: number, o: CcittOptions): Uint8Array {
@@ -77,12 +84,19 @@ export function decodeCcitt(u8: Uint8Array, width: number, rows: number, o: Ccit
   const twoD = o.compression === 4 || (o.compression === 3 && ((o.t4Options || 0) & 1) !== 0);
   let ref: number[] = [width, width]; // changing elements of the line above (all white)
   const setRun = (row: number, from: number, to: number) => { for (let x = Math.max(0, from); x < Math.min(width, to); x++) out[row * rowBytes + (x >> 3)] |= 0x80 >> (x & 7); };
+  // A damaged line (a code that is not in the tables) is left white: G3 data resumes at the next EOL, G4 and the
+  // RLE variant, which have no resynchronization point, keep the lines decoded before it (R17). When no line
+  // decodes at all, the error is thrown: that is not a fax picture with damage but no fax picture.
+  let good = 0, firstError: unknown = null, eols = 0;
   for (let y = 0; y < rows; y++) {
     if (b.end) break;
+    try {
     let lineIs2d = o.compression === 4;
     if (o.compression === 3) {
       const hadEol = eol(b);
       if (y === 0 && !hadEol) { /* files may omit the first EOL */ }
+      // Data that marks its lines with EOLs and then misses one is out of step (the line before was damaged).
+      if (hadEol) eols++; else if (eols > 1 && !b.end) throw new Error('Missing CCITT end of line');
       lineIs2d = twoD ? b.bit() === 0 : false;
       if (b.end) break;
     }
@@ -122,6 +136,17 @@ export function decodeCcitt(u8: Uint8Array, width: number, rows: number, o: Ccit
     ref = [...cur.filter((p) => p < width), width, width];
     if (o.compression === 2) b.align();
     else if (o.compression === 4 && ((o.t6Options || 0) & 2) !== 0) b.align();
+    good++;
+    } catch (e) {
+      firstError ??= e;
+      out.fill(0, y * rowBytes, (y + 1) * rowBytes);
+      if (o.report) { if (!o.report.damaged) o.report.error = (e as Error)?.message || String(e); o.report.damaged += o.compression === 3 ? 1 : rows - y; }
+      if (o.compression !== 3 || !seekEol(b)) break;
+      ref = [width, width];
+      // seekEol consumed the EOL: the next line's own EOL check must not look for it again.
+      b.pos -= 12;
+    }
   }
+  if (!good && firstError) throw firstError;
   return out;
 }

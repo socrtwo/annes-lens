@@ -3,7 +3,7 @@
  * reference decoder (Igor Pavlov, public domain), and the .xz container (LZMA2 blocks; checks not
  * verified). The decoder writes into a growable buffer that is also its dictionary.
  */
-import { MAX_SOLID } from './limits';
+import { MAX_SOLID, withPartial } from './limits';
 
 class Out {
   buf: Uint8Array; pos = 0;
@@ -136,7 +136,8 @@ export class LzmaDecoder {
 export function lzmaDecode(data: Uint8Array, props: Uint8Array, outSize: number): Uint8Array {
   const out = new Out(outSize), d = new LzmaDecoder(out);
   d.setProps(props[0]); d.dictSize = Math.max(4096, props[1] | (props[2] << 8) | (props[3] << 16) | (props[4] << 24)) >>> 0;
-  d.resetState(); d.decode(data, 0, outSize);
+  d.resetState();
+  try { d.decode(data, 0, outSize); } catch (e) { throw withPartial(e, out.done().slice()); }
   return out.done();
 }
 /** The .lzma ("LZMA alone") format: properties, dictionary size, 64-bit size (or unknown), stream. */
@@ -145,7 +146,8 @@ export function lzmaAloneDecode(u8: Uint8Array): Uint8Array {
   const known = !(lo === 0xffffffff && hi === 0xffffffff), size = known ? hi * 4294967296 + lo : Infinity;
   const out = new Out(known ? size : u8.length * 4), d = new LzmaDecoder(out);
   d.setProps(u8[0]); d.dictSize = Math.max(4096, u8[1] | (u8[2] << 8) | (u8[3] << 16) | (u8[4] << 24)) >>> 0;
-  d.resetState(); d.decode(u8, 13, size);
+  d.resetState();
+  try { d.decode(u8, 13, size); } catch (e) { throw withPartial(e, out.done().slice()); }
   return out.done();
 }
 
@@ -155,6 +157,7 @@ export function lzma2Decode(u8: Uint8Array, dictProp: number, sizeHint = 0, pos 
   const dictSize = dictProp === 40 ? 0xffffffff : ((2 | (dictProp & 1)) << ((dictProp >> 1) + 11)) >>> 0;
   const out = into || new Out(sizeHint || u8.length * 3), d = new LzmaDecoder(out); d.dictSize = dictSize;
   let needProps = true, needDict = true;
+  try {
   for (;;) {
     if (pos >= u8.length) throw new Error('Truncated LZMA2 data');
     const c = u8[pos++];
@@ -175,6 +178,7 @@ export function lzma2Decode(u8: Uint8Array, dictProp: number, sizeHint = 0, pos 
     d.decode(u8.subarray(0, pos + packed), pos, out.pos + unpacked, false);
     pos += packed;
   }
+  } catch (e) { throw into ? e : withPartial(e, out.done().slice()); } // with `into`, the caller keeps the buffer
   return { data: out.done(), end: pos };
 }
 
@@ -185,6 +189,7 @@ export function xzDecode(u8: Uint8Array): Uint8Array {
   if (!isXz(u8)) throw new Error('Not an .xz file');
   const out = new Out(u8.length * 4);
   let p = 0;
+  try {
   while (p + 12 <= u8.length) {
     if (!isXz(u8.subarray(p))) { if (u8.subarray(p).every((b) => b === 0)) break; throw new Error('Corrupt .xz stream'); }
     const check = u8[p + 7] & 0x0f, checkSize = check === 0 ? 0 : check <= 3 ? 4 : check <= 6 ? 8 : check <= 9 ? 16 : check <= 12 ? 32 : 64;
@@ -214,6 +219,7 @@ export function xzDecode(u8: Uint8Array): Uint8Array {
     while (q & 3) q++;
     p = q + 4 + 12;
   }
+  } catch (e) { throw withPartial(e, out.done().slice()); }
   return out.done();
 }
 export { Out as LzmaOut };

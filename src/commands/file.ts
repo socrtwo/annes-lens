@@ -45,7 +45,7 @@ export async function archiveFolder(name: string, data: ArrayBuffer): Promise<Fo
     } else {
       const { untarable, readTar } = await import('../codecs/tar');
       const t = await untarable(u8); if (!t) return null;
-      const r = readTar(t.tar); warnings = r.warnings;
+      const r = readTar(t.tar); warnings = t.warning ? [t.warning, ...r.warnings] : r.warnings;
       items = r.entries.map((e) => ({ name: e.name, size: e.size, mtime: e.mtime, read: async () => t.tar.subarray(e.offset, e.offset + e.size) }));
     }
   } catch (e) { toast(`${name}: ${(e as Error).message}.`, { ms: 6000 }); return null; }

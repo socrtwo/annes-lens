@@ -2,6 +2,7 @@
  * tar archives (POSIX ustar, GNU long names, pax extended headers, base-256 sizes), plain or
  * compressed with gzip, bzip2 or xz: the regular files with their names, sizes and dates.
  */
+import { withPartial, partialOf } from './limits';
 import { bzip2Decode, isBzip2 } from './bzip2';
 import { xzDecode, isXz } from './lzma';
 
@@ -55,18 +56,24 @@ async function gunzip(u8: Uint8Array): Promise<Uint8Array> {
   const ds = new DecompressionStream('gzip'), w = ds.writable.getWriter();
   void w.write(u8.slice()).catch(() => undefined); void w.close().catch(() => undefined);
   const parts: Uint8Array[] = []; const r = ds.readable.getReader(); let n = 0;
-  for (;;) { const { done, value } = await r.read(); if (done) break; parts.push(value); n += value.length; }
-  const out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
-  return out;
+  const join = () => { const out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+  try { for (;;) { const { done, value } = await r.read(); if (done) break; parts.push(value); n += value.length; } } catch (e) { throw withPartial(e, join()); }
+  return join();
 }
 /** The tar inside a gzip, bzip2 or xz file (or the bytes as they are); null when it is not a tar. */
-export async function untarable(u8: Uint8Array): Promise<{ tar: Uint8Array; compression: string } | null> {
+export async function untarable(u8: Uint8Array): Promise<{ tar: Uint8Array; compression: string; warning?: string } | null> {
   if (isTar(u8)) return { tar: u8, compression: '' };
-  let inner: Uint8Array | null = null, compression = '';
+  let inner: Uint8Array | null = null, warning: string | undefined;
+  const compression = isGzip(u8) ? 'gzip' : isBzip2(u8) ? 'bzip2' : isXz(u8) ? 'xz' : '';
   try {
-    if (isGzip(u8)) { inner = await gunzip(u8); compression = 'gzip'; }
-    else if (isBzip2(u8)) { inner = bzip2Decode(u8); compression = 'bzip2'; }
-    else if (isXz(u8)) { inner = xzDecode(u8); compression = 'xz'; }
-  } catch (e) { throw new Error(`The ${compression || 'compressed'} data could not be read (${(e as Error).message})`); }
-  return inner && isTar(inner) ? { tar: inner, compression } : null;
+    if (compression === 'gzip') inner = await gunzip(u8);
+    else if (compression === 'bzip2') inner = bzip2Decode(u8);
+    else if (compression === 'xz') inner = xzDecode(u8);
+  } catch (e) {
+    // Damage part-way: the files unpacked before it are listed (R17).
+    const part = partialOf(e), msg = (e as Error)?.message || String(e);
+    if (!part || !isTar(part)) throw new Error(`The ${compression || 'compressed'} data could not be read (${msg})`);
+    inner = part; warning = `The ${compression} data is damaged after ${Math.round(part.length / 1024)} KB (${msg}); the files before that are shown`;
+  }
+  return inner && isTar(inner) ? { tar: inner, compression, warning } : null;
 }

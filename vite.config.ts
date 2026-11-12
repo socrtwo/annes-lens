@@ -84,7 +84,7 @@ function serviceWorker() {
 
 export default defineConfig({
   plugins: [localRuntimes(), serviceWorker()],
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __QN_TEST_HOOKS__: JSON.stringify(process.env.QN_TEST_HOOKS === '1' || process.env.VITEST === 'true') },
   base: './',
   build: {
     outDir: 'dist',

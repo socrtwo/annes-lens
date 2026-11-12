@@ -83,3 +83,41 @@ describe('TIFF: the horizontal predictor (files written with tifffile)', () => {
     expect([...(await decodeTiff(file)).pages[0].frames[0].raster.data.filter((_, i) => i % 4 === 0)]).toEqual([10, 11, 12, 13, 200, 150, 100, 50]);
   });
 });
+
+describe('damaged fax data (R17)', () => {
+  const rowsMatching = (a: Uint8ClampedArray, b: Uint8ClampedArray, w: number, h: number) => { let n = 0; for (let y = 0; y < h; y++) { let same = true; for (let x = 0; x < w && same; x++) same = a[(y * w + x) * 4] === b[(y * w + x) * 4]; if (same) n++; else break; } return n; };
+  // Lines that match the reference line, or a neighbour of it: after damage, G3 cannot know how many lines the damage
+  // covered, so the lines after it may sit a few lines off.
+  const allRows = (a: Uint8ClampedArray, b: Uint8ClampedArray, w: number, h: number) => { let n = 0; for (let y = 0; y < h; y++) { const eq = (yy: number) => { if (yy < 0 || yy >= h) return false; for (let x = 0; x < w; x++) if (a[(y * w + x) * 4] !== b[(yy * w + x) * 4]) return false; return true; }; if ([0, -1, 1, -2, 2, -3, 3].some((k) => eq(y + k))) n++; } return n; };
+  async function damaged(name: string) {
+    const good = fx(name), ref = png('fax.png');
+    // The strip's data: StripOffsets is where the decoder reads; overwrite a run of bytes in the middle of it.
+    const bad = good.slice(), d0 = await decodeTiff(good); void d0;
+    const mid = Math.floor(bad.length * 0.55); for (let i = mid; i < mid + 6; i++) bad[i] = 0x00; bad[mid + 6] = 0x01;
+    const d = await decodeTiff(bad), r = d.pages[0].frames[0].raster;
+    return { d, r, ref, top: rowsMatching(r.data, ref.data, ref.width, ref.height), all: allRows(r.data, ref.data, ref.width, ref.height) };
+  }
+  it('G3 resumes at the next EOL; G4 keeps the lines before the damage; both say so', async () => {
+    const g3 = await damaged('fax-g3.tif');
+    expect(g3.d.warnings.join(' ')).toMatch(/fax lines? (is|are) damaged and left white/);
+    expect(g3.all).toBeGreaterThan(g3.top); // lines after the damaged one decode again
+    expect(g3.all).toBeGreaterThan(g3.ref.height - 10);
+    const g4 = await damaged('fax-g4.tif');
+    expect(g4.d.warnings.join(' ')).toMatch(/damaged and left white/);
+    expect(g4.top).toBeGreaterThan(g4.ref.height / 3);
+  });
+});
+
+it('a damaged LZMA or Deflate strip keeps the rows before the damage (R17)', async () => {
+  for (const name of ['lzma-rgb.tif']) {
+    const good = fx(name), ref = (await decodeTiff(good)).pages[0];
+    // Cut the file inside the (last) strip's data: the strip offsets and the directory come first in these files.
+    const d0 = await decodeTiff(good); void d0;
+    let lo = 0; const dv = new DataView(good.buffer, good.byteOffset); const ifd = dv.getUint32(4, true), n = dv.getUint16(ifd, true);
+    for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (dv.getUint16(e, true) === 273) { const cnt = dv.getUint32(e + 4, true), v = dv.getUint32(e + 8, true); lo = cnt === 1 ? v : dv.getUint32(v + (cnt - 1) * 4, true); } }
+    const bad = good.slice(); for (let i = lo + 40; i < bad.length && i < lo + 400; i++) bad[i] = (i * 151) & 255;
+    const r = await decodeTiff(bad);
+    expect(r.warnings.join(' '), name).toMatch(/could not be read .*the rows before the damage are kept/);
+    expect(r.pages[0].width).toBe(ref.width);
+  }
+});

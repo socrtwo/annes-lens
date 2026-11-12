@@ -1,6 +1,6 @@
 // Browser smoke test: serves dist/ with `vite preview`, opens generated pictures through the drop command,
 // walks the folder, zooms, rotates, undoes, reads pixel info, switches menus and saves a copy.
-// Usage: npm run build && npm run e2e   (set QN_URL to test an already-running server instead)
+// Usage: npm run build:test && npm run e2e   (set QN_URL to test an already-running server instead)
 import { spawn } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -69,6 +69,7 @@ try {
   await p.addInitScript(() => localStorage.setItem('quilllens.prefs.v1', JSON.stringify({ firstRun: false })));
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.waitForSelector('.qn-viewer');
+  if (!(await p.evaluate(() => !!window.qn))) throw new Error('dist/ was built without the test hooks: run npm run build:test before npm run e2e');
   await p.waitForTimeout(500);
 
   check('commands registered', await p.evaluate(() => window.__qnAllIds.length > 70), true);
@@ -2533,7 +2534,8 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
     const w2 = await qn.exec('browse.watchFolder', { add: 'copy', dest: { uri: 'fsadir:' + (await N.handleId(outDir)), name: 'Out' } });
     out.watchKnown = [w1.known.length, w2.known.length];
     await put(lib, 'd.png', await png('#cc0'));
-    out.tick = await qn.exec('browse.watchFolder', 'tick');
+    out.tick0 = await qn.exec('browse.watchFolder', 'tick'); // first sight: it may still be being written (D11)
+    out.tick = await qn.exec('browse.watchFolder', 'tick'); // the same size again: handled
     out.copied = []; for await (const [n] of outDir.entries()) out.copied.push(n);
     out.tick2 = await qn.exec('browse.watchFolder', 'tick');
     await qn.exec('browse.catalog', 'open'); await wait(300);
@@ -2545,7 +2547,7 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
   check('catalog view: every picture, stored facts and thumbnails', [cat.view, cat.thumbs >= 2], [[true, 'Catalog (2 pictures)', ['a.png', 'b.png'], true], true]);
   check('smart album over the whole catalog (a rating from a sidecar)', cat.smart, [true, 'Smart album: Four stars', ['b.png']]);
   check('rescan picks up a new picture; maintenance drops a deleted one and lists orphaned sidecars', [cat.rescan.length, /1 added/.test(cat.rescan[0]), /1 removed/.test(cat.maint || ''), /Library 2\/gone\.xmp/.test(cat.maint || '')], [1, true, true, true], cat.maint);
-  check('watch folders: a new picture goes into the catalog and is copied; nothing twice', [cat.watchKnown, cat.tick, cat.copied, cat.tick2, cat.afterWatch], [[1, 1], 2, ['d.png'], 0, ['b.png', 'c.png', 'd.png']]);
+  check('watch folders: a new picture goes into the catalog and is copied once its size has settled; nothing twice', [cat.watchKnown, cat.tick0, cat.tick, cat.copied, cat.tick2, cat.afterWatch], [[1, 1], 0, 2, ['d.png'], 0, ['b.png', 'c.png', 'd.png']]);
   await pa.reload(); await pa.waitForFunction(() => window.qn && window.__qnGetCommand, null, { timeout: 30000 }); await pa.waitForTimeout(500);
   const cat2 = await pa.evaluate(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));

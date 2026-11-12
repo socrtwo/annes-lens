@@ -1,0 +1,17 @@
+{
+  "//": "Type-checks the Electron main process, preload and helpers (plain CommonJS) against Node's and Electron's types.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["electron/*.cjs"]
+}

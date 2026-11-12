@@ -63,7 +63,7 @@ function startRemote(onCommand, port = 0) {
   return new Promise((resolve, reject) => {
     server.on('error', reject);
     server.listen(port, '0.0.0.0', () => {
-      const p = server.address().port;
+      const p = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
       resolve({
         token, port: p, urls: lanAddresses().map((ip) => `http://${ip}:${p}/r/${token}/`),
         setState(s) { state = s || {}; const line = `data: ${JSON.stringify(state)}\n\n`; for (const c of clients) pushEvent(c, line); },
