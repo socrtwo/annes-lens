@@ -49,5 +49,8 @@ jobs:
         run: npm run build:test
       - name: Web end-to-end
         run: npm run e2e
+      # The Electron binary comes from the package's install script, which npm ci does not always run.
+      - name: Electron binary
+        run: test -x node_modules/electron/dist/electron || node node_modules/electron/install.js
       - name: Desktop end-to-end
         run: xvfb-run -a npm run e2e:desktop
