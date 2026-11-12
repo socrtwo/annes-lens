@@ -253,7 +253,7 @@ describe('settings', () => {
   it('converts plan-style keys and reads IrfanView-style key lists', () => {
     expect(planKeyToCanonical('Ctrl+Shift+O')).toBe('Mod-Shift-o');
     expect(planKeyToCanonical('Space')).toBe('Space');
-    expect(planKeyToCanonical('+')).toBe('=');
+    expect(planKeyToCanonical('+')).toBe('+'); // the name a typed + now has, however the keyboard makes it (U4)
     expect(planKeyToCanonical('F11')).toBe('F11');
     const r = parseKeyList('[Keys]\nRotate left=L\nNext file=Space\nview.fullScreen=Ctrl+Shift+F\nFrobnicate=Q\n; comment\n', new Set(['view.fullScreen']));
     expect(r.keymap).toEqual({ l: 'image.rotateLeft', Space: 'view.next', 'Mod-Shift-f': 'view.fullScreen' });

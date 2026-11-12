@@ -7,6 +7,7 @@ import { h, icon, clear } from './dom';
 import { openDialog, toast, promptDialog, confirmDialog } from './dialog';
 import { prettyKey, canonicalKey, keyName } from '../util/keys';
 import { CLASSIC_MENUS, CLASSIC_LAYOUT_NAMES, DEFAULT_LAYOUT, installCustomMenus } from './classicMenus';
+import { keyCommands, removeKey, resetCommand, removedFrom } from '../util/keymap';
 
 export function categories(app: App): { id: string; label: string; list: () => Command[] }[] {
   const all = () => allCommands().sort((a, b) => a.label.localeCompare(b.label));
@@ -209,14 +210,13 @@ export async function customizeKeyboard(app: App, initialId?: string): Promise<v
   if (initialId) { const i = items().findIndex((c) => c.id === initialId); if (i >= 0) sel = i; }
   const keysFor = (id: string) => {
     const c = getCommand(id);
-    const base = (c?.keys || []).map(canonicalKey).filter((k) => keymap[k] === undefined || keymap[k] === id);
+    const base = (c?.keys || []).map(canonicalKey).filter((k) => keymap[k] === undefined || keymap[k] === id || (removedFrom(keymap[k]) && !removedFrom(keymap[k])!.has(id)));
     const custom = Object.entries(keymap).filter(([, v]) => v === id).map(([k]) => k);
     return [...new Set([...base, ...custom])].filter((k) => keymap[k] !== '');
   };
   const ownerOf = (k: string): string | null => {
-    if (keymap[k] !== undefined) return keymap[k] || null;
-    const c = allCommands().find((x) => (x.keys || []).map(canonicalKey).includes(k));
-    return c?.id || null;
+    const defaults = allCommands().filter((x) => (x.keys || []).map(canonicalKey).includes(k)).map((x) => x.id);
+    return keyCommands(k, defaults, keymap)[0] || null;
   };
   const capture = h('input', { class: 'ql-key-capture', placeholder: 'Press new shortcut key…', readonly: true, 'data-capture-keys': true, 'aria-label': 'Press new shortcut key' }) as HTMLInputElement;
   const owner = h('div', { class: 'ql-help', role: 'status' });
@@ -238,11 +238,11 @@ export async function customizeKeyboard(app: App, initialId?: string): Promise<v
     const current = keysFor(c.id);
     right.append(h('h3', null, c.label), h('p', { class: 'ql-help' }, c.id + (c.tip ? ` — ${c.tip}` : '')),
       h('label', { class: 'ql-label' }, 'Current keys:'),
-      h('div', { class: 'ql-cmdlist' }, ...(current.length ? current.map((k) => h('div', { class: 'ql-cmdlist-row' }, h('kbd', null, prettyKey(k)), h('button', { class: 'ql-iconbtn ql-sm', title: 'Remove', onclick: () => { keymap[k] = ''; draw(); } }, icon('close')))) : [h('div', { class: 'ql-help' }, '(none)')])),
+      h('div', { class: 'ql-cmdlist' }, ...(current.length ? current.map((k) => h('div', { class: 'ql-cmdlist-row' }, h('kbd', null, prettyKey(k)), h('button', { class: 'ql-iconbtn ql-sm', title: 'Remove', onclick: () => { removeKey(keymap, k, c.id, (c.keys || []).map(canonicalKey).includes(k)); draw(); } }, icon('close')))) : [h('div', { class: 'ql-help' }, '(none)')])),
       h('label', { class: 'ql-label' }, 'Press new shortcut key:'), capture, owner,
       h('div', { class: 'ql-row' },
         h('button', { class: 'ql-btn ql-primary', type: 'button', onclick: () => { if (!pending) { toast('Tap the box and press a key combination.'); return; } keymap[pending] = c.id; pending = null; capture.value = ''; owner.textContent = ''; draw(); } }, 'Assign'),
-        h('button', { class: 'ql-btn', type: 'button', onclick: () => { for (const k of Object.keys(keymap)) if (keymap[k] === c.id || (keymap[k] === '' && (c.keys || []).map(canonicalKey).includes(k))) delete keymap[k]; draw(); } }, 'Reset Command')));
+        h('button', { class: 'ql-btn', type: 'button', onclick: () => { resetCommand(keymap, c.id, (c.keys || []).map(canonicalKey)); draw(); } }, 'Reset Command')));
   };
   root.append(left, right);
   draw();

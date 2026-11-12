@@ -15,6 +15,16 @@ import { CLASSIC_MENUS, DEFAULT_LAYOUT, type ClassicItem } from './classicMenus'
 import { PLAN_COMMANDS } from '../plan.generated';
 import { desktopBridge } from '../platform/native';
 import { word } from '../i18n/strings';
+import { removedFrom } from '../util/keymap';
+
+/**
+ * A command's own menu entries, each running a registered command: an entry whose id is a value of the command
+ * ("fill", "single", a rule's name) instead of a command id runs the owning command with that value. Menus written
+ * that way answered "Unknown command".
+ */
+export function ownEntries(c: Command, entries: MenuEntry[]): MenuEntry[] {
+  return entries.map((e) => (e.submenu ? { ...e, submenu: ownEntries(c, e.submenu) } : e.id && !getCommand(e.id) ? { ...e, id: c.id, arg: e.arg !== undefined ? e.arg : e.id } : e));
+}
 
 export class Shell {
   root: HTMLElement;
@@ -179,7 +189,7 @@ export class Shell {
         if (!c) continue;
         let checked: boolean | undefined;
         try { checked = c.kind === 'toggle' ? !!c.isActive?.(this.app) : undefined; } catch { /* */ }
-        if (c.kind === 'menu' && c.menu) { const sub = c.menu(this.app); if (sub.length) out.push({ label: c.label, icon: c.icon, submenu: sub }); continue; }
+        if (c.kind === 'menu' && c.menu) { const sub = ownEntries(c, c.menu(this.app)); if (sub.length) out.push({ label: c.label, icon: c.icon, submenu: sub }); continue; }
         const key = this.keyOf(c);
         out.push({ id: it, label: c.label + (key ? `\t${key}` : ''), icon: c.icon, checked });
         continue;
@@ -194,7 +204,7 @@ export class Shell {
   /** The command's first key, as the user has it (custom binding first). */
   keyOf(c: Command): string {
     const custom = Object.entries(this.app.prefs.keymap).find(([, id]) => id === c.id)?.[0];
-    const k = custom || (c.keys || []).find((x) => this.app.prefs.keymap[canonicalKey(x)] === undefined);
+    const k = custom || (c.keys || []).find((x) => { const v = this.app.prefs.keymap[canonicalKey(x)]; return v === undefined || (!!removedFrom(v) && !removedFrom(v)!.has(c.id)); });
     return k ? prettyKey(k) : '';
   }
 
@@ -301,7 +311,7 @@ export class Shell {
   }
 
   openCommandMenu(c: Command, anchor: HTMLElement): void {
-    const entries = c.menu ? c.menu(this.app) : [];
+    const entries = c.menu ? ownEntries(c, c.menu(this.app)) : [];
     showMenu(entries, { anchor, onPick: (e) => this.pickEntry(c, e) });
   }
 

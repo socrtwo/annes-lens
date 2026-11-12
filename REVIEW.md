@@ -101,6 +101,12 @@ checked by reading and by the suites still passing, not by a test of their own.
 - **Wrong results: W7, W8.** CSC on faces 3 and 4, and non-zenithal projections with the reference point at a
   celestial pole. New astropy fixtures cover every CSC face; with wcslib's single-precision order followed exactly,
   CSC now agrees with astropy to 4e-10 arcsecond on 2,600 random points, so its looser test tolerance is gone.
+- **Interface: U3, U4, U7, U8, U14.** A typed "+" zooms in however the keyboard makes it (US Shift+=, the numpad, a
+  layout with its own + key); Double Size moved to Shift with the numpad's +. A wheel notch is one step and a trackpad
+  swipe with its inertia is one step; zoom by wheel or pinch follows the size of the movement. A window closed while
+  its picture decodes drops it and starts nothing more, and a closed viewer's animation cannot start again. Removing
+  a default key from one command leaves it to the others that share it. Menu entries that name a value instead of a
+  command run their own command (12 entries in six menus answered "Unknown command", not only the three named here).
 - **Interface: U11.** Following a shared view no longer loses the newest state, stops when its window is closed,
   asks one request at a time (more slowly while the host is unreachable); the relay's album page shows the thumbnails
   it has and offers nothing that would fail.

@@ -14,6 +14,11 @@ export function keyName(e: KeyboardEvent): string | null {
   if (e.code === 'Comma') base = ',';
   if (e.code === 'Equal') base = '=';
   if (e.code === 'Minus') base = '-';
+  // "+" is the character, however it is typed (Shift+= on US keyboards, its own key elsewhere, the numpad): the Shift
+  // a layout needs to type it is not a modifier, or "+" would never zoom in. On the numpad Shift is a real modifier
+  // (Shift with the numpad's + is Double Size).
+  let shift = e.shiftKey;
+  if (e.key === '+') { base = '+'; if (e.code !== 'NumpadAdd') shift = false; }
   const mac = isMac();
   // AltGr (reported as Ctrl+Alt on Windows) and macOS Option type characters such as \ ] } @ ≠:
   // when the key produced something other than its layout-stable base, it is text, not a shortcut.
@@ -25,15 +30,21 @@ export function keyName(e: KeyboardEvent): string | null {
   if (e.metaKey && mac) parts.push('Mod');
   if (e.ctrlKey) parts.push(mac ? 'Ctrl' : 'Mod');
   if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
+  if (shift) parts.push('Shift');
   parts.push(base);
   // Canonical order used by bindings: Mod-Alt-Shift-key
   return parts.join('-');
 }
 
+/** A key name's modifiers and key; the key may itself be "-" ("-", "Shift--"). */
+function splitKey(k: string): [string[], string] {
+  if (k === '-') return [[], '-'];
+  if (k.endsWith('--')) return [k.slice(0, -2).split('-').filter(Boolean), '-'];
+  const parts = k.split('-'); const base = parts.pop()!; return [parts, base];
+}
+
 export function canonicalKey(k: string): string {
-  const parts = k.split('-');
-  const base = parts.pop()!;
+  const [parts, base] = splitKey(k);
   // Ctrl means Mod everywhere except macOS, where it is its own modifier.
   const mac = isMac();
   const mods = new Set(parts.map((p) => (p === 'Cmd' || p === 'Meta' || (p === 'Ctrl' && !mac) ? 'Mod' : p)));
@@ -45,5 +56,6 @@ export function canonicalKey(k: string): string {
 
 export function prettyKey(k: string): string {
   const mac = isMac();
-  return k.split('-').map((p) => (p === 'Mod' ? (mac ? '⌘' : 'Ctrl') : p === 'Ctrl' && mac ? '⌃' : p === 'Alt' ? (mac ? '⌥' : 'Alt') : p === 'Shift' ? (mac ? '⇧' : 'Shift') : p.length === 1 ? p.toUpperCase() : p)).join(mac ? '' : '+');
+  const [mods, base] = splitKey(k);
+  return [...mods, base].map((p) => (p === 'Mod' ? (mac ? '⌘' : 'Ctrl') : p === 'Ctrl' && mac ? '⌃' : p === 'Alt' ? (mac ? '⌥' : 'Alt') : p === 'Shift' ? (mac ? '⇧' : 'Shift') : p.length === 1 ? p.toUpperCase() : p)).join(mac ? '' : '+');
 }

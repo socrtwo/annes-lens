@@ -175,7 +175,7 @@ def([
   },
   {
     id: 'file.hide', icon: 'visibility_off', kind: 'menu', noRecord: true, isEnabled: (app) => has(app) || app.prefs.hiddenFiles.some((k) => k.startsWith(`${app.folder.uri || app.folder.name}|`)), tip: 'Hides the picture from this folder in Anne\'s Lens (the file is not changed); Unhide brings them back',
-    menu: (app) => { const key = `${app.folder.uri || app.folder.name}|`; const n = app.prefs.hiddenFiles.filter((k) => k.startsWith(key)).length; return [{ id: 'hide', arg: 'hide', label: app.picture ? `Hide ${app.picture.name}` : 'Hide this picture' }, { id: 'unhide', arg: 'unhide', label: n ? `Unhide ${n} hidden picture${n === 1 ? '' : 's'} here` : 'Nothing hidden here' }]; },
+    menu: (app) => { const key = `${app.folder.uri || app.folder.name}|`; const n = app.prefs.hiddenFiles.filter((k) => k.startsWith(key)).length; return [{ id: 'file.hide', arg: 'hide', label: app.picture ? `Hide ${app.picture.name}` : 'Hide this picture' }, { id: 'file.hide', arg: 'unhide', label: n ? `Unhide ${n} hidden picture${n === 1 ? '' : 's'} here` : 'Nothing hidden here' }]; },
     run: async (app, arg?: string) => {
       const folder = app.folder, key = `${folder.uri || folder.name}|`;
       if (arg === 'unhide') {
@@ -271,7 +271,7 @@ def([
   },
   {
     id: 'file.importRules', icon: 'rule', kind: 'menu', noRecord: true, isEnabled: () => caps.subfolders, tip: 'Saved import presets: folder pattern, rename pattern, duplicates, delete after',
-    menu: (app) => [...app.prefs.importRules.map((r) => ({ id: r.name, arg: r.name, label: r.name })), { id: '__edit', arg: '__edit', label: 'Edit rules…' }],
+    menu: (app) => [...app.prefs.importRules.map((r) => ({ id: 'file.importRules', arg: r.name, label: r.name })), { id: 'file.importRules', arg: '__edit', label: 'Edit rules…' }],
     run: async (app, arg?: string) => {
       if (arg && arg !== '__edit') { const rule = app.prefs.importRules.find((r) => r.name === arg); if (rule) await runImport(app, rule); return; }
       const rules = app.prefs.importRules;

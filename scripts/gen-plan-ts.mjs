@@ -17,9 +17,9 @@ export function planKey(k) {
   if (!s || /…|wheel/.test(s)) return null;
   const parts = s.split('+').map((p) => p.trim());
   // "+" itself: the plan writes zoom in as "+", which splits into ["", ""].
-  if (parts.every((p) => p === '')) return s === '+' ? '=' : null;
+  if (parts.every((p) => p === '')) return s === '+' ? '+' : null;
   const base = parts.pop();
-  const names = { Space: 'Space', Backspace: 'Backspace', PgDn: 'PageDown', PgUp: 'PageUp', Right: 'ArrowRight', Left: 'ArrowLeft', Up: 'ArrowUp', Down: 'ArrowDown', Home: 'Home', End: 'End', Enter: 'Enter', Esc: 'Escape', Del: 'Delete', Tab: 'Tab', Ins: 'Insert' };
+  const names = { NumPlus: '+', NumMinus: '-', Space: 'Space', Backspace: 'Backspace', PgDn: 'PageDown', PgUp: 'PageUp', Right: 'ArrowRight', Left: 'ArrowLeft', Up: 'ArrowUp', Down: 'ArrowDown', Home: 'Home', End: 'End', Enter: 'Enter', Esc: 'Escape', Del: 'Delete', Tab: 'Tab', Ins: 'Insert' };
   const key = names[base] || (base.length === 1 ? base.toLowerCase() : base);
   const mods = parts.map((p) => ({ Ctrl: 'Mod', Cmd: 'Mod', Alt: 'Alt', Shift: 'Shift' }[p] || p));
   const order = ['Mod', 'Alt', 'Shift'];
@@ -34,7 +34,7 @@ function keysFor(shortcuts) {
     const k = planKey(s);
     if (!k) continue;
     out.push(k);
-    if (s === '+' && !takenShortcuts.has('Shift+=')) out.push('Shift-=');
+    if (s === '+') out.push('='); // "+" is also the unshifted key it shares on US keyboards (=)
   }
   return [...new Set(out)];
 }

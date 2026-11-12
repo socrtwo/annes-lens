@@ -138,7 +138,7 @@ function openMedia(app: App): void {
 def([
   {
     id: 'view.stereo', icon: 'view_in_ar', kind: 'menu', noRecord: true, isEnabled: has, isActive: () => specialOpen()?.kind === 'stereo', tip: 'MPO files, side-by-side pairs or two marked pictures: red-cyan anaglyph, cross-eye or parallel',
-    menu: () => STEREO_MODES.map((m) => ({ id: m.id, arg: m.id, label: m.label })),
+    menu: () => STEREO_MODES.map((m) => ({ id: 'view.stereo', arg: m.id, label: m.label })),
     run: (app, mode?: StereoMode) => openStereo(app, mode || 'dubois'),
   },
   { id: 'view.sphere', icon: '360', noRecord: true, isEnabled: has, isActive: () => specialOpen()?.kind === 'sphere', tip: 'Look around an equirectangular panorama or photo sphere', run: (app) => { if (specialOpen()?.kind === 'sphere') specialOpen()!.close(); else openSphere(app); } },

@@ -218,7 +218,7 @@ Lossless Auto-Rotate by EXIF | image.losslessAutoRotate | Ctrl+Alt+A | XN,FS | r
 ## Size
 Resize / Resample… | image.resize | Ctrl+R | IV | pixels, percent, print size and DPI; nearest, bilinear, bicubic, Mitchell, Catmull-Rom, Lanczos 2/3, B-spline; gamma-correct; sharpen after; presets
 Half Size | image.halfSize | Shift+- | IV |
-Double Size | image.doubleSize | Shift+= | IV |
+Double Size | image.doubleSize | Shift+NumPlus | IV | Shift with the numpad's +; the + key itself zooms in
 Resize to Screen | image.resizeToScreen | | IV |
 Content-Aware Resize… | image.seamCarve | | NEW | seam carving; protect and remove masks
 Set Print Resolution (DPI)… | image.setDpi | | IV | changes metadata only, no resampling

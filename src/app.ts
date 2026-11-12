@@ -19,6 +19,7 @@ import { decodeOptions } from './codecs/registry';
 import { keystoreHooks, loadKeys, storeKeys } from './ai/keystore';
 import { pdfOptions } from './codecs/pdf';
 import { djvuOptions } from './codecs/djvu';
+import { keyCommands } from './util/keymap';
 
 let tabCounter = 0;
 
@@ -51,6 +52,8 @@ export class PictureTab {
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
   readonly loader: Loader;
+  /** The window was closed: work still under way for it (a decode, a save prompt) stops when it comes back. */
+  closed = false;
   constructor(public app: App, folder?: Folder) {
     this.folder = folder || new Folder();
     this.loader = new Loader(this.folder);
@@ -165,11 +168,13 @@ export class PictureTab {
         const ti = this.folder.entries.indexOf(e); if (ti >= 0) this.folder.select(ti); // saving may have added an entry; on to the picture that was asked for
       }
     }
+    if (this.closed) return;
     this.loading = e; this.error = '';
     this.app.ui.tabsChanged();
     const t0 = performance.now();
     try {
       const pic = await this.loader.get(e);
+      if (this.closed) { pic.release?.(); return; } // the window was closed while the picture was decoded
       if (this.folder.current !== e) return; // the user moved on
       this.picture = pic; this.loading = null; this.dirty = false; this.clearHistory(); this.selection = null; this.selectionMask = null;
       pic.loadMs = Math.round(performance.now() - t0);
@@ -177,7 +182,7 @@ export class PictureTab {
       this.app.addRecent(e);
       if (pic.media && this === this.app.tab) { const { show } = await import('./picture/slideshow'); if (!show.running && this.picture === pic) void this.app.exec('view.media'); } // a video or audio file: its player opens over the poster
     } catch (err: any) {
-      if (this.folder.current !== e) return;
+      if (this.closed || this.folder.current !== e) return;
       this.picture = null; this.loading = null; this.error = err?.message || String(err);
       this.ui.pictureChanged(true);
       const sample = err?.sample ? String(err.sample) : ''; // a recognized format with no reader yet: offer to send the file
@@ -188,7 +193,7 @@ export class PictureTab {
     this.loader.prefetch(this.app.prefs.prefetch);
   }
 
-  destroy(): void { this.loader.clear(); this.ui.destroy(); this.thumbs?.destroy(); }
+  destroy(): void { this.closed = true; this.loader.clear(); this.ui.destroy(); this.thumbs?.destroy(); }
 }
 
 export class App {
@@ -245,8 +250,12 @@ export class App {
   rebuildKeyIndex(): void {
     this.keyIndex.clear(); this.keyCandidates.clear();
     // The first registered command keeps a shared key; the others stay as candidates used when it is disabled (Space: Next Picture, or Pause while a slideshow runs).
-    for (const c of allCommands()) for (const k of c.keys || []) { const ck = canonicalKey(k); if (!this.keyIndex.has(ck)) this.keyIndex.set(ck, c.id); const l = this.keyCandidates.get(ck) || []; l.push(c.id); this.keyCandidates.set(ck, l); }
-    for (const [k, id] of Object.entries(this.prefs.keymap)) { const ck = canonicalKey(k); if (id) { this.keyIndex.set(ck, id); this.keyCandidates.set(ck, [id, ...(this.keyCandidates.get(ck) || []).filter((x) => x !== id)]); } else { this.keyIndex.delete(ck); this.keyCandidates.delete(ck); } }
+    for (const c of allCommands()) for (const k of c.keys || []) { const ck = canonicalKey(k); const l = this.keyCandidates.get(ck) || []; l.push(c.id); this.keyCandidates.set(ck, l); }
+    const map: Record<string, string> = {}; for (const [k, v] of Object.entries(this.prefs.keymap)) map[canonicalKey(k)] = v;
+    for (const ck of new Set([...this.keyCandidates.keys(), ...Object.keys(map)])) {
+      const ids = keyCommands(ck, this.keyCandidates.get(ck) || [], map); // a removed default leaves the key to the other commands that share it
+      if (ids.length) { this.keyCandidates.set(ck, ids); this.keyIndex.set(ck, ids[0]); } else { this.keyCandidates.delete(ck); this.keyIndex.delete(ck); }
+    }
   }
   /** The command a key should run now: the first candidate that is enabled. */
   commandForKey(ck: string): string | undefined {

@@ -145,3 +145,26 @@ describe('settings storage', () => {
     expect(told).toEqual(['QuotaExceededError']);
   });
 });
+
+describe('a window closed while its picture is decoded', () => {
+  it('drops the picture, starts no prefetch, and touches no viewer', async () => {
+    const { Folder } = await import('../../src/picture/folder');
+    const calls: string[] = [];
+    const app = { ui: { tabsChanged() { /* */ } }, refresh() { /* */ }, prefs: { confirmClose: false, prefetch: 2 }, addRecent() { calls.push('recent'); } } as any;
+    const entry = { name: 'slow.png', uri: null, read: async () => new ArrayBuffer(0) };
+    const tab = new PictureTab(app, new Folder([entry as any], 'f'));
+    tab.ui = { pictureChanged() { calls.push('pictureChanged'); }, destroy() { calls.push('ui.destroy'); }, draw() { /* */ } } as any;
+    let finish!: (p: unknown) => void; let released = false;
+    (tab.loader as any).get = () => new Promise((r) => { finish = r; });
+    (tab.loader as any).prefetch = () => { calls.push('prefetch'); };
+    tab.folder.select(0);
+    const shown = tab.show();
+    for (let i = 0; i < 20 && !finish; i++) await Promise.resolve();   // the decode has started
+    tab.destroy();                                                          // the user closes the window
+    finish({ name: 'slow.png', release() { released = true; } });         // the decode finishes afterwards
+    await shown;
+    expect([tab.picture, released, calls]).toEqual([null, true, ['ui.destroy']]);
+    await tab.show();                                                       // and nothing starts it again
+    expect(calls).toEqual(['ui.destroy']);
+  });
+});

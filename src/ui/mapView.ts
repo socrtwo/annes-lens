@@ -6,6 +6,7 @@
  */
 import { h } from './dom';
 import { type View, type LatLon, type Cluster, tilesFor, tileUrl, toScreen, fromScreen, zoomAt, normalize, fitView, cluster, project, topoRings, type Topology } from '../geo/slippy';
+import { WheelStepper } from './wheel';
 
 export const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 export type Basemap = 'osm' | 'offline' | 'custom';
@@ -132,7 +133,8 @@ export class MapView {
     });
     const up = (e: PointerEvent) => { ptrs.delete(e.pointerId); last = ptrs.size ? mid() : null; if (!ptrs.size && moved > 2) { const z = Math.round(this.view.z); if (z !== this.view.z) this.zoomBy(z - this.view.z); } };
     this.el.addEventListener('pointerup', up); this.el.addEventListener('pointercancel', up);
-    this.el.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e); this.zoomBy(e.deltaY < 0 ? 1 : -1, p.x, p.y); }, { passive: false });
+    const steps = new WheelStepper(); // map zoom goes by whole levels: one notch or one swipe, one level
+    this.el.addEventListener('wheel', (e) => { e.preventDefault(); const s = steps.step(e.deltaY, e.deltaMode, performance.now()); if (!s) return; const p = local(e); this.zoomBy(-s, p.x, p.y); }, { passive: false });
     this.el.addEventListener('dblclick', (e) => { if ((e.target as HTMLElement).closest('button')) return; const p = local(e); this.zoomBy(e.shiftKey ? -1 : 1, p.x, p.y); });
     (this.el as any).__ownsKey = (e: KeyboardEvent) => !e.ctrlKey && !e.metaKey && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '=', '-', '_'].includes(e.key);
     this.el.addEventListener('keydown', (e) => {

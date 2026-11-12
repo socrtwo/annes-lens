@@ -3320,12 +3320,12 @@
    "label": "Double Size",
    "id": "image.doubleSize",
    "shortcuts": [
-    "Shift+="
+    "Shift+NumPlus"
    ],
    "origins": [
     "IV"
    ],
-   "notes": "",
+   "notes": "Shift with the numpad's +; the + key itself zooms in",
    "notInTabs": false,
    "tab": "Image",
    "group": "Size"

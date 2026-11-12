@@ -367,7 +367,7 @@ export function parseKeyList(text: string, ids: Set<string>): { keymap: Record<s
 export function planKeyToCanonical(k: string): string | null {
   const s = String(k).trim();
   if (!s || /…|wheel/i.test(s)) return null;
-  if (s === '+') return '=';
+  if (s === '+') return '+';
   const parts = s.split('+').map((p) => p.trim());
   const base = parts.pop()!;
   if (!base) return null;

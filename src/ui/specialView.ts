@@ -13,6 +13,7 @@ import { renderSphere } from '../picture/sphere';
 import { encodeCanvas } from '../codecs/registry';
 import { Folder, entryFromBytes } from '../picture/folder';
 import { saveAs } from '../platform/native';
+import { wheelZoomFactor } from './wheel';
 
 export type SpecialKind = 'stereo' | 'sphere' | 'spread' | 'motion' | 'media';
 export const rasterCanvas = (r: Raster): HTMLCanvasElement => { const c = document.createElement('canvas'); c.width = r.width; c.height = r.height; c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.width, r.height), 0, 0); return c; };
@@ -53,9 +54,9 @@ export class SpecialView {
     const c = this.canvas;
     c.addEventListener('wheel', (e) => {
       e.preventDefault(); e.stopPropagation();
-      if (this.kind === 'sphere') { this.look.fov = Math.max(20, Math.min(120, this.look.fov * (e.deltaY < 0 ? 0.9 : 1.1))); this.draw(); return; }
+      if (this.kind === 'sphere') { this.look.fov = Math.max(20, Math.min(120, this.look.fov / wheelZoomFactor(e.deltaY, e.deltaMode))); this.draw(); return; }
       if (!this.image) return; const r = c.getBoundingClientRect(), { vw, vh } = this.size();
-      this.state = zoomAbout(this.state, e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top, vw, vh, this.image.width, this.image.height); this.draw();
+      this.state = zoomAbout(this.state, wheelZoomFactor(e.deltaY, e.deltaMode), e.clientX - r.left, e.clientY - r.top, vw, vh, this.image.width, this.image.height); this.draw();
     }, { passive: false });
     c.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.drag = { x: e.clientX, y: e.clientY, s: { ...this.state }, look: { ...this.look } }; try { c.setPointerCapture(e.pointerId); } catch { /* */ } });
     c.addEventListener('pointermove', (e) => {

@@ -151,3 +151,65 @@ describe('what a script may run on its own', () => {
     expect(await exec('dev.console')).toMatch(/cannot open itself/);
   });
 });
+
+describe('the plus and minus keys', () => {
+  it('"+" zooms in however it is typed; Shift with the numpad\'s + is Double Size; minus keys keep their names', async () => {
+    const { keyName, canonicalKey, prettyKey } = await import('../../src/util/keys');
+    const { PLAN_COMMANDS } = await import('../../src/plan.generated');
+    const owner = (k: string) => Object.entries(PLAN_COMMANDS).find(([, c]) => c.keys.map(canonicalKey).includes(canonicalKey(k)))?.[0];
+    const ev = (key: string, code: string, shiftKey = false, ctrlKey = false) => new KeyboardEvent('keydown', { key, code, shiftKey, ctrlKey });
+    const cases: [KeyboardEvent, string, string | undefined][] = [
+      [ev('+', 'Equal', true), '+', 'view.zoomIn'],              // US: Shift with the = key
+      [ev('+', 'NumpadAdd'), '+', 'view.zoomIn'],                // the numpad
+      [ev('+', 'BracketRight'), '+', 'view.zoomIn'],             // German: its own + key
+      [ev('=', 'Equal'), '=', 'view.zoomIn'],
+      [ev('+', 'NumpadAdd', true), 'Shift-+', 'image.doubleSize'],
+      [ev('-', 'Minus'), '-', 'view.zoomOut'], [ev('-', 'NumpadSubtract'), '-', 'view.zoomOut'], [ev('-', 'Slash'), '-', 'view.zoomOut'],
+      [ev('_', 'Minus', true), 'Shift--', 'image.halfSize'],
+    ];
+    for (const [e, name, cmd] of cases) { expect(keyName(e), `${e.key} ${e.code}`).toBe(name); expect(owner(name), name).toBe(cmd); }
+    expect([canonicalKey('-'), canonicalKey('Shift--'), canonicalKey('Ctrl-Shift--'), canonicalKey('Mod-=')]).toEqual(['-', 'Shift--', 'Mod-Shift--', 'Mod-=']);
+    expect(prettyKey('Shift--')).toMatch(/^(Shift\+-|⇧-)$/);
+  });
+});
+
+describe('wheel input', () => {
+  it('a notch is one step; a trackpad swipe with its inertia is one step; a pinch zooms by its size', async () => {
+    const { WheelStepper, wheelZoomFactor } = await import('../../src/ui/wheel');
+    const s = new WheelStepper();
+    // Mouse notches (Chrome sends 100 px, Firefox 3 lines): each is a step, however fast they come.
+    expect([s.step(100, 0, 0), s.step(100, 0, 10), s.step(-3, 1, 20), s.step(3, 1, 25)]).toEqual([1, 1, -1, 1]);
+    // A trackpad swipe: 60 events of a few pixels over a second, with no pause longer than 16 ms. One step.
+    let steps = 0; for (let i = 0; i < 60; i++) steps += Math.abs(s.step(4 + (i % 3), 0, 1000 + i * 16));
+    expect(steps).toBe(1);
+    // The next swipe after a pause is another step; a small accidental touch is none.
+    expect([s.step(30, 0, 2500), s.step(40, 0, 2510)]).toEqual([0, 1]);
+    expect(s.step(5, 0, 4000)).toBe(0);
+    // Turning round mid-swipe starts the count again.
+    const t = new WheelStepper(); expect([t.step(50, 0, 0), t.step(-50, 0, 10), t.step(-20, 0, 20)]).toEqual([0, 0, -1]);
+    // Zoom: a notch is about 16 %; a pinch's tiny deltas zoom by tiny amounts, not 10 % each.
+    expect(wheelZoomFactor(-100, 0)).toBeCloseTo(1.16, 2); expect(wheelZoomFactor(100, 0)).toBeCloseTo(1 / 1.16, 2);
+    expect(wheelZoomFactor(-2, 0)).toBeCloseTo(1.003, 3);
+    let z = 1; for (let i = 0; i < 50; i++) z *= wheelZoomFactor(-2, 0); expect(z).toBeLessThan(1.2);
+  });
+});
+
+describe('removing a key from one command', () => {
+  it('leaves it to the other commands that share it, and Reset Command gives it back', async () => {
+    const { keyCommands, removeKey, resetCommand } = await import('../../src/util/keymap');
+    const map: Record<string, string> = {}, defaults = ['view.next', 'show.pause'];
+    removeKey(map, 'Space', 'view.next', true);
+    expect(keyCommands('Space', defaults, map)).toEqual(['show.pause']);          // Pause keeps Space
+    removeKey(map, 'Space', 'show.pause', true);
+    expect(keyCommands('Space', defaults, map)).toEqual([]);
+    resetCommand(map, 'view.next', ['Space']);
+    expect(keyCommands('Space', defaults, map)).toEqual(['view.next']);
+    resetCommand(map, 'show.pause', ['Space']); expect(map).toEqual({});
+    // A key added to a command, then removed, is simply gone; a key another command was given stays theirs.
+    map['Mod-k'] = 'view.next'; removeKey(map, 'Mod-k', 'view.next', false); expect(map).toEqual({});
+    map['Space'] = 'file.save'; removeKey(map, 'Space', 'view.next', true);
+    expect(keyCommands('Space', defaults, map)).toEqual(['file.save', 'view.next', 'show.pause']);
+    // The older form of removal still takes the key from every command.
+    expect(keyCommands('Space', defaults, { Space: '' })).toEqual([]);
+  });
+});

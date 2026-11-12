@@ -12,6 +12,7 @@ import { split, viewHooks } from './viewHooks';
 import { specialOpen } from './specialView';
 import { h, clear, icon } from './dom';
 import type { ZoomMode } from '../prefs';
+import { WheelStepper, wheelPixels, wheelZoomFactor } from './wheel';
 
 const MIN_ZOOM = 0.01, MAX_ZOOM = 64;
 
@@ -324,12 +325,13 @@ export class Viewer {
 
   startAnimation(): void {
     this.stopAnimation();
+    if (this.destroyed) return; // a closed window's viewer does not start again (its timer would refresh the app for ever)
     const p = this.picture;
     if (!p || !p.animated) return;
     let loops = 0;
     const tick = () => {
       const pic = this.picture;
-      if (!pic || !pic.animated || !this.playing) return;
+      if (this.destroyed || !pic || !pic.animated || !this.playing) { this.animTimer = null; return; }
       const page = pic.current;
       let next = pic.frame + 1;
       if (next >= page.frames.length) { loops++; if (page.loops && loops >= page.loops) { this.animTimer = null; return; } next = 0; }
@@ -367,22 +369,26 @@ export class Viewer {
   // ----------------------------------------------------------------------------------------
   // Input
 
+  private wheelSteps = new WheelStepper();
+
   private bind(): void {
     const el = this.el;
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const anchor = { x: e.clientX - r.left, y: e.clientY - r.top };
-      if (e.ctrlKey || e.metaKey || this.app.prefs.wheel === 'zoom') { this.setZoom(this._zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), anchor); return; }
+      if (e.ctrlKey || e.metaKey || this.app.prefs.wheel === 'zoom') { this.setZoom(this._zoom * wheelZoomFactor(e.deltaY, e.deltaMode), anchor); return; }
       const pr = this.pictureRect();
       const overflow = pr && (pr.h > el.clientHeight + 1 || pr.w > el.clientWidth + 1);
       if (this.app.prefs.wheel === 'scroll' || (overflow && !e.shiftKey)) {
         if (!pr) return;
-        this.cx += (e.shiftKey ? e.deltaY : e.deltaX) / this._zoom; this.cy += (e.shiftKey ? 0 : e.deltaY) / this._zoom;
+        const dy = wheelPixels(e.deltaY, e.deltaMode), dx = wheelPixels(e.deltaX, e.deltaMode);
+        this.cx += (e.shiftKey ? dy : dx) / this._zoom; this.cy += (e.shiftKey ? 0 : dy) / this._zoom;
         this.clampCenter(); this.draw(); this.reportPointer();
         return;
       }
-      if (Math.abs(e.deltaY) > 2) this.app.exec(e.deltaY > 0 ? 'view.next' : 'view.previous');
+      const step = this.wheelSteps.step(e.deltaY, e.deltaMode, performance.now());
+      if (step) this.app.exec(step > 0 ? 'view.next' : 'view.previous');
     }, { passive: false });
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;

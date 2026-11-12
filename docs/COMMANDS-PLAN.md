@@ -329,7 +329,7 @@ Information, rotation, resizing, color depth, palette, color profiles, lossless 
 |---|---|---|---|---|
 | Resize / Resample… | `image.resize` | Ctrl+R | IrfanView | pixels, percent, print size and DPI; nearest, bilinear, bicubic, Mitchell, Catmull-Rom, Lanczos 2/3, B-spline; gamma-correct; sharpen after; presets |
 | Half Size | `image.halfSize` | Shift+- | IrfanView |  |
-| Double Size | `image.doubleSize` | Shift+= | IrfanView |  |
+| Double Size | `image.doubleSize` | Shift+NumPlus | IrfanView | Shift with the numpad's +; the + key itself zooms in |
 | Resize to Screen | `image.resizeToScreen` |  | IrfanView |  |
 | Content-Aware Resize… | `image.seamCarve` |  | **new** | seam carving; protect and remove masks |
 | Set Print Resolution (DPI)… | `image.setDpi` |  | IrfanView | changes metadata only, no resampling |

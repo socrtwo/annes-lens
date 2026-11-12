@@ -11,6 +11,7 @@ import { decodePicture } from '../codecs/registry';
 import { h } from './dom';
 import { patchXmp } from '../picture/metadata';
 import { toast } from './dialog';
+import { wheelZoomFactor } from './wheel';
 
 export interface CompareState { rel: number; nx: number; ny: number }
 /** Zoom so the whole picture fits the pane. */
@@ -80,7 +81,7 @@ export class CompareView {
   private size(p: Pane): { vw: number; vh: number } { return { vw: p.canvas.clientWidth || 1, vh: p.canvas.clientHeight || 1 }; }
   private bind(cell: HTMLElement, p: Pane): void {
     const c = p.canvas;
-    c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); const r = c.getBoundingClientRect(), { vw, vh } = this.size(p); this.state = zoomAbout(this.state, e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top, vw, vh, p.w, p.h); this.draw(); }, { passive: false });
+    c.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); const r = c.getBoundingClientRect(), { vw, vh } = this.size(p); this.state = zoomAbout(this.state, wheelZoomFactor(e.deltaY, e.deltaMode), e.clientX - r.left, e.clientY - r.top, vw, vh, p.w, p.h); this.draw(); }, { passive: false });
     c.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.drag = { x: e.clientX, y: e.clientY, s: { ...this.state }, pane: p }; try { c.setPointerCapture(e.pointerId); } catch { /* */ } });
     c.addEventListener('pointermove', (e) => { if (!this.drag || this.drag.pane !== p) return; const { vw, vh } = this.size(p); this.state = panBy(this.drag.s, e.clientX - this.drag.x, e.clientY - this.drag.y, vw, vh, p.w, p.h); this.draw(); });
     const end = () => { this.drag = null; };

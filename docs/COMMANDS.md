@@ -221,7 +221,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Lossless Crop | Lossless JPEG | Ctrl+Shift+j | `image.losslessCrop` | from IrfanView, XnView Classic and XnView MP |
 | Lossless JPEG Transformations… | Lossless JPEG | Shift+j | `image.losslessJpeg` | from IrfanView, XnView Classic and XnView MP, FastStone Image Viewer |
 | Content-Aware Resize… | Size |  | `image.seamCarve` | from new in Anne's Lens |
-| Double Size | Size | Shift+= | `image.doubleSize` | from IrfanView |
+| Double Size | Size | Shift+- | `image.doubleSize` | from IrfanView |
 | Half Size | Size | Shift+- | `image.halfSize` | from IrfanView |
 | Resize / Resample… | Size | Ctrl+r | `image.resize` | from IrfanView |
 | Resize to Screen | Size |  | `image.resizeToScreen` | from IrfanView |
@@ -506,7 +506,7 @@ The ribbon mirrors the plan: one tab per plan tab and one group per plan group, 
 | Keep Position | Zoom |  | `view.keepPosition` | from XnView Classic and XnView MP, new in Anne's Lens |
 | Lock Zoom | Zoom |  | `view.zoomLock` | from IrfanView, XnView Classic and XnView MP |
 | Original Size | Zoom | Ctrl+h | `view.actualSize` | from IrfanView |
-| Zoom In | Zoom | = | `view.zoomIn` | from IrfanView, most picture viewers |
+| Zoom In | Zoom | +, = | `view.zoomIn` | from IrfanView, most picture viewers |
 | Zoom Out | Zoom | + | `view.zoomOut` | from IrfanView, most picture viewers |
 | First Picture | Navigate | Home | `view.first` | from IrfanView |
 | Go to Picture Number… | Navigate | Ctrl+j | `view.gotoIndex` | from new in Anne's Lens |
