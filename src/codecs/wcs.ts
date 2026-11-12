@@ -13,12 +13,17 @@ export interface Wcs {
   /** The reference pixel (FITS 1-based), reference value and the linear matrix (CD, degrees per pixel). */
   crpix: [number, number]; crval: [number, number]; cd: [number, number, number, number];
   lonpole: number; latpole: number;
-  /** Native longitude/latitude of the fiducial point for the projection. */
+  /** Native longitude/latitude of the fiducial point for the projection (PVi_1, PVi_2 of the longitude axis when given). */
   phi0: number; theta0: number;
-  /** PV2_n projection parameters (CEA's λ, SIN's ξ/η, AZP's μ/γ, ZPN's polynomial, the conics' θa/η…). */
+  /** The projection-plane position of the fiducial point, added to the intermediate coordinates when the longitude
+   *  axis's PVi_0 asks for that offset (so that the fiducial point is at the reference pixel). */
+  offset?: [number, number];
+  /** PVi_n projection parameters of the latitude axis i (CEA's λ, SIN's ξ/η, AZP's μ/γ, ZPN's polynomial, the conics' θa/η…). */
   pv: number[];
-  /** TPV distortion polynomials (PV1_i for ξ, PV2_i for η), when CTYPE says TPV. */
-  tpv?: { x: number[]; y: number[] };
+  /** TPV distortion polynomials (PV1_i and PV2_i), when CTYPE says TPV. `swapped`: DEC is the first axis, where wcslib
+   *  evaluates PV1 in (longitude, latitude) for header axis 1 (the latitude) and PV2 in (latitude, longitude) for the
+   *  longitude (checked against astropy). */
+  tpv?: { x: number[]; y: number[]; swapped?: boolean };
   /** SIP forward polynomials: [p, q, coefficient] triples for u (A) and v (B). */
   sipA?: [number, number, number][]; sipB?: [number, number, number][];
   /** Picture height, to turn y-down coordinates into FITS rows. */
@@ -63,14 +68,28 @@ export function parseWcs(cards: Map<string, string>, width: number, height: numb
   // Swapped axes (DEC first) are turned around so that axis 1 is the longitude.
   const w: Wcs = { ctype: [ctype1, ctype2], proj, crpix, crval, cd, lonpole: NaN, latpole: num('LATPOLE', 90), phi0: 0, theta0: 0, pv: [], height, frame: 'other', cunit: [(cards.get('CUNIT1') || '').trim(), (cards.get('CUNIT2') || '').trim()] };
   if (proj && lonAxis === 1) { w.ctype = [ctype2, ctype1]; w.crval = [crval[1], crval[0]]; w.cd = [cd[2], cd[3], cd[0], cd[1]]; w.pv = []; }
+  // Which header axis is which: projection parameters (PVi_m) belong to the latitude axis, the fiducial point, the
+  // offset flag and LONPOLE/LATPOLE as PV values to the longitude axis. With DEC first these are PV1 and PV2.
+  const lonNo = lonAxis === 1 ? 2 : 1, latNo = lonAxis === 1 ? 1 : 2;
+  // The AIPS convention GLS with a reference latitude (or a pole) given is SFL with the fiducial point at that latitude, as wcslib's celfix rewrites it.
+  const glsOffset = proj === 'GLS' && (w.crval[1] !== 0 || has('LONPOLE') || has('LATPOLE'));
+  if (glsOffset) proj = w.proj = 'SFL';
   if (proj) {
     const lonName = w.ctype[0].split('-')[0];
     w.frame = lonName === 'RA' ? 'equatorial' : lonName === 'GLON' ? 'galactic' : lonName === 'ELON' ? 'ecliptic' : lonName === 'HLON' ? 'helioecliptic' : lonName === 'SLON' ? 'supergalactic' : 'other';
-    if (proj === 'TPV') { w.tpv = { x: [], y: [] }; for (let i = 0; i < 40; i++) { w.tpv.x[i] = num(`PV1_${i}`, i === 1 ? 1 : 0); w.tpv.y[i] = num(`PV2_${i}`, i === 1 ? 1 : 0); } }
-    else for (let i = 0; i <= 20; i++) w.pv[i] = num(`PV2_${i}`, i === 1 && (proj === 'CEA' || proj === 'CYP') ? 1 : i === 2 && proj === 'CYP' ? 1 : i === 1 && proj === 'AIR' ? 90 : i === 3 && proj === 'SZP' ? 90 : 0);
+    if (proj === 'TPV') { w.tpv = { x: [], y: [], swapped: lonAxis === 1 }; for (let i = 0; i < 40; i++) { w.tpv.x[i] = num(`PV1_${i}`, i === 1 ? 1 : 0); w.tpv.y[i] = num(`PV2_${i}`, i === 1 ? 1 : 0); } }
+    else for (let i = 0; i <= 20; i++) w.pv[i] = num(`PV${latNo}_${i}`, i === 1 && (proj === 'CEA' || proj === 'CYP') ? 1 : i === 2 && proj === 'CYP' ? 1 : i === 1 && proj === 'AIR' ? 90 : i === 3 && proj === 'SZP' ? 90 : 0);
     w.theta0 = ZENITHAL.has(proj) || proj === 'XPH' ? 90 : CONIC.has(proj) ? w.pv[1] : 0;
-    if (proj === 'HPX') { if (!has('PV2_1')) w.pv[1] = 4; if (!has('PV2_2')) w.pv[2] = 3; }
-    w.lonpole = has('LONPOLE') ? num('LONPOLE', 0) : w.crval[1] >= w.theta0 ? 0 : 180;
+    if (proj === 'HPX') { if (!has(`PV${latNo}_1`)) w.pv[1] = 4; if (!has(`PV${latNo}_2`)) w.pv[2] = 3; }
+    if (glsOffset) { w.phi0 = 0; w.theta0 = w.crval[1]; }
+    // In TPV both axes' PV values are the distortion polynomial, not these parameters.
+    const lonPv = (m: number) => proj !== 'TPV' && has(`PV${lonNo}_${m}`);
+    if (lonPv(1)) w.phi0 = num(`PV${lonNo}_1`, 0);
+    if (lonPv(2)) w.theta0 = num(`PV${lonNo}_2`, w.theta0);
+    const pole = (card: string, m: number) => (has(card) ? num(card, 0) : lonPv(m) ? num(`PV${lonNo}_${m}`, 0) : NaN);
+    // LONPOLE's default (Calabretta & Greisen eq. 13): φ0 when δ0 ≥ θ0, else φ0 + 180.
+    w.lonpole = pole('LONPOLE', 3); if (!Number.isFinite(w.lonpole)) w.lonpole = w.phi0 + (w.crval[1] >= w.theta0 ? 0 : 180);
+    const lat = pole('LATPOLE', 4); if (Number.isFinite(lat)) w.latpole = lat;
     if (cards.has('EQUINOX')) w.equinox = cards.get('EQUINOX')!.trim();
     if (cards.has('RADESYS')) w.radesys = cards.get('RADESYS')!.trim();
     if (sip) {
@@ -79,6 +98,11 @@ export function parseWcs(cards: Map<string, string>, width: number, height: numb
     }
   }
   if (!Number.isFinite(w.lonpole)) w.lonpole = 0;
+  if (proj && (glsOffset || (proj !== 'TPV' && num(`PV${lonNo}_0`, 0) !== 0))) {
+    const xy = forwardByInverse(w, w.phi0, w.theta0);
+    if (!xy) return null; // the fiducial point is outside the projection: the header cannot be right
+    w.offset = xy;
+  }
   void width;
   return w;
 }
@@ -93,7 +117,8 @@ export function pixelToWorld(w: Wcs, x: number, y: number): [number, number] | n
   }
   let ix = w.cd[0] * u + w.cd[1] * v, iy = w.cd[2] * u + w.cd[3] * v; // intermediate world coordinates (degrees)
   if (!w.proj) return [w.crval[0] + ix, w.crval[1] + iy];
-  if (w.tpv) { const [dx, dy] = tpvDistort(w.tpv, ix, iy); ix = dx; iy = dy; }
+  if (w.tpv) { const [dx, dy] = tpvDistort(w.tpv, ix, iy); if (w.tpv.swapped) { ix = dy; iy = dx; } else { ix = dx; iy = dy; } }
+  if (w.offset) { ix += w.offset[0]; iy += w.offset[1]; }
   const inv = inverseProjection(w, ix, iy);
   if (!inv) return null;
   const [phi, theta] = inv;
@@ -182,6 +207,25 @@ export function pixelScale(w: Wcs, x: number, y: number): number | null {
 }
 
 /** The TPV polynomial distortion of the intermediate coordinates (the SCAMP/TPV convention, 40 terms each). */
+/**
+ * The projection-plane (x, y) of a native position, found from the inverse projection by Newton's method (the reader has
+ * no forward projections). Used once per header, for the fiducial point's offset; null when it does not converge.
+ */
+function forwardByInverse(w: Wcs, phi: number, theta: number): [number, number] | null {
+  const wrap = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180;
+  const f = (x: number, y: number): [number, number] | null => { const r = inverseProjection(w, x, y); return r ? [wrap(r[0] - phi), r[1] - theta] : null; };
+  let x = phi, y = theta;
+  for (let k = 0; k < 60; k++) {
+    const r = f(x, y); if (!r) return null;
+    if (Math.abs(r[0]) < 1e-12 && Math.abs(r[1]) < 1e-12) return [x, y];
+    const h = 1e-6, a = f(x + h, y), b = f(x, y + h); if (!a || !b) return null;
+    const j11 = (a[0] - r[0]) / h, j21 = (a[1] - r[1]) / h, j12 = (b[0] - r[0]) / h, j22 = (b[1] - r[1]) / h, det = j11 * j22 - j12 * j21;
+    if (!det) return null;
+    x -= (j22 * r[0] - j12 * r[1]) / det; y -= (j11 * r[1] - j21 * r[0]) / det;
+  }
+  const r = f(x, y); return r && Math.abs(r[0]) < 1e-9 && Math.abs(r[1]) < 1e-9 ? [x, y] : null;
+}
+
 function tpvDistort(t: { x: number[]; y: number[] }, x: number, y: number): [number, number] {
   const r = Math.hypot(x, y);
   const terms = (a: number, b: number): number[] => [1, a, b, r, a * a, a * b, b * b, a ** 3, a * a * b, a * b * b, b ** 3, r ** 3, a ** 4, a ** 3 * b, a * a * b * b, a * b ** 3, b ** 4, a ** 5, a ** 4 * b, a ** 3 * b * b, a * a * b ** 3, a * b ** 4, b ** 5, r ** 5, a ** 6, a ** 5 * b, a ** 4 * b * b, a ** 3 * b ** 3, a * a * b ** 4, a * b ** 5, b ** 6, a ** 7, a ** 6 * b, a ** 5 * b * b, a ** 4 * b ** 3, a ** 3 * b ** 4, a * a * b ** 5, a * b ** 6, b ** 7, r ** 7];

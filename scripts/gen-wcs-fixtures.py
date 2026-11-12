@@ -106,6 +106,16 @@ write('wcs-cop-lonpole.fits', {**zen, 'CTYPE1': 'RA---COP', 'CTYPE2': 'DEC--COP'
 # wcslib accepts only LONPOLE = φ0 there, so there is no fixture with another LONPOLE).
 write('wcs-car-pole.fits', {**car, 'CRVAL2': 90.0}, note='plate carrée with the reference point at the north celestial pole')
 write('wcs-mer-south-pole.fits', {**car, 'CTYPE1': 'RA---MER', 'CTYPE2': 'DEC--MER', 'CRVAL2': -90.0}, note='Mercator with the reference point at the south celestial pole')
+# Projection parameters on the right axis, fiducial offsets and the old GLS convention (REVIEW W9).
+swapped = {'CTYPE1': 'DEC--AZP', 'CTYPE2': 'RA---AZP', 'CRVAL1': -20.5, 'CRVAL2': 150.1, 'CRPIX1': 15.5, 'CRPIX2': 20.5, 'CDELT1': 0.02, 'CDELT2': -0.02, 'PV1_1': 2.0, 'PV1_2': 30.0}
+write('wcs-swapped-azp.fits', swapped, note='DEC on axis 1 with AZP: its parameters are PV1_m (the latitude axis)')
+write('wcs-swapped-tpv.fits', {'CTYPE1': 'DEC--TPV', 'CTYPE2': 'RA---TPV', 'CRVAL1': -20.5, 'CRVAL2': 150.1, 'CRPIX1': 15.5, 'CRPIX2': 20.5, 'CD1_1': 0.00031, 'CD1_2': 0.00004, 'CD2_1': 0.00005, 'CD2_2': -0.0003,
+      'PV1_0': 0.0, 'PV1_1': 1.0, 'PV1_2': 0.002, 'PV1_4': 0.03, 'PV1_5': -0.01, 'PV2_0': 0.0, 'PV2_1': 1.0, 'PV2_2': -0.003, 'PV2_4': -0.02, 'PV2_5': 0.01}, note='DEC on axis 1 with TPV distortion')
+gls = {**car, 'CTYPE1': 'RA---GLS', 'CTYPE2': 'DEC--GLS', 'CRVAL1': 150.0, 'CRVAL2': 30.0, 'CDELT1': -0.5, 'CDELT2': 0.5}
+write('wcs-gls-offset.fits', gls, note='GLS (the AIPS convention) with CRVAL2 30: SFL with the fiducial point at θ0 = 30')
+write('wcs-sfl-fiducial.fits', {**gls, 'CTYPE1': 'RA---SFL', 'CTYPE2': 'DEC--SFL', 'CRVAL2': 20.0, 'PV1_0': 1.0, 'PV1_1': 10.0, 'PV1_2': 20.0}, note='SFL with fiducial offsets (PV1_0 1, φ0 10, θ0 20)')
+write('wcs-car-phi0.fits', {**car, 'CRVAL2': 10.0, 'PV1_1': 15.0}, note='CAR with φ0 15 and no offset flag')
+write('wcs-zea-pvlonpole.fits', {**base, 'CTYPE1': 'RA---ZEA', 'CTYPE2': 'DEC--ZEA', 'PV1_3': 140.0}, note='ZEA with LONPOLE given as PV1_3')
 with open(os.path.join(OUT, 'wcs.json'), 'w') as f:
     json.dump(manifest, f, indent=1, sort_keys=True)
 for k, v in manifest.items():

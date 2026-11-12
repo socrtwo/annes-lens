@@ -404,15 +404,16 @@ area = Dataset(); area.DisplayedAreaTopLeftHandCorner = [3, 2]; area.DisplayedAr
 ps.DisplayedAreaSelectionSequence = Sequence([area])
 ps.ImageHorizontalFlip = 'Y'; ps.ImageRotation = 90
 ps.save_as(os.path.join(OUT, 'gsps.dcm'), enforce_file_format=True)
-# the expected picture, by the rules the app applies: window → inverse → shutter → displayed area → flip, then rotation
+# the expected picture, by the standard (PS3.3 C.10.6: the rotation is applied before the horizontal flip; C.10.4: the
+# displayed area's corners are pixels of the stored image): window → inverse → shutter → displayed area → rotation → flip
 raw = img.pixel_array.astype(np.float64) * float(img.RescaleSlope) + float(img.RescaleIntercept)
 y = 255 - window(raw, 100, 600)
 sh = np.full_like(y, (0x3000 >> 8))
 sh[3 - 1:29, 5 - 1:44] = y[3 - 1:29, 5 - 1:44]           # edges are 1-based pixel columns/rows, inclusive
 crop = sh[2 - 1:31, 3 - 1:46]                              # TLHC (col 3, row 2) to BRHC (col 46, row 31), 1-based inclusive
-flipped = crop[:, ::-1]
-rot = np.rot90(flipped, k=-1)                              # 90° clockwise
-g = rot.astype(np.uint8)
+rot = np.rot90(crop, k=-1)                                 # 90° clockwise
+flipped = rot[:, ::-1]                                     # then the horizontal flip
+g = flipped.astype(np.uint8)
 Image.fromarray(np.stack([g, g, g], -1), 'RGB').save(os.path.join(OUT, 'gsps.png'), optimize=True)
 manifest['gsps.dcm'] = {'what': 'presentation state: ' + ps.ContentDescription, 'frames': 1, 'width': int(g.shape[1]), 'height': int(g.shape[0]), 'pi': 'MONOCHROME2', 'ts': str(ps.file_meta.TransferSyntaxUID), 'comment': ps.ContentDescription, 'references': 'ct-window.dcm'}
 

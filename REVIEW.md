@@ -83,6 +83,17 @@ checked by reading and by the suites still passing, not by a test of their own.
   angle; else the preview's EXIF). Developed pictures are marked as upright, so Auto-Rotate no longer turns them
   again. Checked against LibRaw: on the corpus (the one portrait file, a Leaf MOS, agrees) and on every TIFF-based
   corpus file patched to portrait. Not checked against LibRaw: CR3, RAF and MRW (no portrait sample).
+- **Wrong results: W9.** WCS projection parameters are read from the latitude axis and the fiducial point, offset flag
+  and PV-given LONPOLE/LATPOLE from the longitude axis, so DEC-first headers work; fiducial offsets are honoured; GLS
+  with a reference latitude is read as wcslib rewrites it (SFL with the fiducial point there); TPV with DEC first uses
+  wcslib's axis assignment. Six new astropy fixtures, all agreeing to 10 µas.
+- **Wrong results: W10, W11, W14.** Implicit-VR presentation states (copies written by pydicom) read as the explicit
+  ones do. 1-bit frames are unpacked at their bit offset (a pydicom-written 3 × 5 segmentation). The presentation
+  state's picture is found under UID names and `.IMA` names, and each file's UID is read once.
+- **Wrong results: W12.** Checked against the standard's text (PS3.3 C.10.6, C.10.4; PS3.4 N.2): the rotation is now
+  applied before the horizontal flip (it was after), displayed-area corners may be any opposite pair, annotations in
+  displayed-area units are drawn after the turn, and MONOCHROME1 is ignored under a presentation state. `gsps.png` is
+  now computed in the standard's order and compared (it was generated from the app's own rules and never compared).
 - **Wrong results: W5, W6.** Packed RAW layouts that were never checked against a real file are refused (Samsung's,
   Olympus's, Nikon's little-endian one) instead of decoded to noise; the support report runs the reader's own header
   path, so it cannot say yes to a file the reader refuses (compressed PEF, ORF and SRW, Canon sRAW); README and

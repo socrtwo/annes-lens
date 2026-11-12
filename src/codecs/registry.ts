@@ -133,6 +133,25 @@ export const OPEN_MIMES = ['image/*', ...new Set(FORMATS.map((f) => f.mime)), 'a
 const at = (u8: Uint8Array, o: number, s: string) => { for (let i = 0; i < s.length; i++) if (u8[o + i] !== s.charCodeAt(i)) return false; return true; };
 
 /** The format of `u8` from its first bytes (the name only settles formats without a magic number), or null. */
+/**
+ * Whether a file in the folder may be a DICOM picture a presentation state points to: .dcm, .dicom, .dic, .dc3, Siemens
+ * .ima, a name with no extension (DICOMDIR layouts), or a name that is a UID (1.2.840.…, as PACS exports write them).
+ */
+export const dicomLikeName = (n: string): boolean => /\.(dcm|dicom|dic|dc3|ima)$/i.test(n) || !/\./.test(n) || /^\d+(\.\d+)+$/.test(n);
+/** Each sibling's SOP instance UID, read once per file (size and date unchanged): opening one presentation state after another does not read and parse the whole folder again. */
+const uidCache = new WeakMap<Entry, { size?: number; mtime?: number; uid: string }>();
+/** The first of `entries` whose SOP instance UID is among `references`, with its bytes; null when none is. */
+export async function findReferenced(entries: Entry[], references: string[], uidOf: (b: Uint8Array) => string): Promise<{ entry: Entry; bytes: Uint8Array } | null> {
+  for (const s of entries) { const u = await siblingUid(s, uidOf); if (references.includes(u.uid)) return { entry: s, bytes: u.bytes || new Uint8Array(await s.read()) }; }
+  return null;
+}
+async function siblingUid(s: Entry, uidOf: (b: Uint8Array) => string): Promise<{ uid: string; bytes?: Uint8Array }> {
+  const hit = uidCache.get(s); if (hit && hit.size === s.size && hit.mtime === s.mtime) return { uid: hit.uid };
+  let bytes: Uint8Array; try { bytes = new Uint8Array(await s.read()); } catch { return { uid: '' }; }
+  const uid = uidOf(bytes); uidCache.set(s, { size: s.size, mtime: s.mtime, uid });
+  return { uid, bytes };
+}
+
 /** This device's Content Credentials certificate, when the keystore is open and has one (it is not unlocked for this: a locked keystore means signers show as not verified). */
 async function ownSigningCertificate(): Promise<Uint8Array | null> {
   try { const { getExtra } = await import('../ai/keystore'); const stored = getExtra('c2pa.signer'); return stored ? Uint8Array.from(atob(JSON.parse(stored).cert), (c) => c.charCodeAt(0)) : null; } catch { return null; }
@@ -278,11 +297,13 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
     let bytes = u8, presentation, superimposed: import('./raster').Raster | undefined;
     if (isPresentationState(u8)) { // display instructions for a picture in another file of the same folder
       presentation = readPresentationState(u8, entry.name);
-      const sibs = (decodeOptions.siblings?.(entry) || []).filter((s) => s !== entry && s.name !== entry.name && (/\.(dcm|dicom)$/i.test(s.name) || !/\./.test(s.name)) && (s.size ?? 0) <= 512e6).slice(0, 500);
+      const sibs = (decodeOptions.siblings?.(entry) || []).filter((s) => s !== entry && s.name !== entry.name && dicomLikeName(s.name) && (s.size ?? 0) <= 512e6).slice(0, 2000);
       let found: Uint8Array | null = null;
-      for (const s of sibs) { const b = new Uint8Array(await s.read()); if (presentation.references.includes(dicomSopInstanceUid(b))) { found = b; presentation.name = s.name === entry.name ? entry.name : `${entry.name} on ${s.name}`; break; } }
+      const hit = await findReferenced(sibs, presentation.references, dicomSopInstanceUid);
+      if (hit) { found = hit.bytes; presentation.name = `${entry.name} on ${hit.entry.name}`; }
       if (found && presentation.blend) { // the blending state's second picture, decoded with the window the state gives it
-        for (const s of sibs) { if (s === entry) continue; const b = new Uint8Array(await s.read()); if (presentation.blend.references.includes(dicomSopInstanceUid(b))) { try { superimposed = (await decodeDicom(b, dec, { maxFrames: 1, window: presentation.blend.window })).pages[0]?.frames[0]?.raster; } catch { /* reported below */ } break; } }
+        const second = await findReferenced(sibs, presentation.blend.references, dicomSopInstanceUid);
+        if (second) { try { superimposed = (await decodeDicom(second.bytes, dec, { maxFrames: 1, window: presentation.blend.window })).pages[0]?.frames[0]?.raster; } catch { /* reported below */ } }
       }
       if (!found) throw new Error(`${entry.name} is a presentation state${presentation.label ? ` (${presentation.label})` : ''}: display settings for a picture in another DICOM file, which is not in this folder (${presentation.references.length ? `SOP instance ${presentation.references[0]}` : 'no image is referenced'}). Open it from the folder that holds the picture.`);
       bytes = found;

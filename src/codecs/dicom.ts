@@ -140,6 +140,17 @@ const CHARSETS: Record<string, string> = {
 };
 const LONG_VR = new Set(['OB', 'OW', 'OF', 'OD', 'OL', 'OV', 'SQ', 'UT', 'UN', 'UC', 'UR', 'SV', 'UV']);
 const T = (g: number, e: number) => ((g << 16) | e) >>> 0;
+/**
+ * The value representations of the binary elements the reader takes numbers from, for implicit VR data (the default
+ * transfer syntax), where the file does not say them: without these a float or a signed value was read as unsigned
+ * 16-bit words. From PS3.6.
+ */
+const IMPLICIT_VR = new Map<number, string>([
+  [T(0x70, 0x10), 'FL'], [T(0x70, 0x11), 'FL'], [T(0x70, 0x14), 'FL'], [T(0x70, 0x22), 'FL'], [T(0x70, 0x403), 'FL'], [T(0x70, 0x103), 'FL'], // annotation geometry, opacity, magnification
+  [T(0x70, 0x52), 'SL'], [T(0x70, 0x53), 'SL'], // displayed area corners
+  [T(0x70, 0x21), 'US'], [T(0x70, 0x42), 'US'], [T(0x70, 0x66), 'US'], [T(0x70, 0x401), 'US'], [T(0x18, 0x1622), 'US'],
+  [T(0x28, 0x10), 'US'], [T(0x28, 0x11), 'US'], [T(0x28, 0x100), 'US'], [T(0x28, 0x101), 'US'], [T(0x28, 0x102), 'US'], [T(0x28, 0x103), 'US'], [T(0x28, 0x2), 'US'], [T(0x28, 0x6), 'US'],
+]);
 let keepAll = false; // the tag dump keeps every sequence's items
 const PIXEL = T(0x7fe0, 0x0010), FLOAT_PIXEL = T(0x7fe0, 0x0008), DOUBLE_PIXEL = T(0x7fe0, 0x0009), ITEM = 0xfffee000, ITEM_END = 0xfffee00d, SEQ_END = 0xfffee0dd;
 
@@ -182,7 +193,7 @@ function parseDataset(u8: Uint8Array, start: number, end: number, explicit: bool
     else if (explicit) {
       vr = String.fromCharCode(u8[p + 4], u8[p + 5]);
       if (LONG_VR.has(vr)) { len = u32(p + 8); hdr = 12; } else { len = u16(p + 6); hdr = 8; }
-    } else { len = u32(p + 4); hdr = 8; }
+    } else { len = u32(p + 4); hdr = 8; vr = IMPLICIT_VR.get(tag) || ''; }
     const off = p + hdr;
     if (len === 0xffffffff) {
       if (tag === PIXEL || tag === FLOAT_PIXEL || tag === DOUBLE_PIXEL) {
@@ -300,13 +311,14 @@ const dicomDate = (s?: string) => s && /^\d{8}/.test(s) ? `${s.slice(0, 4)}-${s.
 interface Frame { v: Float32Array; alreadyRgb?: boolean; depthNote?: string }
 interface PixelInfo { rows: number; cols: number; spp: number; pi: string; planar: number; bitsAlloc: number; bitsStored: number; highBit: number; signed: boolean; frames: number }
 
-function unpackNative(bytes: Uint8Array, pi: PixelInfo, be: boolean): Float32Array {
+/** `bitOffset`: for 1-bit data, where in the first byte the samples begin (frames of 1-bit data follow each other bit by bit, not byte by byte). */
+function unpackNative(bytes: Uint8Array, pi: PixelInfo, be: boolean, bitOffset = 0): Float32Array {
   const { rows, cols, spp, bitsAlloc, bitsStored, highBit, signed, planar } = pi, n = rows * cols, out = new Float32Array(n * spp);
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const shift = Math.max(0, highBit + 1 - bitsStored), mask = bitsStored >= 32 ? 0xffffffff : (1 << bitsStored) - 1, signBit = 2 ** (bitsStored - 1), wrap = 2 ** bitsStored;
   const raw = (i: number): number => {
     switch (bitsAlloc) {
-      case 1: return (bytes[i >> 3] >> (i & 7)) & 1;
+      case 1: { const b = i + bitOffset; return (bytes[b >> 3] >> (b & 7)) & 1; }
       case 8: return i < bytes.length ? bytes[i] : 0;
       case 16: return i * 2 + 2 <= bytes.length ? dv.getUint16(i * 2, !be) : 0;
       case 32: return i * 4 + 4 <= bytes.length ? dv.getUint32(i * 4, !be) : 0;
@@ -499,7 +511,12 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
         for (let i = 0; i < n; i++) { const at = start + i * w; v[i] = at + w <= u8.length ? (w === 4 ? dv.getFloat32(at, !be) : dv.getFloat64(at, !be)) : 0; }
         fr = { v };
       } else if (is422) fr = { v: deinterleave422(unpackNative(u8.subarray(start, Math.min(u8.length, start + frameSize)), { ...pi, spp: 1, cols: cols * 2 }, be), rows, cols) };
-      else fr = { v: unpackNative(u8.subarray(start, Math.min(u8.length, start + frameSize)), pi, be) };
+      else if (pi.bitsAlloc === 1) {
+        // 1-bit frames are packed one after another without padding: frame f begins at bit f × rows × columns × samples.
+        const bit0 = f * rows * cols * pi.spp, at = pix.off + Math.floor(bit0 / 8);
+        if (at >= pix.off + pix.len) { warnings.push(`The pixel data ends after frame ${f} of ${frames}`); break; }
+        fr = { v: unpackNative(u8.subarray(at, Math.min(u8.length, at + Math.ceil((rows * cols * pi.spp + (bit0 % 8)) / 8))), pi, be, bit0 % 8) };
+      } else fr = { v: unpackNative(u8.subarray(start, Math.min(u8.length, start + frameSize)), pi, be) };
     } else {
       const bytes = frameBytes![f];
       if (!bytes) { warnings.push(`Frame ${f + 1} is missing from the pixel data`); break; }
@@ -569,7 +586,9 @@ export async function decodeDicom(input: Uint8Array, dec: any = null, o: { maxFr
       const slope = haveRescale ? rescaleSlope : 1, icpt = haveRescale ? rescaleIntercept : 0;
       const modal = (raw: number) => (modalityLut ? lutAt(modalityLut, raw) : raw * slope + icpt);
       if (!haveWindow && !voiLut) for (let i = 0; i < n; i++) { const x = modal(v[i * spp]); if (x < lo) lo = x; if (x > hi) hi = x; }
-      const inv = pi.pi === 'MONOCHROME1';
+      // Under a presentation state the stored picture's MONOCHROME1/MONOCHROME2 is ignored; its pipeline (the presentation
+      // LUT shape) says alone which way round the grays go (PS3.4 N.2).
+      const inv = !ps && pi.pi === 'MONOCHROME1';
       for (let i = 0; i < n; i++) {
         const x = modal(v[i * spp]);
         let y: number;
@@ -741,45 +760,53 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!keep(x, y)) { const o = (y * w + x) * 4; d[o] = d[o + 1] = d[o + 2] = g; }
     what.push(`${sh.shape.toLowerCase()} shutter`);
   }
-  // Annotations, in image pixel units (the top-left corner of the picture is 0, 0) or fractions of the displayed area.
-  const area = ps.area ? { x: ps.area.tl[0] - 1, y: ps.area.tl[1] - 1, w: ps.area.br[0] - ps.area.tl[0] + 1, h: ps.area.br[1] - ps.area.tl[1] + 1 } : { x: 0, y: 0, w, h };
-  const toPx = (p: [number, number], units: string): [number, number] => (units === 'DISPLAY' ? [area.x + p[0] * area.w, area.y + p[1] * area.h] : p);
+  // The displayed area: its corners are pixels of the stored picture (1-based column\row), the ones that end up top left
+  // and bottom right after the rotation and flip, so either may be the smaller (PS3.3 C.10.4).
+  const area = ps.area ? (() => { const [c1, r1] = ps.area!.tl, [c2, r2] = ps.area!.br; return { x: Math.min(c1, c2) - 1, y: Math.min(r1, r2) - 1, w: Math.abs(c2 - c1) + 1, h: Math.abs(r2 - r1) + 1 }; })() : { x: 0, y: 0, w, h };
+  // Annotations in image pixel units (the top-left corner of the picture is 0, 0) are drawn here, before the rotation and
+  // flip; those in fractions of the displayed area are drawn on the result, after them (PS3.3 C.10.6).
   let nGraphics = 0, nTexts = 0, textSkipped = false;
   const texts: string[] = [];
-  for (const layer of ps.layers) {
-    const g = layer.gray;
-    for (const obj of layer.graphics) {
-      const pts = obj.points.map((p) => toPx(p, obj.units));
-      if (!pts.length) continue;
-      nGraphics++;
-      if (obj.type === 'POINT') { const [x, y] = pts[0]; drawLine(r, x - 3, y, x + 3, y, g); drawLine(r, x, y - 3, x, y + 3, g); }
-      else if (obj.type === 'CIRCLE' && pts.length >= 2) drawPolyline(r, ellipsePoints(pts[0], Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), 0, 0), true, obj.filled, g);
-      else if (obj.type === 'ELLIPSE' && pts.length >= 4) { const c: [number, number] = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]; drawPolyline(r, ellipsePoints(c, Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / 2, Math.hypot(pts[3][0] - pts[2][0], pts[3][1] - pts[2][1]) / 2, Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])), true, obj.filled, g); }
-      else drawPolyline(r, pts, obj.filled, obj.filled, g); // POLYLINE, INTERPOLATED (drawn straight)
-    }
-    for (const t of layer.texts) {
-      nTexts++; texts.push(t.text);
-      const box = t.box ? [...toPx([t.box[0], t.box[1]], t.units), ...toPx([t.box[2], t.box[3]], t.units)] : null;
-      const anchor = t.anchor ? toPx(t.anchor, t.anchorUnits) : null;
-      if (anchor && t.anchorVisible) { drawLine(r, anchor[0] - 3, anchor[1] - 3, anchor[0] + 3, anchor[1] + 3, g); drawLine(r, anchor[0] - 3, anchor[1] + 3, anchor[0] + 3, anchor[1] - 3, g); }
-      if (box) {
-        drawPolyline(r, [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]], true, false, g);
-        if (anchor && t.anchorVisible) { const cx = Math.max(box[0], Math.min(box[2], anchor[0])), cy = Math.max(box[1], Math.min(box[3], anchor[1])); drawLine(r, anchor[0], anchor[1], cx, cy, g); }
+  /** Draws the layers' graphics and texts on `r` (w × h), with `toPx` turning an annotation's coordinates into r's pixels. */
+  const drawLayers = (r: R, layers: typeof ps.layers, toPx: (p: [number, number], units: string) => [number, number]) => {
+    const w = r.width, h = r.height, d = r.data;
+    for (const layer of layers) {
+      const g = layer.gray;
+      for (const obj of layer.graphics) {
+        const pts = obj.points.map((p) => toPx(p, obj.units));
+        if (!pts.length) continue;
+        nGraphics++;
+        if (obj.type === 'POINT') { const [x, y] = pts[0]; drawLine(r, x - 3, y, x + 3, y, g); drawLine(r, x, y - 3, x, y + 3, g); }
+        else if (obj.type === 'CIRCLE' && pts.length >= 2) drawPolyline(r, ellipsePoints(pts[0], Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), 0, 0), true, obj.filled, g);
+        else if (obj.type === 'ELLIPSE' && pts.length >= 4) { const c: [number, number] = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]; drawPolyline(r, ellipsePoints(c, Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / 2, Math.hypot(pts[3][0] - pts[2][0], pts[3][1] - pts[2][1]) / 2, Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])), true, obj.filled, g); }
+        else drawPolyline(r, pts, obj.filled, obj.filled, g); // POLYLINE, INTERPOLATED (drawn straight)
       }
-      const mask = drawText ? drawText(t.text) : null;
-      if (!mask) { textSkipped = true; continue; }
-      const ox = box ? Math.round(box[0] + 2) : anchor ? Math.round(anchor[0] + 6) : 2, oy = box ? Math.round(box[1] + 1) : anchor ? Math.round(anchor[1] - mask.height / 2) : 2;
-      for (let yy = 0; yy < mask.height; yy++) for (let xx = 0; xx < mask.width; xx++) {
-        const a = mask.alpha[yy * mask.width + xx] / 255; if (!a) continue;
-        const x = ox + xx, y = oy + yy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
-        const o = (y * w + x) * 4; d[o] = Math.round(d[o] * (1 - a) + g * a); d[o + 1] = Math.round(d[o + 1] * (1 - a) + g * a); d[o + 2] = Math.round(d[o + 2] * (1 - a) + g * a);
+      for (const t of layer.texts) {
+        nTexts++; texts.push(t.text);
+        const box = t.box ? [...toPx([t.box[0], t.box[1]], t.units), ...toPx([t.box[2], t.box[3]], t.units)] : null;
+        const anchor = t.anchor ? toPx(t.anchor, t.anchorUnits) : null;
+        if (anchor && t.anchorVisible) { drawLine(r, anchor[0] - 3, anchor[1] - 3, anchor[0] + 3, anchor[1] + 3, g); drawLine(r, anchor[0] - 3, anchor[1] + 3, anchor[0] + 3, anchor[1] - 3, g); }
+        if (box) {
+          drawPolyline(r, [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]], true, false, g);
+          if (anchor && t.anchorVisible) { const cx = Math.max(box[0], Math.min(box[2], anchor[0])), cy = Math.max(box[1], Math.min(box[3], anchor[1])); drawLine(r, anchor[0], anchor[1], cx, cy, g); }
+        }
+        const mask = drawText ? drawText(t.text) : null;
+        if (!mask) { textSkipped = true; continue; }
+        const ox = box ? Math.round(box[0] + 2) : anchor ? Math.round(anchor[0] + 6) : 2, oy = box ? Math.round(box[1] + 1) : anchor ? Math.round(anchor[1] - mask.height / 2) : 2;
+        for (let yy = 0; yy < mask.height; yy++) for (let xx = 0; xx < mask.width; xx++) {
+          const a = mask.alpha[yy * mask.width + xx] / 255; if (!a) continue;
+          const x = ox + xx, y = oy + yy; if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const o = (y * w + x) * 4; d[o] = Math.round(d[o] * (1 - a) + g * a); d[o + 1] = Math.round(d[o + 1] * (1 - a) + g * a); d[o + 2] = Math.round(d[o + 2] * (1 - a) + g * a);
+        }
       }
     }
-  }
-  if (nGraphics || nTexts) what.push(`${nGraphics} graphic object${nGraphics === 1 ? '' : 's'}${nTexts ? ` and ${nTexts} text${nTexts === 1 ? '' : 's'}` : ''}`);
-  if (textSkipped) warnings.push('The presentation state\'s text could not be drawn here (no text renderer); its words are in the details');
-  if (texts.length) info.annotations = texts.join(' | ');
-  // The displayed area (a crop), then the horizontal flip, then the clockwise rotation.
+  };
+  // Annotations in image pixel units (the top-left corner of the picture is 0, 0) are drawn now, before the rotation and
+  // flip; those in fractions of the displayed area are drawn on the result, after them (PS3.3 C.10.6).
+  const pixelLayers = ps.layers.map((l) => ({ ...l, graphics: l.graphics.filter((o) => o.units !== 'DISPLAY'), texts: l.texts.filter((t) => (t.box ? t.units : t.anchorUnits) !== 'DISPLAY') }));
+  const displayLayers = ps.layers.map((l) => ({ ...l, graphics: l.graphics.filter((o) => o.units === 'DISPLAY'), texts: l.texts.filter((t) => (t.box ? t.units : t.anchorUnits) === 'DISPLAY') }));
+  drawLayers(r, pixelLayers, (p) => p);
+  // The displayed area (a crop), then the clockwise rotation, then the horizontal flip (PS3.3 C.10.6: the rotation is applied before the flip).
   let out = r;
   if (ps.area) {
     const x0 = Math.max(0, area.x), y0 = Math.max(0, area.y), x1 = Math.min(w, area.x + area.w), y1 = Math.min(h, area.y + area.h);
@@ -789,7 +816,6 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
       out = c; what.push(`displayed area ${c.width} × ${c.height}`);
     }
   }
-  if (ps.flip) { const c = makeRaster(out.width, out.height); for (let y = 0; y < out.height; y++) for (let x = 0; x < out.width; x++) { const s0 = (y * out.width + x) * 4, t0 = (y * out.width + (out.width - 1 - x)) * 4; c.data[t0] = out.data[s0]; c.data[t0 + 1] = out.data[s0 + 1]; c.data[t0 + 2] = out.data[s0 + 2]; c.data[t0 + 3] = out.data[s0 + 3]; } out = c; what.push('horizontal flip'); }
   const rot = ((Math.round(ps.rotation / 90) * 90) % 360 + 360) % 360;
   let dpiSwap = false;
   if (rot) {
@@ -801,6 +827,12 @@ function applyPresentation(r: ReturnType<typeof makeRaster>, ps: PresentationSta
     }
     out = c; dpiSwap = rot !== 180; what.push(`rotation ${rot}°`);
   }
+  if (ps.flip) { const c = makeRaster(out.width, out.height); for (let y = 0; y < out.height; y++) for (let x = 0; x < out.width; x++) { const s0 = (y * out.width + x) * 4, t0 = (y * out.width + (out.width - 1 - x)) * 4; c.data[t0] = out.data[s0]; c.data[t0 + 1] = out.data[s0 + 1]; c.data[t0 + 2] = out.data[s0 + 2]; c.data[t0 + 3] = out.data[s0 + 3]; } out = c; what.push('horizontal flip'); }
+  // Annotations in fractions of the displayed area, on the turned picture (which is the displayed area).
+  drawLayers(out, displayLayers, (p, units) => (units === 'DISPLAY' ? [p[0] * out.width, p[1] * out.height] : p));
+  if (nGraphics || nTexts) what.push(`${nGraphics} graphic object${nGraphics === 1 ? '' : 's'}${nTexts ? ` and ${nTexts} text${nTexts === 1 ? '' : 's'}` : ''}`);
+  if (textSkipped) warnings.push('The presentation state\'s text could not be drawn here (no text renderer); its words are in the details');
+  if (texts.length) info.annotations = texts.join(' | ');
   notes.push(`presentation state ${ps.label || ps.name}${ps.description ? ` (${ps.description})` : ''} applied: ${what.join(', ') || 'nothing to change'}`);
   info['presentation state'] = `${ps.name}${ps.label ? ` (${ps.label})` : ''}`;
   return { raster: out, dpiSwap };

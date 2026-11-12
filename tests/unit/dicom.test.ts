@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { decodeDicom, isDicom, isRawDicom, NOT_FOR_DIAGNOSIS, isPresentationState, readPresentationState, dumpDicom } from '../../src/codecs/dicom';
+import { decodeDicom, isDicom, isRawDicom, NOT_FOR_DIAGNOSIS, isPresentationState, readPresentationState, dumpDicom, dicomSopInstanceUid } from '../../src/codecs/dicom';
 import { decodePicture, decodeOptions } from '../../src/codecs/registry';
 import { decodePngTolerant } from '../../src/codecs/png';
 import { sniff } from '../../src/codecs/registry';
@@ -176,6 +176,27 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
     expect(e.pages[0].notes).toContain('1 overlay plane drawn in white');
     expect(e.warnings).toEqual([]);
   });
+  it('1-bit frames that do not end on a byte boundary (3 × 5 pixels: a segmentation written by pydicom)', async () => {
+    const want: number[][][] = JSON.parse(readFileSync('tests/fixtures/dicom/seg-1bit-frames.json', 'utf8'));
+    const d = await decodeDicom(fx('seg-1bit-frames.dcm'), pdfjs);
+    const pages = d.pages.length === want.length ? d.pages : null, frames = pages ? pages.map((p) => p.frames[0]) : d.pages[0].frames;
+    expect(frames.length).toBe(want.length);
+    frames.forEach((fr, f) => {
+      const r = fr.raster!, got = Array.from({ length: 3 }, (_, y) => Array.from({ length: 5 }, (_, x) => (r.data[(y * 5 + x) * 4] > 127 ? 1 : 0)));
+      expect(got, `frame ${f + 1}`).toEqual(want[f]);
+    });
+  });
+  it('presentation states in implicit VR (the default transfer syntax; copies written by pydicom) read as the explicit ones do', async () => {
+    for (const n of ['gsps', 'gsps-annot']) {
+      const ex = readPresentationState(fx(`${n}.dcm`), 'x'), im = readPresentationState(fx(`${n}-implicit.dcm`), 'x');
+      expect(isPresentationState(fx(`${n}-implicit.dcm`)), n).toBe(true);
+      expect(JSON.parse(JSON.stringify(im)), n).toEqual(JSON.parse(JSON.stringify(ex)));
+      const a = (await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: ex })).pages[0].frames[0].raster, b = (await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: im })).pages[0].frames[0].raster;
+      expect([b.width, b.height], n).toEqual([a.width, a.height]);
+      let diff = 0; for (let i = 0; i < a.data.length; i++) if (a.data[i] !== b.data[i]) diff++;
+      expect(diff, n).toBe(0);
+    }
+  });
   it('presentation states: recognized, read, applied with their annotations; the referenced picture is found among the folder\'s files', async () => {
     expect(isPresentationState(fx('gsps.dcm'))).toBe(true);
     expect(isPresentationState(fx('ct-window.dcm'))).toBe(false);
@@ -184,8 +205,20 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
     expect(ps.window).toEqual({ wc: 100, ww: 600, fn: 'LINEAR' });
     expect([ps.inverse, ps.flip, ps.rotation, ps.shutters.length, ps.area]).toEqual([true, true, 90, 1, { tl: [3, 2], br: [46, 31] }]);
     const d = await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: ps });
-    expect(d.pages[0].notes).toContain('presentation state FIXTURE (window 100/600, inverse presentation LUT, rectangular shutter, displayed area, rotation 90 and horizontal flip) applied: window center 100, width 600, inverse presentation, rectangular shutter, displayed area 44 × 30, horizontal flip, rotation 90°');
+    expect(d.pages[0].notes).toContain('presentation state FIXTURE (window 100/600, inverse presentation LUT, rectangular shutter, displayed area, rotation 90 and horizontal flip) applied: window center 100, width 600, inverse presentation, rectangular shutter, displayed area 44 × 30, rotation 90°, horizontal flip'); // in the order applied: the rotation before the flip (PS3.3 C.10.6)
     expect(d.info['presentation state']).toBe('gsps.dcm (FIXTURE)');
+    // The picture against one computed by the standard's rules (scripts/gen-dicom-fixtures.py with numpy): window,
+    // inverse, shutter, displayed area, then the 90° clockwise rotation, then the horizontal flip (PS3.3 C.10.6).
+    const want = ref('gsps.png'), got = d.pages[0].frames[0].raster;
+    expect([got.width, got.height]).toEqual([want.width, want.height]);
+    expect(diff(got, want).max).toBeLessThanOrEqual(1);
+    // MONOCHROME1 is ignored under a presentation state (PS3.4 N.2): only the presentation LUT shape decides.
+    const m1 = fx('ct-window.dcm').slice(); const at = new TextDecoder('latin1').decode(m1).indexOf('MONOCHROME2'); m1.set(new TextEncoder().encode('MONOCHROME1'), at);
+    expect(diff((await decodeDicom(m1, pdfjs, { presentation: ps })).pages[0].frames[0].raster, got).max).toBe(0);
+    expect(diff((await decodeDicom(m1, pdfjs)).pages[0].frames[0].raster, (await decodeDicom(fx('ct-window.dcm'), pdfjs)).pages[0].frames[0].raster).max).toBe(255); // without one, MONOCHROME1 still inverts
+    // Displayed-area corners name the pixels that end up top left and bottom right, so either may be the smaller.
+    const swapped = { ...ps, area: { tl: ps.area!.br, br: ps.area!.tl } };
+    expect(diff((await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: swapped })).pages[0].frames[0].raster, got).max).toBe(0);
     expect(d.pages[0].dpi).toEqual([50.8, 50.8]);
     const a = await decodeDicom(fx('ct-window.dcm'), pdfjs, { presentation: readPresentationState(fx('gsps-annot.dcm'), 'gsps-annot.dcm') });
     const r = a.pages[0].frames[0].raster, px = (x: number, y: number) => r.data[(y * r.width + x) * 4];
@@ -205,6 +238,21 @@ describe('DICOM (pydicom test files and files written with pydicom)', () => {
     try {
       await expect(decodePicture(fx('gsps-missing.dcm'), mk('gsps-missing.dcm'))).rejects.toThrow(/gsps-missing\.dcm is a presentation state \(FIXTURE\): display settings for a picture in another DICOM file, which is not in this folder \(SOP instance 1\.2\.826\.0\.1\.3680043\.8\.498\.99999999999999999999\)/);
     } finally { decodeOptions.siblings = null; }
+    // The picture found under a UID name (as PACS exports write them) beside a Siemens .IMA file and a note; each
+    // sibling's UID is read once, so opening the state again reads only the picture it needs.
+    const reads: Record<string, number> = {};
+    const as = (name: string, from: string, mtime = 1) => ({ name, uri: null, size: fx(from).length, mtime, read: async () => { reads[name] = (reads[name] || 0) + 1; return fx(from).buffer as ArrayBuffer; } });
+    const folder = [as('IM0001.IMA', 'jls-12bit-near.dcm'), as('1.2.826.0.1.3680043.8.498.77', 'ct-window.dcm'), as('notes.txt', 'ct-window.dcm')];
+    const { findReferenced, dicomLikeName } = await import('../../src/codecs/registry');
+    const candidates = folder.filter((e) => dicomLikeName(e.name)), refs = readPresentationState(fx('gsps.dcm'), 'gsps.dcm').references;
+    expect(candidates.map((e) => e.name)).toEqual(['IM0001.IMA', '1.2.826.0.1.3680043.8.498.77']);
+    const first = await findReferenced(candidates, refs, dicomSopInstanceUid);
+    expect(first?.entry.name).toBe('1.2.826.0.1.3680043.8.498.77'); expect(first?.bytes.length).toBe(fx('ct-window.dcm').length);
+    const before = { ...reads };
+    await findReferenced(candidates, refs, dicomSopInstanceUid);
+    expect(reads['IM0001.IMA']).toBe(before['IM0001.IMA']);                        // known not to be the one: not read again
+    expect(reads['1.2.826.0.1.3680043.8.498.77']).toBe(before['1.2.826.0.1.3680043.8.498.77'] + 1); // the picture itself, for its pixels
+    expect(reads['notes.txt']).toBeUndefined();
   });
   it('MONOCHROME1 is inverted and the first window of several is used; the JPEG 2000 depth note', async () => {
     const m = await decodeDicom(fx('mono1.dcm'), pdfjs);
