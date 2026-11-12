@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,8 +56,34 @@ function localRuntimes() {
   };
 }
 
+/**
+ * The service worker learns the release's own files: dist/sw.js (copied from public/) gets the list
+ * of the page, its icons and every built script, stylesheet and font, and a cache name made from that
+ * list, so a new release replaces the old cache instead of adding to it.
+ */
+export function precacheList(dist: string): string[] {
+  const out = ['./', './index.html'];
+  for (const f of ['manifest.webmanifest', 'favicon.svg']) if (existsSync(join(dist, f))) out.push(`./${f}`);
+  for (const dir of ['icons', 'assets']) if (existsSync(join(dist, dir))) for (const f of readdirSync(join(dist, dir)).sort()) if (!f.endsWith('.map')) out.push(`./${dir}/${f}`);
+  return out;
+}
+export function writeServiceWorker(dist: string): void {
+  const sw = join(dist, 'sw.js');
+  if (!existsSync(sw)) return;
+  const list = precacheList(dist);
+  const name = 'quilllens-' + createHash('sha256').update(list.join('\n')).update(readFileSync(join(dist, 'index.html'))).digest('hex').slice(0, 12);
+  let text = readFileSync(sw, 'utf8');
+  const before = text;
+  text = text.replace(/\/\* precache \*\/ \[[^\]]*\]/, () => `/* precache */ ${JSON.stringify(list)}`).replace(/\/\* cache \*\/ '[^']*'/, () => `/* cache */ '${name}'`);
+  if (text === before) throw new Error('public/sw.js: the precache list or cache name placeholder is missing');
+  writeFileSync(sw, text);
+}
+function serviceWorker() {
+  return { name: 'annes-lens-service-worker', apply: 'build' as const, closeBundle() { writeServiceWorker(join(here, 'dist')); } };
+}
+
 export default defineConfig({
-  plugins: [localRuntimes()],
+  plugins: [localRuntimes(), serviceWorker()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   base: './',
   build: {

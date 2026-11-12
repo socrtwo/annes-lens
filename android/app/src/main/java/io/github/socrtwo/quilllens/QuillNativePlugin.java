@@ -96,6 +96,10 @@ public class QuillNativePlugin extends Plugin {
 
     /** Single background thread for file I/O so large documents never block the UI or the plugin queue. */
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    // Network requests run apart from file work (a long AI request must not hold up opening files), each with an id the
+    // page can cancel by (Stop AI).
+    private final ExecutorService net = Executors.newCachedThreadPool();
+    private final java.util.Map<String, HttpURLConnection> requests = new java.util.concurrent.ConcurrentHashMap<>();
     /** Large payloads waiting for an activity result, kept out of the call's saved state. */
     private static final java.util.Map<String, String> pendingData = new java.util.concurrent.ConcurrentHashMap<>();
     /** Largest file read into memory (bytes); bigger files are refused instead of crashing. */
@@ -753,14 +757,18 @@ public class QuillNativePlugin extends Plugin {
         final JSObject headers = call.getObject("headers", new JSObject());
         final String body = call.getString("body");
         final int timeout = (int) Math.min(Math.max(call.getInt("timeoutMs", 180000), 1000), 600000);
+        final String id = call.getString("id");
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             call.reject("Only http(s) addresses can be requested");
             return;
         }
-        io.execute(() -> {
+        net.execute(() -> {
             HttpURLConnection c = null;
             try {
                 c = (HttpURLConnection) new URL(url).openConnection();
+                if (id != null) {
+                    requests.put(id, c);
+                }
                 c.setRequestMethod(method);
                 c.setConnectTimeout(timeout);
                 c.setReadTimeout(timeout);
@@ -809,13 +817,29 @@ public class QuillNativePlugin extends Plugin {
                 result.put("data", Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP));
                 call.resolve(result);
             } catch (Throwable e) {
-                call.reject("Could not reach the service: " + e.getMessage(), asException(e));
+                call.reject(id != null && !requests.containsKey(id) ? "Stopped" : "Could not reach the service: " + e.getMessage(), asException(e));
             } finally {
+                if (id != null) {
+                    requests.remove(id);
+                }
                 if (c != null) {
                     c.disconnect();
                 }
             }
         });
+    }
+
+    /** Stops a request started with an id (Stop AI): its connection is closed, so the reading thread ends at once. */
+    @PluginMethod
+    public void cancelRequest(PluginCall call) {
+        String id = call.getString("id");
+        HttpURLConnection c = id == null ? null : requests.remove(id);
+        if (c != null) {
+            net.execute(c::disconnect);
+        }
+        JSObject ret = new JSObject();
+        ret.put("cancelled", c != null);
+        call.resolve(ret);
     }
 
     // Platform-bound file commands --------------------------------------------------------------
@@ -1215,8 +1239,8 @@ public class QuillNativePlugin extends Plugin {
 
     private static boolean isFileIntent(Intent intent) {
         String action = intent.getAction();
-        if (Intent.ACTION_VIEW.equals(action)) {
-            return intent.getData() != null;
+        if (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_EDIT.equals(action)) {
+            return intent.getData() != null; // "Edit with" opens the picture like "Open with"
         }
         if (Intent.ACTION_SEND.equals(action)) {
             return streamExtra(intent) != null || intent.getCharSequenceExtra(Intent.EXTRA_TEXT) != null;
@@ -1235,8 +1259,8 @@ public class QuillNativePlugin extends Plugin {
             if (uris.isEmpty()) {
                 return null;
             }
-            JSObject first = null;
             JSArray files = new JSArray();
+            JSObject first = null;
             for (Uri u : uris) {
                 takePersistablePermission(u);
                 JSObject f = readDocument(u, intent.getType());
@@ -1245,10 +1269,18 @@ public class QuillNativePlugin extends Plugin {
                 }
                 files.put(f);
             }
-            first.put("files", files);
-            return first;
+            // The first file's fields with the whole list beside them, in a copy: putting the list into the first file
+            // itself made it contain itself, which could not be turned into JSON (a crash, or nothing opened).
+            JSObject ret;
+            try {
+                ret = new JSObject(first.toString());
+            } catch (org.json.JSONException e) {
+                ret = new JSObject();
+            }
+            ret.put("files", files);
+            return ret;
         }
-        if (Intent.ACTION_VIEW.equals(action)) {
+        if (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_EDIT.equals(action)) {
             uri = intent.getData();
         } else if (Intent.ACTION_SEND.equals(action)) {
             uri = streamExtra(intent);

@@ -178,6 +178,17 @@ try {
   const offStatus = await fetch(rbase + 'state').then((r) => r.status, () => 'closed');
   check('desktop phone remote: page behind a token, live state, commands drive the app, off closes it', [rm.on, /Start slideshow/.test(page), /EventSource/.test(js), wrongToken, s0.name, /^data: \{/.test(firstEvent), bad, n1, s1.name, s1.index, /^data:image\/jpeg/.test(s1.thumb || ''), s2.running, s3.paused, s4.running, offStatus],
     [true, true, true, 404, 'c.png', true, 400, 204, 'd.png', 2, true, true, true, false, 'closed'], JSON.stringify({ s0: { ...s0, thumb: undefined }, s1: { ...s1, thumb: undefined }, rm }));
+  // Stop AI on the desktop: a request to a service that never answers is cancelled by its id and ends at once.
+  const slow = createServer(() => { /* never answers */ }); await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+  const stop = await w.evaluate(async (port) => {
+    const d = window.quillDesktop, t0 = Date.now();
+    const p = d.request({ url: `http://127.0.0.1:${port}/v1/images`, method: 'GET', headers: {}, id: 'stop-me', timeoutMs: 60000 }).then(() => 'answered', (e) => String(e.message || e));
+    await new Promise((r) => setTimeout(r, 300));
+    const c = await d.cancelRequest({ id: 'stop-me' }), again = await d.cancelRequest({ id: 'stop-me' });
+    return { result: await p, ms: Date.now() - t0, c, again };
+  }, slow.address().port);
+  slow.close();
+  check('desktop: a request cancelled by its id (Stop AI) ends at once', [/Stopped/.test(stop.result), stop.ms < 3000, stop.c.cancelled, stop.again.cancelled], [true, true, true, false], JSON.stringify(stop));
   // Writes that must not replace a file ('rename'), and a folder that is gone is an error, not its parent's listing.
   // The folder was only read so far: saving into it asks the user first (a native question; refused once here, then allowed).
   await app.evaluate(() => { globalThis.__answer = 1; });

@@ -213,3 +213,26 @@ describe('removing a key from one command', () => {
     expect(keyCommands('Space', defaults, { Space: '' })).toEqual([]);
   });
 });
+
+describe('dialogs are modal', () => {
+  it('keep Tab inside, make the page behind inert, and ignore an Enter that ends an IME composition', async () => {
+    const { openDialog } = await import('../../src/ui/dialog');
+    const page = document.createElement('div'); page.id = 'app'; page.appendChild(document.createElement('button')); document.body.appendChild(page);
+    let result: unknown = 'pending';
+    const p = openDialog({ title: 'T', fields: [{ key: 'a', label: 'A', type: 'text', value: '' }] }).then((r) => { result = r; });
+    const box = document.querySelector('.ql-dialog') as HTMLElement;
+    for (const el of box.querySelectorAll<HTMLElement>('button, input')) Object.defineProperty(el, 'offsetParent', { get: () => document.body });
+    expect(page.hasAttribute('inert')).toBe(true);
+    const ctrls = [...box.querySelectorAll<HTMLElement>('button, input')];
+    const tab = (shift = false) => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: shift, bubbles: true, cancelable: true }));
+    ctrls[ctrls.length - 1].focus(); tab(); expect(document.activeElement).toBe(ctrls[0]);           // past the last: the first
+    tab(true); expect(document.activeElement).toBe(ctrls[ctrls.length - 1]);                          // before the first: the last
+    const input = box.querySelector('input')!; input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+    await Promise.resolve(); expect(result).toBe('pending');                                          // the composition's Enter
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await p;
+    expect(result).toEqual({ a: '' }); expect(page.hasAttribute('inert')).toBe(false);
+    page.remove();
+  });
+});

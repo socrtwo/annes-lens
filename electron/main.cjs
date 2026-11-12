@@ -161,7 +161,7 @@ function fileResult(p) {
   const data = fs.readFileSync(p);
   const st = fs.statSync(p);
   const ext = path.extname(p).slice(1).toLowerCase();
-  return { uri: pathToFileURL(p).href, name: path.basename(p), mime: MIME[ext] || 'application/octet-stream', data: data.toString('base64'), size: st.size, mtime: st.mtimeMs };
+  return { uri: pathToFileURL(p).href, name: path.basename(p), mime: MIME[ext] || 'application/octet-stream', data, size: st.size, mtime: st.mtimeMs }; // bytes cross IPC as a Uint8Array: no base64 copy a third larger
 }
 /** The picture files in a folder, natural-sorted, as {uri, name, size, mtime}. */
 // Next / Previous Folder walk the folder tree the user is browsing: each folder reached that way is
@@ -198,10 +198,12 @@ function listDir(dir, all = false) {
   out.sort((a, b) => collator.compare(a.name, b.name));
   return out;
 }
-function filesFromArgs(argv) {
+// A second launch passes its own working directory: relative names are resolved against it, not ours.
+function filesFromArgs(argv, cwd = process.cwd()) {
   const out = [];
-  for (const a of argv.slice(1)) {
-    if (!a || a.startsWith('-')) continue;
+  for (const arg of argv.slice(1)) {
+    if (!arg || arg.startsWith('-')) continue;
+    const a = path.resolve(cwd, arg);
     try { if (fs.statSync(a).isFile() && (isPictureName(a) || !path.extname(a) || (isSharedName(a) && fs.statSync(a).size <= sharedMax(a)))) out.push(path.resolve(a)); else if (fs.statSync(a).isDirectory()) { for (const e of listDir(a)) out.push(fileURLToPath(e.uri)); } } catch { /* not a file */ }
   }
   return out;
@@ -479,12 +481,16 @@ function registerIpc() {
     const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
     if (m) { try { name = decodeURIComponent(m[1]); } catch { name = m[1]; } }
     if (!name) { try { name = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch { /* */ } }
-    return { name: name || 'picture', mime: res.headers.get('content-type') || 'application/octet-stream', data: buf.toString('base64') };
+    return { name: name || 'picture', mime: res.headers.get('content-type') || 'application/octet-stream', data: buf };
   });
   // AI services: an HTTP request from the main process (no cross-origin limits). Body and answer as base64.
-  handle('request', async ({ url, method, headers, body, timeoutMs }) => {
+  // Requests the page can stop by id (Stop AI): the answer is not waited for, and the connection is closed.
+  const requests = new Map();
+  handle('cancelRequest', async ({ id }) => { const r = requests.get(String(id)); if (r) { r.stopped = true; r.ctl.abort(); requests.delete(String(id)); } return { cancelled: !!r }; });
+  handle('request', async ({ url, method, headers, body, timeoutMs, id }) => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw new Error('Only http(s) addresses can be requested');
-    const ctl = new AbortController();
+    const ctl = new AbortController(), entry = { ctl, stopped: false };
+    if (id) requests.set(String(id), entry);
     const timer = setTimeout(() => ctl.abort(), Math.min(Math.max(Number(timeoutMs) || 180000, 1000), 600000));
     try {
       const h = {};
@@ -493,11 +499,12 @@ function registerIpc() {
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > 256 * 1024 * 1024) throw new Error('The answer is larger than 256 MB');
       const out = {}; res.headers.forEach((v, k) => { out[k] = v; });
-      return { status: res.status, headers: out, data: buf.toString('base64') };
+      return { status: res.status, headers: out, data: buf };
     } catch (e) {
+      if (entry.stopped) throw new Error('Stopped');
       if (ctl.signal.aborted) throw new Error('The service did not answer in time');
       throw e;
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); if (id) requests.delete(String(id)); }
   });
   // Platform-bound file commands: wallpaper, the OS properties window, Copy as File, file associations,
   // scanners (SANE on Linux, WIA on Windows) and subfolders for Import from Camera.
@@ -600,7 +607,7 @@ function registerIpc() {
         if (r.err) throw new Error(r.stderr.trim() || r.err.message);
       } else throw new Error('Scanning through the system is not available on this platform');
       const data = fs.readFileSync(file);
-      return { name: path.basename(file), mime: 'image/png', data: data.toString('base64') };
+      return { name: path.basename(file), mime: 'image/png', data };
     } finally { try { fs.unlinkSync(file); } catch { /* */ } }
   });
   handle('createSubfolder', async ({ dirUri, name }) => {
@@ -663,7 +670,10 @@ function registerIpc() {
         const profile = path.join(app.getPath('appData'), 'QuillLens');
         fs.mkdirSync(profile, { recursive: true });
         fs.cpSync(portableDir, profile, { recursive: true, force: true, filter: (src) => !/[\\/](Cache|Code Cache|GPUCache|DawnCache|logs)([\\/]|$)/.test(src) });
-        fs.renameSync(portableDir, portableDir + '.off');
+        // A folder set aside by an earlier switch keeps its name; this one takes the next free one.
+        let off = portableDir + '.off';
+        for (let n = 2; fs.existsSync(off); n++) off = `${portableDir}.off ${n}`;
+        fs.renameSync(portableDir, off);
       }
       return { ok: true };
     } catch (e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
@@ -780,8 +790,8 @@ function createWindow(bounds, opts = {}) {
   void win.loadURL(`${ORIGIN}/index.html`);
 }
 
-app.on('second-instance', (_e, argv) => {
-  const files = filesFromArgs(argv);
+app.on('second-instance', (_e, argv, workingDirectory) => {
+  const files = filesFromArgs(argv, typeof workingDirectory === 'string' && workingDirectory ? workingDirectory : process.cwd());
   if (files.length) openExternalFiles(files);
   else if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });

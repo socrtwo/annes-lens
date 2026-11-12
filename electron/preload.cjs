@@ -6,7 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const call = (name) => (opts) => ipcRenderer.invoke('ql:' + name, opts);
 const methods = ['openDocument', 'openFolder', 'listFolder', 'saveAs', 'writeUri', 'readUri', 'print', 'share', 'getLaunchFile', 'keepAwake', 'readClipboard', 'writeClipboard', 'openExternal', 'revealInFolder', 'openWith', 'setAlwaysOnTop', 'minimize', 'fitWindow', 'getArgs', 'getPortableMode', 'setPortableMode', 'relaunch',
-  'renameDocument', 'deleteDocument', 'pickFolder', 'moveFile', 'copyFile', 'createInFolder', 'setFileTime', 'fetchUrl', 'pickProgram', 'openWithProgram', 'request',
+  'renameDocument', 'deleteDocument', 'pickFolder', 'moveFile', 'copyFile', 'createInFolder', 'setFileTime', 'fetchUrl', 'pickProgram', 'openWithProgram', 'request', 'cancelRequest',
   'setWallpaper', 'showProperties', 'copyFileToClipboard', 'setAssociations', 'listScanners', 'scan', 'createSubfolder',
   'listSubfolders', 'parentFolder', 'rememberFolder', 'secretInfo', 'secretGet', 'secretSet', 'secretDelete', 'remoteStart', 'remoteStop', 'remoteState', 'shareStart', 'shareState', 'shareAlbum', 'shareStop', 'listDisplays', 'moveToDisplay', 'setFrameless', 'windowControl', 'cliJob', 'cliWrite', 'cliDone'];
 

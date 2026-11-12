@@ -2634,6 +2634,35 @@ print(json.dumps({'caption': [q.text for q in d.paragraphs if q.style.name == 'C
   await pFollow.close();
   await pctx.close();
 
+  // Offline (U9): after one visit the service worker holds the release's scripts, so the app starts with no
+  // network; a cache from an earlier release is removed when the worker takes over.
+  {
+    const octx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
+    const po = await octx.newPage();
+    await po.addInitScript(() => localStorage.setItem('quilllens.prefs.v1', JSON.stringify({ firstRun: false })));
+    await po.goto(url, { waitUntil: 'networkidle' });
+    const first = await po.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      let reg = null; for (let i = 0; i < 100 && !(reg = await navigator.serviceWorker.getRegistration()); i++) await wait(100);
+      await navigator.serviceWorker.ready;
+      for (let i = 0; i < 100 && !navigator.serviceWorker.controller; i++) await wait(100);
+      const keys = await caches.keys(), name = keys.find((k) => /^quilllens-[0-9a-f]{12}$/.test(k));
+      const scripts = [...document.querySelectorAll('script[src]')].map((s) => s.src);
+      const c = name ? await caches.open(name) : null, held = c ? await Promise.all(scripts.map(async (s) => !!(await c.match(s)))) : [];
+      // An earlier release's cache, then a fresh install of this one.
+      await (await caches.open('quilllens-v1')).put('./old.js', new Response('old'));
+      await reg.unregister();
+      return { name, scripts: scripts.length, held: held.every(Boolean) };
+    });
+    await po.reload({ waitUntil: 'networkidle' });
+    const second = await po.evaluate(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); await navigator.serviceWorker.ready; for (let i = 0; i < 100 && (await caches.keys()).includes('quilllens-v1'); i++) await wait(100); return caches.keys(); });
+    await octx.setOffline(true);
+    await po.reload({ waitUntil: 'load' });
+    const off = await po.waitForSelector('.qn-viewer', { timeout: 15000 }).then(() => true, () => false);
+    check('offline after one visit: the release is precached and the app starts without the network; old caches are removed', [!!first.name, first.scripts > 0, first.held, second, off], [true, true, true, [first.name], true], JSON.stringify(first));
+    await octx.close();
+  }
+
   if (errs.length) failures.push(...errs);
 } finally {
   relay.close();

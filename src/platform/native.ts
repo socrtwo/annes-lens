@@ -16,7 +16,8 @@ import { download, pickFile } from '../ui/dom';
 export interface OpenedFile { name: string; data: ArrayBuffer; uri: string | null; mime?: string; size?: number; mtime?: number }
 export interface FolderEntry { uri: string; name: string; size?: number; mtime?: number }
 
-interface NativeFile { uri?: string; name?: string; mime?: string; data?: string; files?: NativeFile[] }
+type Bytes = string /* base64 */ | Uint8Array;
+interface NativeFile { uri?: string; name?: string; mime?: string; data?: Bytes; files?: NativeFile[] }
 
 interface QuillNativePlugin {
   /** ACTION_OPEN_DOCUMENT. Resolves {canceled:true} when dismissed; {files} when several were picked. */
@@ -26,7 +27,7 @@ interface QuillNativePlugin {
   /** Overwrite an existing document URI obtained from openDocument/saveAs (persisted permission). */
   writeUri(opts: { uri: string; data: string /* base64 */ }): Promise<{ ok: boolean }>;
   /** Read a URI again (recent files, folder entries). */
-  readUri(opts: { uri: string }): Promise<{ name?: string; mime?: string; data: string; size?: number; mtime?: number }>;
+  readUri(opts: { uri: string }): Promise<{ name?: string; mime?: string; data: Bytes; size?: number; mtime?: number }>;
   /** Print the current WebView through PrintManager. */
   print(opts: { jobName: string }): Promise<void>;
   /** Share a file through ACTION_SEND. */
@@ -52,7 +53,7 @@ interface QuillNativePlugin {
   createSubfolder?(opts: { dirUri: string; name: string }): Promise<{ uri: string; name: string }>;
   openDefaultApps?(): Promise<{ ok: boolean }>;
   /** HTTP request for AI services through the native layer (Android: HttpURLConnection). */
-  request?(opts: { url: string; method: string; headers: Record<string, string>; body?: string; timeoutMs?: number }): Promise<{ status: number; headers: Record<string, string>; data: string }>;
+  request?(opts: { url: string; method: string; headers: Record<string, string>; body?: string; timeoutMs?: number }): Promise<{ status: number; headers: Record<string, string>; data: Bytes }>;
   /** File operations (M2). Android: Storage Access Framework; desktop: the file system. */
   renameDocument?(opts: { uri: string; name: string }): Promise<{ uri: string; name: string }>;
   deleteDocument?(opts: { uri: string; permanent?: boolean }): Promise<{ ok: boolean; trashed?: boolean }>;
@@ -98,7 +99,7 @@ interface DesktopBridge extends QuillNativePlugin {
   deleteDocument(opts: { uri: string; permanent?: boolean }): Promise<{ ok: boolean; trashed?: boolean }>;
   pickFolder(opts: { title?: string }): Promise<{ canceled?: boolean; uri?: string; name?: string }>;
   /** Downloads a picture in the main process (no CORS). */
-  fetchUrl(opts: { url: string }): Promise<{ name: string; mime: string; data: string }>;
+  fetchUrl(opts: { url: string }): Promise<{ name: string; mime: string; data: Bytes }>;
   pickProgram(): Promise<{ canceled?: boolean; path?: string; name?: string }>;
   /** `args` may hold {file}, {folder} and {name}; without it the program gets the file's path. */
   openWithProgram(opts: { uri: string; program: string; args?: string[] }): Promise<{ ok: boolean; error?: string }>;
@@ -108,10 +109,10 @@ interface DesktopBridge extends QuillNativePlugin {
   copyFileToClipboard(opts: { name?: string; mime?: string; data?: string; uri?: string }): Promise<{ ok: boolean; uri?: string; how?: string }>;
   setAssociations(opts: { exts: string[] }): Promise<{ ok: boolean; how: string; done: string[]; failed: string[] }>;
   listScanners(): Promise<{ devices: { id: string; name: string }[]; note: string }>;
-  scan(opts: { device?: string; dpi: number; mode: 'color' | 'gray' }): Promise<{ name: string; mime: string; data: string }>;
+  scan(opts: { device?: string; dpi: number; mode: 'color' | 'gray' }): Promise<{ name: string; mime: string; data: Bytes }>;
   createSubfolder(opts: { dirUri: string; name: string }): Promise<{ uri: string; name: string }>;
-  /** HTTP request for AI services (no cross-origin limits). Body and answer travel as base64. */
-  request(opts: { url: string; method: string; headers: Record<string, string>; body?: string; timeoutMs?: number }): Promise<{ status: number; headers: Record<string, string>; data: string }>;
+  /** HTTP request for AI services (no cross-origin limits). The body travels as base64; the answer as bytes. */
+  request(opts: { url: string; method: string; headers: Record<string, string>; body?: string; timeoutMs?: number; id?: string }): Promise<{ status: number; headers: Record<string, string>; data: Bytes }>;
   /** Phone Remote: the local-network server for slideshows, its state, and the phone's commands (addListener 'remoteCommand'). */
   remoteStart(opts: { port?: number }): Promise<{ urls: string[]; port: number }>;
   remoteStop(): Promise<{ ok: boolean }>;
@@ -184,7 +185,13 @@ export function b64FromBuffer(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
-export function bufferFromB64(b64: string): ArrayBuffer {
+/** Base64 (Android, iOS, services) or raw bytes (the desktop bridge sends files as bytes) to an ArrayBuffer of exactly the data. */
+export function bufferFromB64(b64: string | ArrayBuffer | ArrayBufferView): ArrayBuffer {
+  if (b64 instanceof ArrayBuffer) return b64;
+  if (ArrayBuffer.isView(b64)) {
+    const v = b64 as ArrayBufferView;
+    return v.byteOffset === 0 && v.byteLength === v.buffer.byteLength && v.buffer instanceof ArrayBuffer ? v.buffer : new Uint8Array(v.buffer, v.byteOffset, v.byteLength).slice().buffer;
+  }
   const s = atob(b64);
   const u8 = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
@@ -375,11 +382,22 @@ export async function fetchPicture(url: string): Promise<OpenedFile> {
 }
 
 /** An HTTP request through the native layer; null when running in a plain browser (use fetch). */
-export async function nativeRequest(o: { url: string; method: string; headers: Record<string, string>; body?: string | Uint8Array; timeoutMs?: number }): Promise<{ status: number; headers: Record<string, string>; bytes: Uint8Array } | null> {
+/**
+ * An HTTP request through the native layer (desktop and Android: no cross-origin limits), or null where there is none.
+ * `signal` stops it (Stop AI): the promise rejects with "Stopped" at once, and the native side closes the connection.
+ */
+export async function nativeRequest(o: { url: string; method: string; headers: Record<string, string>; body?: string | Uint8Array; timeoutMs?: number; signal?: AbortSignal }): Promise<{ status: number; headers: Record<string, string>; bytes: Uint8Array } | null> {
   const bridge: any = desktop || (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('QuillNative') ? Native : null);
   if (!bridge?.request) return null;
+  if (o.signal?.aborted) throw new Error('Stopped');
   const body = o.body === undefined ? undefined : typeof o.body === 'string' ? b64FromBuffer(new TextEncoder().encode(o.body).buffer as ArrayBuffer) : b64FromBuffer(o.body.buffer.slice(o.body.byteOffset, o.body.byteOffset + o.body.byteLength) as ArrayBuffer);
-  const r = await bridge.request({ url: o.url, method: o.method, headers: o.headers, body, timeoutMs: o.timeoutMs });
+  const id = o.signal ? `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined;
+  const call = bridge.request({ url: o.url, method: o.method, headers: o.headers, body, timeoutMs: o.timeoutMs, id });
+  let onAbort: (() => void) | null = null;
+  const stopped = o.signal ? new Promise<never>((_, reject) => { onAbort = () => { void Promise.resolve(bridge.cancelRequest?.({ id })).catch(() => undefined); reject(new Error('Stopped')); }; o.signal!.addEventListener('abort', onAbort, { once: true }); }) : null;
+  let r: any;
+  try { r = await (stopped ? Promise.race([call, stopped]) : call); }
+  finally { if (onAbort) o.signal!.removeEventListener('abort', onAbort); call.catch?.(() => undefined); }
   const headers: Record<string, string> = {}; for (const [k, v] of Object.entries(r.headers || {})) headers[k.toLowerCase()] = String(v);
   return { status: r.status, headers, bytes: new Uint8Array(bufferFromB64(r.data || '')) };
 }

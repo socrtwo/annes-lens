@@ -15,6 +15,7 @@ import { openFiles, openDroppedFiles } from './commands/file';
 import { pasteAsNew } from './commands/edit';
 import { applyPreferred } from './i18n/languages';
 import { installCustomMenus } from './ui/classicMenus';
+import { closePalette } from './ui/shell';
 
 const host = document.getElementById('app')!;
 
@@ -110,6 +111,7 @@ if (!isNative() && !isCapacitor() && 'serviceWorker' in navigator && /^https?:$/
 }
 
 onBackButton(() => {
+  if (closePalette()) return true; // the command palette, before anything under it
   if (document.querySelector('.ql-menu')) { closeMenus(); return true; }
   if (inDialog()) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); return true; }
   if (host.classList.contains('ql-backstage-open')) { app.ui.hideBackstage(); return true; }

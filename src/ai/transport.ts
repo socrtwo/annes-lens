@@ -22,7 +22,7 @@ function wrap(status: number, headers: Record<string, string>, bytes: Uint8Array
 export async function aiRequest(r: AiHttpRequest): Promise<AiHttpResponse> {
   if (requestOverride) return requestOverride(r);
   if (!/^https?:\/\//i.test(r.url)) throw new Error('The service address must start with http:// or https://');
-  const native = await nativeRequest({ url: r.url, method: r.method || 'GET', headers: r.headers || {}, body: r.body, timeoutMs: r.timeoutMs });
+  const native = await nativeRequest({ url: r.url, method: r.method || 'GET', headers: r.headers || {}, body: r.body, timeoutMs: r.timeoutMs, signal: r.signal });
   if (native) return wrap(native.status, native.headers, native.bytes);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), r.timeoutMs ?? 180000);

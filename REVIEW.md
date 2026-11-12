@@ -115,6 +115,17 @@ checked by reading and by the suites still passing, not by a test of their own.
   window (the arrows move it); release builds of the desktop app carry their runtimes, and staging fails
   without them.
 
+- **Interface: U6, U9, U10, U12, U13.** Dialogs are modal: the page behind them is inert, Tab stays inside, and
+  Enter that ends an IME composition no longer presses the default button; Android's back button closes the
+  command palette first. Sharing several files to the Android app sends them all without a cyclic object, and
+  "Edit with" (ACTION_EDIT) opens the file. Stop AI ends a request on the desktop and Android at once and the
+  native side drops the connection. Desktop files cross the bridge as bytes, not base64 (Android keeps its 64 MB
+  limit with its message); a second launch resolves relative names against its own working directory; turning
+  portable mode off a second time picks a free name for the set-aside folder. The service worker precaches the
+  release's own scripts, styles and icons under a cache named after them, drops earlier releases' caches,
+  matches module requests despite `Vary: Origin`, and never stores an error page as the app (offline start is
+  checked in the web e2e).
+
 Everything else below is still open.
 
 ## 1. Data loss and wrong files written (fix first)

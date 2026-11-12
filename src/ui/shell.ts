@@ -22,6 +22,10 @@ import { removedFrom } from '../util/keymap';
  * ("fill", "single", a rule's name) instead of a command id runs the owning command with that value. Menus written
  * that way answered "Unknown command".
  */
+/** Closes the command palette when it is open (Android's Back button); false when it was not. */
+let paletteClose: (() => void) | null = null;
+export function closePalette(): boolean { if (!paletteClose) return false; paletteClose(); return true; }
+
 export function ownEntries(c: Command, entries: MenuEntry[]): MenuEntry[] {
   return entries.map((e) => (e.submenu ? { ...e, submenu: ownEntries(c, e.submenu) } : e.id && !getCommand(e.id) ? { ...e, id: c.id, arg: e.arg !== undefined ? e.arg : e.id } : e));
 }
@@ -484,7 +488,8 @@ export class Shell {
     document.body.appendChild(overlay);
     let results: Command[] = [];
     let sel = 0;
-    const close = () => { overlay.remove(); app.focus(); };
+    const close = () => { overlay.remove(); paletteClose = null; app.focus(); };
+    paletteClose = close;
     const run = (c: Command) => { close(); if (c.kind === 'menu' && c.menu) this.openCommandMenu(c, this.anchorFor(c.id)); else app.exec(c.id); };
     const draw = () => {
       clear(list);

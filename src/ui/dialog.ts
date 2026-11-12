@@ -93,6 +93,21 @@ let dialogDepth = 0;
 /** Open dialogs, innermost last: only the top one handles Escape and Enter. */
 const dialogStack: HTMLElement[] = [];
 
+/** What a dialog can be moved to with Tab. */
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/**
+ * Makes everything on the page except `keep` (and the toasts) inert: not focusable, not clickable, hidden from screen
+ * readers, as a modal dialog requires. Returns the undo.
+ */
+export function inertExcept(keep: HTMLElement): () => void {
+  const made: HTMLElement[] = [];
+  for (const el of Array.from(document.body.children) as HTMLElement[]) {
+    if (el === keep || el.classList.contains('ql-toasts') || el.hasAttribute('inert')) continue;
+    el.setAttribute('inert', ''); made.push(el);
+  }
+  return () => { for (const el of made) el.removeAttribute('inert'); };
+}
+
 export function openDialog(opts: DialogOptions): Promise<Record<string, any> | null> {
   return new Promise((resolve) => {
     dialogDepth++;
@@ -158,6 +173,7 @@ export function openDialog(opts: DialogOptions): Promise<Record<string, any> | n
       overlay.classList.add('ql-out');
       setTimeout(() => overlay.remove(), 120);
       document.removeEventListener('keydown', onKey, true);
+      releaseInert();
       prevFocus?.focus?.();
       resolve(result);
     }
@@ -167,6 +183,18 @@ export function openDialog(opts: DialogOptions): Promise<Record<string, any> | n
       const plainEsc = e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
       if ((e.target as HTMLElement | null)?.closest?.('[data-capture-keys]') && !plainEsc) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); finish(null); }
+      // Tab stays inside the dialog: from the last control to the first, and back.
+      if (e.key === 'Tab') {
+        const all = [...box.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null || x === document.activeElement);
+        if (all.length) {
+          const i = all.indexOf(document.activeElement as HTMLElement);
+          if (e.shiftKey && i <= 0) { e.preventDefault(); all[all.length - 1].focus(); }
+          else if (!e.shiftKey && (i === all.length - 1 || i < 0)) { e.preventDefault(); all[0].focus(); }
+        }
+        return;
+      }
+      // Enter that ends an input method's composition (Japanese, Chinese, Korean) picks the text, not OK.
+      if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) return;
       if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement) && opts.ok !== false) {
         e.preventDefault(); e.stopImmediatePropagation(); okClick();
       }
@@ -191,6 +219,7 @@ export function openDialog(opts: DialogOptions): Promise<Record<string, any> | n
     overlay.appendChild(box);
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay && !isPhone()) finish(null); });
     document.body.appendChild(overlay);
+    const releaseInert = inertExcept(overlay); // the page behind (and any dialog under this one) cannot be reached
     dialogStack.push(overlay);
     document.addEventListener('keydown', onKey, true);
     build();
