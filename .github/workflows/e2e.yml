@@ -37,6 +37,14 @@ jobs:
       - run: npm ci
       - name: Chromium for Playwright
         run: npx playwright install --with-deps chromium
+      # People runs the real SFace model (9.9 MB, Apache-2.0, OpenCV Zoo); the test takes it from this cache.
+      # The checksum is that of the copy scripts/gen-people-fixtures.py downloaded from the same address.
+      - name: Face model for the People test
+        run: |
+          D=node_modules/.cache/annes-lens-models; mkdir -p "$D"
+          curl -fsSL -A 'AnnesLensTests/1.0 (https://github.com/socrtwo/annes-lens; test fixtures)' -o "$D/face_recognition_sface_2021dec_int8.onnx" \
+            https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec_int8.onnx
+          echo "2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a  $D/face_recognition_sface_2021dec_int8.onnx" | sha256sum -c -
       - name: Build with the test hooks
         run: npm run build:test
       - name: Web end-to-end
