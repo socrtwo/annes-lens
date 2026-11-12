@@ -42,6 +42,13 @@ export async function encodePng(r: Raster): Promise<Uint8Array> {
 }
 
 /** APNG: every frame full-size, delays in milliseconds, loops 0 = forever. */
+/** A frame delay in milliseconds as fcTL's 16-bit fraction of a second: the finest denominator that holds it (W26: over 65.5 s, ms wrapped). */
+export function apngDelay(delayMs: number): [number, number] {
+  const ms = Math.max(1, Math.round(delayMs || 0));
+  for (const den of [1000, 100, 10]) { const num = Math.round((ms * den) / 1000); if (num <= 0xffff) return [Math.max(1, num), den]; }
+  return [Math.min(0xffff, Math.round(ms / 1000)), 1];
+}
+
 export async function encodeApng(frames: { raster: Raster; delay: number }[], loops = 0): Promise<Uint8Array> {
   const w = frames[0].raster.width, h = frames[0].raster.height;
   const ihdr = new Uint8Array(13); const dv = new DataView(ihdr.buffer); dv.setUint32(0, w); dv.setUint32(4, h); ihdr[8] = 8; ihdr[9] = 6;
@@ -52,7 +59,7 @@ export async function encodeApng(frames: { raster: Raster; delay: number }[], lo
     const f = frames[i];
     const fctl = new Uint8Array(26); const d = new DataView(fctl.buffer);
     d.setUint32(0, seq++); d.setUint32(4, f.raster.width); d.setUint32(8, f.raster.height); d.setUint32(12, 0); d.setUint32(16, 0);
-    const ms = Math.max(1, Math.round(f.delay)); d.setUint16(20, ms); d.setUint16(22, 1000); fctl[24] = 0; fctl[25] = 0;
+    const [num, den] = apngDelay(f.delay); d.setUint16(20, num); d.setUint16(22, den); fctl[24] = 0; fctl[25] = 0;
     parts.push(chunk('fcTL', fctl));
     const z = await deflate(rows(f.raster));
     if (i === 0) parts.push(chunk('IDAT', z));

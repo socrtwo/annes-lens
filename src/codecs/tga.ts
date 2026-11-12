@@ -133,11 +133,14 @@ function readPixel(u8: Uint8Array, o: number, bits: number, alphaBits: number): 
 /** Writes an uncompressed true-color TGA (24-bit when opaque, 32-bit with 8 alpha bits otherwise), top-down, with the 2.0 footer. */
 export function encodeTga(r: Raster, opts: { rle?: boolean } = {}): Uint8Array {
   const { width: w, height: h, data } = r;
+  if (w > 0xffff || h > 0xffff) throw new Error(`TGA stores at most 65535 × 65535 pixels; this picture is ${w} × ${h}`);
   let alpha = false;
   for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) { alpha = true; break; }
   const bpp = alpha ? 4 : 3;
-  const body: number[] = [];
-  const px = (i: number) => (alpha ? [data[i + 2], data[i + 1], data[i], data[i + 3]] : [data[i + 2], data[i + 1], data[i]]);
+  // One typed buffer (a number[] of every byte ran out of memory on large pictures; W26): raw size, plus one header byte per RLE packet, grown if needed.
+  let body = new Uint8Array(w * h * bpp + (opts.rle ? h * Math.ceil(w / 128) + 64 : 0)), n = 0;
+  const need = (k: number) => { if (n + k <= body.length) return; const b = new Uint8Array(Math.max(body.length * 1.5, n + k) | 0); b.set(body.subarray(0, n)); body = b; };
+  const px = (i: number) => { body[n++] = data[i + 2]; body[n++] = data[i + 1]; body[n++] = data[i]; if (alpha) body[n++] = data[i + 3]; };
   if (opts.rle) {
     for (let y = 0; y < h; y++) {
       let x = 0;
@@ -145,23 +148,23 @@ export function encodeTga(r: Raster, opts: { rle?: boolean } = {}): Uint8Array {
         const i0 = (y * w + x) * 4;
         let run = 1;
         while (x + run < w && run < 128 && same(data, i0, i0 + run * 4)) run++;
-        if (run > 1) { body.push(0x80 | (run - 1), ...px(i0)); x += run; continue; }
+        if (run > 1) { need(1 + bpp); body[n++] = 0x80 | (run - 1); px(i0); x += run; continue; }
         let lit = 1;
         while (x + lit < w && lit < 128 && !(x + lit + 1 < w && same(data, i0 + lit * 4, i0 + (lit + 1) * 4))) lit++;
-        body.push(lit - 1);
-        for (let k = 0; k < lit; k++) body.push(...px(i0 + k * 4));
+        need(1 + lit * bpp); body[n++] = lit - 1;
+        for (let k = 0; k < lit; k++) px(i0 + k * 4);
         x += lit;
       }
     }
   } else {
-    for (let i = 0; i < data.length; i += 4) body.push(...px(i));
+    for (let i = 0; i < data.length; i += 4) px(i);
   }
-  const out = new Uint8Array(18 + body.length + 26);
+  const out = new Uint8Array(18 + n + 26);
   out[2] = opts.rle ? 10 : 2;
   out[12] = w & 255; out[13] = w >> 8; out[14] = h & 255; out[15] = h >> 8;
   out[16] = bpp * 8; out[17] = 0x20 | (alpha ? 8 : 0);
-  out.set(body, 18);
-  for (let i = 0; i < FOOTER.length; i++) out[18 + body.length + 8 + i] = FOOTER.charCodeAt(i);
+  out.set(body.subarray(0, n), 18);
+  for (let i = 0; i < FOOTER.length; i++) out[18 + n + 8 + i] = FOOTER.charCodeAt(i);
   return out;
 }
 

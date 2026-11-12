@@ -194,13 +194,17 @@ function convolve1d(src: Raster, k: Float32Array, horizontal: boolean): Raster {
   const w = src.width, h = src.height, half = (k.length - 1) / 2;
   const out = makeRaster(w, h); const s = src.data, d = out.data;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let r = 0, g = 0, b = 0, a = 0;
+    // Weighted by alpha (premultiplied), so transparent pixels lend no color to the edge of a cut-out.
+    let r = 0, g = 0, b = 0, a = 0, pr = 0, pg = 0, pb = 0;
     for (let i = -half; i <= half; i++) {
       const xx = horizontal ? Math.min(w - 1, Math.max(0, x + i)) : x, yy = horizontal ? y : Math.min(h - 1, Math.max(0, y + i));
-      const o = (yy * w + xx) * 4, wt = k[i + half];
-      r += s[o] * wt; g += s[o + 1] * wt; b += s[o + 2] * wt; a += s[o + 3] * wt;
+      const o = (yy * w + xx) * 4, wt = k[i + half], wa = wt * s[o + 3];
+      r += s[o] * wa; g += s[o + 1] * wa; b += s[o + 2] * wa; a += wa;
+      pr += s[o] * wt; pg += s[o + 1] * wt; pb += s[o + 2] * wt;
     }
-    const o = (y * w + x) * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a;
+    const o = (y * w + x) * 4;
+    if (a > 0) { d[o] = r / a; d[o + 1] = g / a; d[o + 2] = b / a; } else { d[o] = pr; d[o + 1] = pg; d[o + 2] = pb; }
+    d[o + 3] = a;
   }
   return out;
 }

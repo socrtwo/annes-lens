@@ -126,6 +126,17 @@ checked by reading and by the suites still passing, not by a test of their own.
   matches module requests despite `Vary: Origin`, and never stores an error page as the app (offline start is
   checked in the web e2e).
 
+- **Wrong results: W15, W20 to W27.** HEIF and AVIF brands (`heis`, `hevc`, `avio`, `miaf`, `mif2`, ...) open as
+  pictures, not video; a gzip stream is identified by what it holds (SVG, EMF, WMF, FITS) instead of being taken for
+  SVG, and `.svgz` is unpacked before rendering. Seam insertion keeps the seam pixel before the blended one and maps
+  seams back by undoing removals latest first. Blur, rotation, warps and remaps weight colors by alpha, so cut-outs
+  keep clean edges. Batch names get `{exifdate}`, `{exiftime}`, `{make}`, `{model}`, `{w}`, `{h}` from the files,
+  and the preview says when a file has no EXIF date. Export Animation puts pages of different sizes on one canvas
+  of the largest width and height. Date fields are local days. Multipage ▸ Split writes TIFF through the app's own
+  writer and reports why a file failed. APNG delays over 65.5 s keep their length; the TGA writer uses one typed
+  buffer and refuses sizes TGA cannot store. Window / Level previews through the same path as opening, so it works
+  for presentation states and baseline-JPEG DICOM.
+
 Everything else below is still open.
 
 ## 1. Data loss and wrong files written (fix first)

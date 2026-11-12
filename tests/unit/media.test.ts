@@ -64,3 +64,34 @@ describe('video and audio containers (ffmpeg files; ffprobe\'s readings)', () =>
     expect(readMedia(cut)!.warnings[0]).toMatch(/No movie header/);
   });
 });
+
+describe('HEIF and AVIF brands and gzip streams (W15)', () => {
+  const box = (type: string, body: Uint8Array) => { const b = new Uint8Array(8 + body.length); new DataView(b.buffer).setUint32(0, b.length); b.set([...type].map((c) => c.charCodeAt(0)), 4); b.set(body, 8); return b; };
+  const ascii = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0));
+  const ftyp = (major: string, ...compat: string[]) => box('ftyp', ascii(major + '\0\0\0\0' + compat.join('')));
+  const cat = (...parts: Uint8Array[]) => { const o = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let p = 0; for (const x of parts) { o.set(x, p); p += x.length; } return o; };
+  it('still-picture brands are not video; a real MP4 still is', async () => {
+    const { sniff } = await import('../../src/codecs/registry');
+    const meta = box('meta', new Uint8Array(16));
+    for (const [major, want] of [['heis', 'heic'], ['hevc', 'heic'], ['avio', 'avif'], ['miaf', 'heic'], ['mif2', 'heic']] as const) {
+      const f = cat(ftyp(major, 'mif1'), meta);
+      expect(sniffMedia(f), major).toBeNull();
+      expect(sniff(f)?.id, major).toBe(want);
+    }
+    expect(sniff(cat(ftyp('miaf', 'avif', 'mif1'), meta))?.id).toBe('avif');
+    // A general major brand listing an image brand, without a movie box, is a picture; with one it stays video.
+    expect(sniffMedia(cat(ftyp('isom', 'mif1', 'heic'), meta))).toBeNull();
+    expect(sniffMedia(cat(ftyp('isom', 'iso2', 'mp41'), box('moov', new Uint8Array(8))))?.kind).toBe('video');
+  });
+  it('gzip streams are identified by what they hold; .svgz renders', async () => {
+    const { sniff } = await import('../../src/codecs/registry');
+    const { gzipSync } = await import('node:zlib');
+    const gz = (s: string | Uint8Array) => new Uint8Array(gzipSync(typeof s === 'string' ? Buffer.from(s) : s));
+    expect(sniff(gz('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>'), 'x.bin')?.id).toBe('svg');
+    expect(sniff(gz('just a log file\n'.repeat(50)), 'server.log.gz')).toBeNull();
+    const emf = new Uint8Array(200); emf[0] = 1; emf.set(ascii(' EMF'), 40);
+    expect(sniff(gz(emf), 'a.gz')?.id).toBe('emf');
+    const fits = ascii('SIMPLE  =                    T'.padEnd(2880, ' '));
+    expect(sniff(gz(fits), 'image.gz')?.id).toBe('fits');
+  });
+});

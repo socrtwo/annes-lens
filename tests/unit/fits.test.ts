@@ -15,7 +15,7 @@ describe('FITS (files written from the standard with numpy)', () => {
     expect(isFits(fx('int16-bzero.fits.gz'))).toBe(false);
     expect(sniff(fx('float32-star.fits'), 'x')?.id).toBe('fits');
     expect(sniff(fx('int16-bzero.fits.gz'), 'sky.fits.gz')?.id).toBe('fits');
-    expect(sniff(fx('int16-bzero.fits.gz'), 'sky.svgz')?.id).toBe('svg');
+    expect(sniff(fx('int16-bzero.fits.gz'), 'sky.svgz')?.id).toBe('fits'); // what the stream holds wins over the name (W15)
   });
   for (const [name, e] of Object.entries(expected)) {
     it(`${name}: HDUs, planes and values (BZERO/BSCALE applied)`, () => {

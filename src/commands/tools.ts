@@ -4,6 +4,7 @@
  * Picture (.qlpe, AES-256-GCM), Save Selection As, Recover Pictures from Any File; Find Files;
  * Difference Overlay.
  */
+import { dayStart, dayEnd } from '../util/days';
 import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast } from '../ui/dialog';
@@ -204,7 +205,7 @@ def([
       ] });
       if (!r) return;
       const re = new RegExp('^' + String(r.name || '*').replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
-      const q = String(r.text || '').trim().toLowerCase(); const needsDims = +r.minW > 0 || +r.minH > 0; const from = r.from ? new Date(r.from).getTime() : 0, to = r.to ? new Date(r.to).getTime() + 86400e3 : Infinity;
+      const q = String(r.text || '').trim().toLowerCase(); const needsDims = +r.minW > 0 || +r.minH > 0; const from = dayStart(r.from)?.getTime() ?? 0, to = dayEnd(r.to)?.getTime() ?? Infinity;
       const hits: Entry[] = []; let i = 0;
       for (const e of f.entries) {
         i++; if ((q || needsDims) && i % 10 === 0) toast(`${i} / ${f.length}…`, { ms: 600 });

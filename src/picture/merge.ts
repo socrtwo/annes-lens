@@ -4,7 +4,7 @@
  * pyramid so no tone-mapping artifacts appear) and focus stacking (the sharpest source per pixel
  * by local Laplacian energy, with a smoothed selection map).
  */
-import { makeRaster, type Raster } from '../codecs/raster';
+import { blend4, makeRaster, type Raster } from '../codecs/raster';
 import { gaussianBlur } from './adjust';
 import { grayAt, harrisCorners, describe, matchFeatures, ransac, inv3, apply3, type Mat3 } from './stitch';
 
@@ -115,7 +115,7 @@ export function warpSimilarity(src: Raster, M: Mat3, w: number, h: number): Rast
     const [u, v] = apply3(inv, x, y);
     const cx = Math.max(0, Math.min(sw - 1.001, u)), cy = Math.max(0, Math.min(sh - 1.001, v));
     const x0 = Math.floor(cx), y0 = Math.floor(cy), fx = cx - x0, fy = cy - y0, i00 = (y0 * sw + x0) * 4, i01 = i00 + 4, i10 = i00 + sw * 4, i11 = i10 + 4, o = (y * w + x) * 4;
-    for (let c = 0; c < 4; c++) d[o + c] = s[i00 + c] * (1 - fx) * (1 - fy) + s[i01 + c] * fx * (1 - fy) + s[i10 + c] * (1 - fx) * fy + s[i11 + c] * fx * fy;
+    blend4(s, i00, i01, i10, i11, fx, fy, d, o);
   }
   return out;
 }

@@ -4,7 +4,7 @@
  * four-corner perspective correction, and lens correction (radial distortion, vignetting,
  * chromatic aberration). Sampling is bilinear through `remap`.
  */
-import { makeRaster, type Raster } from '../codecs/raster';
+import { blend4, makeRaster, type Raster } from '../codecs/raster';
 import { remap, type RGB } from './effects';
 
 const lumOf = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
@@ -23,7 +23,7 @@ export function rotateRaster(src: Raster, deg: number, expand = true, bg: RGB | 
     if (sx < -0.5 || sy < -0.5 || sx > w - 0.5 || sy > h - 0.5) { if (bg) { d[o] = bg[0]; d[o + 1] = bg[1]; d[o + 2] = bg[2]; d[o + 3] = 255; } continue; }
     const x0 = Math.max(0, Math.floor(sx)), y0 = Math.max(0, Math.floor(sy)), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = Math.max(0, sx - x0), fy = Math.max(0, sy - y0);
     const a0 = (y0 * w + x0) * 4, b0 = (y0 * w + x1) * 4, c0 = (y1 * w + x0) * 4, d0 = (y1 * w + x1) * 4;
-    for (let i = 0; i < 4; i++) d[o + i] = (sd[a0 + i] * (1 - fx) + sd[b0 + i] * fx) * (1 - fy) + (sd[c0 + i] * (1 - fx) + sd[d0 + i] * fx) * fy;
+    blend4(sd, a0, b0, c0, d0, fx, fy, d, o);
     if (bg) { const alpha = d[o + 3] / 255; for (let i = 0; i < 3; i++) d[o + i] = bg[i] + (d[o + i] - bg[i]) * alpha; d[o + 3] = 255; }
   }
   return out;

@@ -133,3 +133,23 @@ describe('frames', () => {
     expect(px(E.convolve(flat(100), [0, 0, 0, 0, 1, 0, 0, 0, 0], 3, 2, 10), 5, 5)[0]).toBe(60);
   });
 });
+
+describe('alpha-weighted blur and sampling (W21)', () => {
+  // A red square on fully transparent black: no blurred or resampled pixel may turn darker than the red it comes from.
+  const cut = async () => { const { makeRaster } = await import('../../src/codecs/raster'); const r = makeRaster(20, 20); for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) r.data.set([255, 0, 0, 255], (y * 20 + x) * 4); return r; };
+  const darkest = (r: { data: Uint8ClampedArray }) => { let m = 255; for (let i = 0; i < r.data.length; i += 4) if (r.data[i + 3] > 8) m = Math.min(m, r.data[i]); return m; };
+  it('blur', async () => {
+    const { gaussianBlur, boxBlur } = await import('../../src/picture/adjust');
+    const r = await cut();
+    for (const out of [gaussianBlur(r, 3), boxBlur(r, 2)]) { expect(darkest(out)).toBeGreaterThanOrEqual(254); expect(out.data[(10 * 20 + 3) * 4 + 3]).toBeGreaterThan(0); }
+  });
+  it('rotation, warping and remapping', async () => {
+    const { rotateRaster } = await import('../../src/picture/geometry');
+    const { remap } = await import('../../src/picture/effects');
+    const { warpSimilarity } = await import('../../src/picture/merge');
+    const r = await cut();
+    expect(darkest(rotateRaster(r, 17, true, null))).toBeGreaterThanOrEqual(254);
+    expect(darkest(remap(r, (x, y, p) => { p[0] = x * 0.93 + 0.37; p[1] = y * 0.93 + 0.41; }))).toBeGreaterThanOrEqual(254);
+    expect(darkest(warpSimilarity(r, [0.95, 0.1, 0.3, -0.1, 0.95, 0.6, 0, 0, 1] as any, 20, 20))).toBeGreaterThanOrEqual(254);
+  });
+});

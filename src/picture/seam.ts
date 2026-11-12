@@ -32,13 +32,25 @@ function removeSeam(src: Raster, seam: Int32Array, masks: (Uint8Array | null | u
   for (let y = 0; y < h; y++) { const sx = seam[y]; out.data.set(src.data.subarray(y * w * 4, (y * w + sx) * 4), y * (w - 1) * 4); out.data.set(src.data.subarray((y * w + sx + 1) * 4, (y + 1) * w * 4), (y * (w - 1) + sx) * 4); masks.forEach((m, k) => { if (!m) return; const om = outMasks[k]!; om.set(m.subarray(y * w, y * w + sx), y * (w - 1)); om.set(m.subarray(y * w + sx + 1, (y + 1) * w), y * (w - 1) + sx); }); }
   return { raster: out, masks: outMasks };
 }
-function insertSeams(src: Raster, seams: Int32Array[]): Raster {
+/** Widens by one pixel per seam: each seam pixel is kept and followed by the average of it and its right neighbour. */
+export function insertSeams(src: Raster, seams: Int32Array[]): Raster {
   const w = src.width, h = src.height, n = seams.length, out = makeRaster(w + n, h);
   for (let y = 0; y < h; y++) {
     const at = seams.map((s) => s[y]).sort((a, b) => a - b); let k = 0, ox = 0;
-    for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; while (k < at.length && at[k] === x) { const nx = Math.min(w - 1, x + 1), i2 = (y * w + nx) * 4; for (let c = 0; c < 4; c++) out.data[(y * (w + n) + ox) * 4 + c] = (src.data[i + c] + src.data[i2 + c]) / 2; ox++; k++; } out.data.set(src.data.subarray(i, i + 4), (y * (w + n) + ox) * 4); ox++; }
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      out.data.set(src.data.subarray(i, i + 4), (y * (w + n) + ox) * 4); ox++;
+      while (k < at.length && at[k] === x) { const nx = Math.min(w - 1, x + 1), i2 = (y * w + nx) * 4; for (let c = 0; c < 4; c++) out.data[(y * (w + n) + ox) * 4 + c] = (src.data[i + c] + src.data[i2 + c] + 1) >> 1; ox++; k++; }
+    }
   }
   return out;
+}
+/**
+ * Seams found one after another, each in the picture left by removing the ones before it, as columns of the
+ * original picture: removals are undone latest first (seam j < i shifts seam i right where it lies at or left of it).
+ */
+export function seamsToOriginal(taken: Int32Array[]): Int32Array[] {
+  return taken.map((t, i) => { const s = new Int32Array(t); for (let y = 0; y < s.length; y++) for (let j = i - 1; j >= 0; j--) if (taken[j][y] <= s[y]) s[y]++; return s; });
 }
 function transpose(r: Raster): Raster { const o = makeRaster(r.height, r.width); for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) o.data.set(r.data.subarray((y * r.width + x) * 4, (y * r.width + x) * 4 + 4), (x * r.height + y) * 4); return o; }
 const transposeMask = (m: Uint8Array | null | undefined, w: number, h: number): Uint8Array | null => { if (!m) return null; const o = new Uint8Array(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) o[x * h + y] = m[y * w + x]; return o; };
@@ -52,8 +64,7 @@ export function seamCarve(src: Raster, targetW: number, targetH: number, protect
     if (r.width < to) {
       const n = to - r.width; const seams: Int32Array[] = []; let tmp = r, tp = p, trm = rm; const taken: Int32Array[] = [];
       for (let i = 0; i < n; i++) { const seam = findSeam(energyOf(tmp, tp, trm), tmp.width, tmp.height); taken.push(seam); const out = removeSeam(tmp, seam, [tp, trm]); tmp = out.raster; tp = out.masks[0]; trm = out.masks[1]; }
-      // Map the seams back to original coordinates (each later seam shifts by the earlier ones to its left).
-      for (let i = 0; i < taken.length; i++) { const s = new Int32Array(taken[i]); for (let y = 0; y < s.length; y++) for (let j = 0; j < i; j++) if (taken[j][y] <= s[y]) s[y]++; seams.push(s); }
+      seams.push(...seamsToOriginal(taken));
       r = insertSeams(r, seams); p = null; rm = null; done += n; progress?.(done, total);
     }
   };

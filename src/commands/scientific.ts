@@ -7,7 +7,7 @@ import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast, type Field, type DialogControl } from '../ui/dialog';
 import { h, esc } from '../ui/dom';
-import { decodeOptions } from '../codecs/registry';
+import { decodeOptions, prepareDicom, decodePreparedDicom, type PreparedDicom } from '../codecs/registry';
 import type { DicomWindow } from '../codecs/dicom';
 import type { FitsStretch, FitsStretchMode } from '../codecs/fits';
 
@@ -79,7 +79,6 @@ def([
     id: 'image.dicomWindow', icon: 'contrast', isEnabled: isDicom, tip: 'Window center and width (level and contrast) for a DICOM picture, with the usual CT presets; the file is decoded again with them',
     run: async (app, arg?: DicomWindow | 'full' | 'file') => {
       const pic = app.picture!;
-      const { decodeDicom } = await import('../codecs/dicom');
       const apply = async (w: DicomWindow | 'full' | undefined) => { const s = setting(app); if (w) s.dicomWindow = w; else delete s.dicomWindow; await redecode(app); };
       if (arg === 'file') { await apply(undefined); return; }
       if (arg) { await apply(arg); return; }
@@ -93,15 +92,18 @@ def([
         { key: 'fn', label: 'Function', type: 'select', value: start.fn || 'LINEAR', options: [{ value: 'LINEAR', label: 'Linear (DICOM default)' }, { value: 'LINEAR_EXACT', label: 'Linear exact' }, { value: 'SIGMOID', label: 'Sigmoid' }], visibleIf: (v) => v.preset !== 'file' && v.preset !== 'full' },
         { key: 'note', type: 'info', html: '<span class="ql-help">Values are in the units after the modality rescale (Hounsfield units for CT). The setting is kept for this file while the app runs; Save As writes the picture as shown.</span>' },
       ];
+      // The preview decodes as opening does: the picture a presentation state points to, baseline JPEG and JPEG 2000 through the platform (W27).
+      let prepared: Promise<PreparedDicom> | null = null;
+      const preview = livePreview((vv) => previewOf(app, async (bytes) => decodePreparedDicom(await (prepared ??= prepareDicom(bytes, pic.entry)), windowOf(vv), pic.page + 1)));
       const windowOf = (v: Record<string, any>): DicomWindow | 'full' | undefined => (v.preset === 'file' ? undefined : v.preset === 'full' ? 'full' : { wc: +v.wc || 0, ww: Math.max(1, +v.ww || 1), fn: String(v.fn || 'LINEAR') });
       const r = await openDialog({
         title: 'Window / Level', ok: 'Apply', wide: true, preview: true, fields, help: 'Live preview of the current frame.',
         onChange: (v, ctl, key) => {
           if (key === 'preset') { const p = WINDOW_PRESETS.find((x) => x.id === v.preset); if (p) { ctl.set('wc', p.wc); ctl.set('ww', p.ww); v = { ...v, wc: p.wc, ww: p.ww }; } }
           else if ((key === 'wc' || key === 'ww' || key === 'fn') && v.preset !== 'custom' && v.preset !== 'file' && v.preset !== 'full') { ctl.set('preset', 'custom'); v = { ...v, preset: 'custom' }; }
-          livePreview((vv) => previewOf(app, (bytes) => decodeDicom(bytes, null, { window: windowOf(vv), maxFrames: pic.page + 1, overlays: decodeOptions.dicomOverlays })))(v, ctl);
+          preview(v, ctl);
         },
-        onOpen: (ctl) => livePreview((vv) => previewOf(app, (bytes) => decodeDicom(bytes, null, { window: windowOf(vv), maxFrames: pic.page + 1, overlays: decodeOptions.dicomOverlays })))(ctl.values(), ctl),
+        onOpen: (ctl) => preview(ctl.values(), ctl),
       });
       if (!r) return;
       await apply(windowOf(r));

@@ -25,6 +25,20 @@ const le16 = (u8: Uint8Array, p: number): number => u8[p] | (u8[p + 1] << 8);
 const clean = (s: string): string => s.replace(/\0+$/g, '').trim();
 const imageMime = (b: Uint8Array): string => (b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg' : b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 ? 'image/gif' : str(b, 8, 4) === 'WEBP' ? 'image/webp' : 'application/octet-stream');
 
+// HEIF and AVIF brands (ISO/IEC 23008-12 and the AV1 image format): still pictures, bursts and image sequences, which open as pictures.
+const STILL_BRANDS = /hei[cxms]|hev[cxms]|mif[12]|msf1|miaf|avi[fso]|MiHA|MiHB|MiHE|MiAB|MiAC|MiPr/;
+/** Whether a top-level box of this type is among the first 64 at the start of the file. */
+function topBox(u8: Uint8Array, type: string): boolean {
+  for (let p = 0, n = 0; p + 8 <= u8.length && n < 64; n++) {
+    let size = u32(u8, p);
+    if (str(u8, p + 4, 4) === type) return true;
+    if (size === 1 && p + 16 <= u8.length) size = u32(u8, p + 8) * 2 ** 32 + u32(u8, p + 12);
+    if (size < 8) return false;
+    p += size;
+  }
+  return false;
+}
+
 /** What kind of media file this is, by content; null for anything else. */
 export function sniffMedia(u8: Uint8Array, name = ''): { kind: 'video' | 'audio'; container: string; mime: string } | null {
   if (u8.length < 12) return null;
@@ -34,7 +48,9 @@ export function sniffMedia(u8: Uint8Array, name = ''): { kind: 'video' | 'audio'
     if (brand === 'qt  ') return { kind: r, container: 'QuickTime', mime: r === 'video' ? 'video/quicktime' : 'audio/mp4' };
     if (/^3g/.test(brand)) return { kind: r, container: '3GPP', mime: r === 'video' ? 'video/3gpp' : 'audio/3gpp' };
     if (brand === 'M4A ' || brand === 'M4B ' || r === 'audio') return { kind: 'audio', container: 'MPEG-4', mime: 'audio/mp4' };
-    if (brand === 'heic' || brand === 'heix' || brand === 'mif1' || brand === 'avif' || brand === 'avis' || brand === 'msf1' || brand === 'crx ' || brand === 'jp2 ' || brand === 'jpx ' || brand === 'jph ') return null; // still pictures in the same box structure
+    if (STILL_BRANDS.test(brand) || brand === 'crx ' || brand === 'jp2 ' || brand === 'jpx ' || brand === 'jph ') return null; // still pictures in the same box structure
+    // An image file under a general major brand: it lists an image brand and has no movie box.
+    if (STILL_BRANDS.test(str(u8, 16, Math.max(0, Math.min(u32(u8, 0), 64) - 16))) && !topBox(u8, 'moov')) return null;
     return { kind: 'video', container: 'MPEG-4', mime: 'video/mp4' };
   }
   if (u8[0] === 0x1a && u8[1] === 0x45 && u8[2] === 0xdf && u8[3] === 0xa3) {

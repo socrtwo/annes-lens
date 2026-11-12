@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { chromium } from 'playwright';
 import { startMockAi } from './mockAi.mjs';
 import { startRelay } from '../../scripts/relay.mjs';
@@ -289,8 +290,28 @@ try {
     out.asked = [await answer('wrong'), await answer('anne')];
     await run; await until(() => qn.picture?.name === 'locked.pdf');
     out.locked = [qn.picture?.name, qn.picture?.pages.length];
+    // Export Animation of the three pages (612×792, 595×842, 792×612): one canvas of 792×842 holds each page centered (W23).
+    await open('sample.pdf', fx.pdf);
+    const anim = [];
+    for (const fmt of ['apng', 'gif']) {
+      const saved = { parts: [] }, picker = window.showSaveFilePicker;
+      window.showSaveFilePicker = async (o) => ({ name: o?.suggestedName || '', createWritable: async () => ({ write: async (b) => { saved.parts.push(b); }, close: async () => {} }) });
+      for (let i = 0; i < 100 && document.querySelector('.ql-dialog'); i++) await wait(50); // the previous round's dialog is gone
+      const done = qn.exec('file.export.animation');
+      let d; for (let i = 0; i < 100 && !(d = document.querySelector('.ql-dialog')); i++) await wait(50);
+      const radio = d?.querySelector(`input[type=radio][value=${fmt}]`);
+      if (!radio) { anim.push(['no dialog', d?.getAttribute('aria-label') || '', document.querySelectorAll('.ql-dialog').length]); window.showSaveFilePicker = picker; break; }
+      radio.click(); d.querySelector('.ql-primary').click();
+      await Promise.race([done, wait(20000)]); for (let i = 0; i < 100 && !saved.parts.length; i++) await wait(50);
+      window.showSaveFilePicker = picker;
+      if (!saved.parts.length) { anim.push(['nothing saved', [...document.querySelectorAll('.ql-toast')].map((t) => t.textContent).join(' | '), document.querySelectorAll('.ql-dialog').length]); continue; }
+      const u8 = new Uint8Array(await new Blob(saved.parts).arrayBuffer()), dv = new DataView(u8.buffer);
+      anim.push(fmt === 'apng' ? [dv.getUint32(16), dv.getUint32(20)] : [dv.getUint16(6, true), dv.getUint16(8, true)]);
+    }
+    out.anim = anim;
     return out;
   }, pdfFix);
+  check('export animation: pages of different sizes share one canvas of the largest width and height', pdfr.anim, [[792, 842], [792, 842]]);
   const close = (a, b, t) => a.every((v, i) => Math.abs(v - b[i]) <= t);
   check('pdf: three pages through pdf.js, sizes at 72 dpi, rotation, metadata', [pdfr.pages, pdfr.sizes, pdfr.info, /PDF page 1 of 3/.test(pdfr.notes[0])], [3, [[612, 792], [595, 842], [792, 612]], ["Anne's Lens PDF test", '3'], true], JSON.stringify(pdfr.notes));
   check('pdf: pages match PDFium (mean difference per channel)', pdfr.diff.map((d) => d < 6), [true, true, true], JSON.stringify(pdfr.diff));
@@ -315,6 +336,15 @@ try {
   const near3 = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 3);
   check('tiff: CMYK through its press profile (LittleCMS reference)', [tm.cmyk.slice(0, 4), near3(tm.cmyk[4], [238, 234, 234]), near3(tm.cmyk[5], [36, 38, 58])], [['cmyk-icc.tif', 64, 48, true], true, true], JSON.stringify(tm));
   check('tiff: Group 4 fax page (a black block with white inside)', tm.fax, ['fax-g4.tif', 1000, 300, true, [0, 0, 0], [255, 255, 255]], JSON.stringify(tm));
+  // A gzipped SVG (.svgz) is unpacked and rendered (W15).
+  const svgz = await p.evaluate(async (b64) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms)), before = qn.picture;
+    await qn.exec('file.openDropped', [new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'drawing.svgz')]);
+    for (let i = 0; i < 100 && (!qn.picture || qn.picture === before); i++) await wait(50);
+    const px = [...qn.picture.frameCanvas().getContext('2d').getImageData(10, 10, 1, 1).data].slice(0, 3);
+    return [qn.picture.name, qn.picture.format.id, qn.picture.width, qn.picture.height, px];
+  }, gzipSync(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30" fill="#ff0000"/></svg>')).toString('base64'));
+  check('svgz: unpacked and rendered', svgz, ['drawing.svgz', 'svg', 40, 30, [255, 0, 0]]);
   // WebP-compressed tiles go through the platform's WebP decoder; ZSTD strips through fzstd.
   const tw = await p.evaluate(async (b) => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms)), out = {};
@@ -584,6 +614,26 @@ try {
     return [pic.format.id, pic.width, pic.height, pic.pages[0].notes.find((n) => /^presentation state/.test(n)), pic.warnings, text > 10, pic.info.annotations];
   }, psFiles);
   check('dicom: a presentation state dropped with its picture opens that picture with the annotations and text drawn', psGot, ['dicom', 48, 32, 'presentation state FIXTURE (graphic annotations: a filled rectangle, a circle, an ellipse, a point, text with an anchor) applied: 5 graphic objects and 1 text', [], true, 'Lesion'], JSON.stringify(psGot));
+  // Window / Level previews the picture a presentation state shows and baseline-JPEG DICOM (both decoded as opening does; W27).
+  const wlPrev = await p.evaluate(async (jpegB64) => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms)), out = [];
+    const previewOnce = async () => {
+      void qn.exec('image.dicomWindow');
+      let d; for (let i = 0; i < 100 && !(d = document.querySelector('.ql-dialog .ql-dialog-preview')); i++) await wait(50);
+      let shown = null; for (let i = 0; i < 200 && !(shown = d?.querySelector('img') || d?.querySelector('.ql-help')); i++) await wait(50);
+      const res = shown?.tagName === 'IMG' ? 'image' : shown?.textContent || 'nothing';
+      [...document.querySelectorAll('.ql-dialog button')].find((b) => b.textContent === 'Cancel')?.click();
+      for (let i = 0; i < 40 && document.querySelector('.ql-dialog'); i++) await wait(50);
+      return res;
+    };
+    out.push([qn.picture?.name, await previewOnce()]);
+    const before = qn.picture;
+    await qn.exec('file.openDropped', [new File([Uint8Array.from(atob(jpegB64), (c) => c.charCodeAt(0))], 'jpeg-gray.dcm')]);
+    for (let i = 0; i < 200 && (!qn.picture || qn.picture === before); i++) await wait(50);
+    out.push([qn.picture?.name, await previewOnce()]);
+    return out;
+  }, readFileSync('tests/fixtures/dicom/jpeg-gray.dcm').toString('base64'));
+  check('dicom: Window / Level previews a presentation state\'s picture and baseline-JPEG DICOM', wlPrev, [['gsps-annot.dcm', 'image'], ['jpeg-gray.dcm', 'image']]);
   // View ▸ DICOM Overlay Planes: the open DICOM file is decoded again without its overlay; a pseudo-color state colors its picture.
   const ovFiles = Object.fromEntries(['overlay.dcm', 'pcsps.dcm', 'ct-window.dcm'].map((n) => [n, readFileSync(`tests/fixtures/dicom/${n}`).toString('base64')]));
   const ovGot = await p.evaluate(async (files) => {

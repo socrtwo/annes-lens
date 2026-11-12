@@ -17,6 +17,10 @@ import type { Raster } from '../codecs/raster';
 import { csvCell } from './meta';
 
 const rasterOf = (c: HTMLCanvasElement): Raster => { const id = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height); return { width: c.width, height: c.height, data: id.data as Uint8ClampedArray<ArrayBuffer> }; };
+/** The canvas an exported animation needs: the largest width and height among its frames. */
+export function animationCanvas(frames: { width: number; height: number }[]): { width: number; height: number } {
+  return { width: Math.max(1, ...frames.map((f) => f.width)), height: Math.max(1, ...frames.map((f) => f.height)) };
+}
 const base = (name: string) => name.replace(/\.[^.]+$/, '') || 'picture';
 
 def([
@@ -106,10 +110,13 @@ def([
       ] });
       if (!r) return;
       const max = +r.maxSide || 0;
+      // GIF and APNG frames share one canvas: pages of different sizes are centered on the largest, on transparency, all at one scale (W23).
+      const { width: W0, height: H0 } = animationCanvas(frames);
+      const k = max ? Math.min(1, max / Math.max(W0, H0)) : 1, W = Math.max(1, Math.round(W0 * k)), H = Math.max(1, Math.round(H0 * k));
       const rasters = frames.map((f) => {
-        const k = max ? Math.min(1, max / Math.max(f.width, f.height)) : 1;
-        const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(f.width * k)); c.height = Math.max(1, Math.round(f.height * k));
-        const x = c.getContext('2d')!; x.imageSmoothingQuality = 'high'; x.drawImage(f.image as CanvasImageSource, 0, 0, c.width, c.height);
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const w = Math.max(1, Math.round(f.width * k)), hh = Math.max(1, Math.round(f.height * k));
+        const x = c.getContext('2d')!; x.imageSmoothingQuality = 'high'; x.drawImage(f.image as CanvasImageSource, Math.floor((W - w) / 2), Math.floor((H - hh) / 2), w, hh);
         return { raster: rasterOf(c), delay: +r.delay > 0 ? +r.delay : f.delay || 100 };
       });
       toast('Encoding…', { ms: 2000 });

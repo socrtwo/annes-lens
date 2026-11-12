@@ -27,6 +27,7 @@ import { decodeDds, isDds } from './dds';
 import { decodeHdr, isHdr } from './hdr';
 import { decodeExr, isExr, exrNeedsHtj2k } from './exr';
 import { isEmf, isWmf } from './metafile';
+import { inflate } from './inflate';
 import { identifyRaw, findEmbeddedJpegs, tiffThumbnail, rawOrientation, RAW_EXTENSIONS } from './rawpreview';
 import { rawSupport } from '../raw/families';
 import { isPdf } from './pdf';
@@ -157,6 +158,21 @@ async function ownSigningCertificate(): Promise<Uint8Array | null> {
   try { const { getExtra } = await import('../ai/keystore'); const stored = getExtra('c2pa.signer'); return stored ? Uint8Array.from(atob(JSON.parse(stored).cert), (c) => c.charCodeAt(0)) : null; } catch { return null; }
 }
 
+/** A gzip stream is identified by the start of what it holds (the first 4 KB are inflated), then by its name; anything else is not a picture. */
+export function sniffGzip(u8: Uint8Array, name = ''): FormatInfo | null {
+  let head: Uint8Array;
+  try { head = inflate(u8, 4096, 4096).data; } catch { head = new Uint8Array(0); }
+  if (head.length >= 4) {
+    if (isEmf(head)) return formatById('emf')!;
+    if (isWmf(head)) return formatById('wmf')!;
+    if (head.length >= 9 && String.fromCharCode(...head.subarray(0, 9)) === 'SIMPLE  =') return formatById('fits')!;
+    const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
+    if (/<svg[\s>]/i.test(text)) return formatById('svg')!;
+    return null; // a gzipped file of another kind (a tar, a log, ...)
+  }
+  return /\.emz$/i.test(name) ? formatById('emf')! : /\.wmz$/i.test(name) ? formatById('wmf')! : /\.(fits?|fts)\.gz$/i.test(name) ? formatById('fits')! : /\.(svgz|svg\.gz)$/i.test(name) ? formatById('svg')! : null;
+}
+
 export function sniff(u8: Uint8Array, name = ''): FormatInfo | null {
   if (u8.length < 4) return null;
   if (isPsd(u8)) return formatById('psd')!;
@@ -199,15 +215,15 @@ export function sniff(u8: Uint8Array, name = ''): FormatInfo | null {
   if (u8.length >= 12 && at(u8, 4, 'ftyp')) {
     const brand = String.fromCharCode(...u8.subarray(8, 12));
     const compat = String.fromCharCode(...u8.subarray(16, Math.min(u8.length, 64)));
-    if (/avi[fs]/.test(brand) || /avi[fs]/.test(compat)) return formatById('avif')!;
-    if (/hei[cfxms]|mif1|msf1/.test(brand) || /heic|mif1/.test(compat)) return formatById('heic')!;
+    if (/avi[fso]/.test(brand) || /avi[fso]/.test(compat)) return formatById('avif')!;
+    if (/hei[cfxms]|hev[cxms]|mif[12]|msf1|miaf/.test(brand) || /heic|hei[xms]|hev[cxms]|mif[12]|msf1/.test(compat)) return formatById('heic')!;
   }
   if ((u8[0] === 0xff && u8[1] === 0x0a) || at(u8, 0, '\0\0\0\x0cJXL ')) return formatById('jxl')!;
   if (isBmp(u8)) return formatById('bmp')!;
   if (isIco(u8)) return (u8[2] | (u8[3] << 8)) === 2 ? formatById('cur')! : formatById('ico')!;
   if (isTiff(u8)) return identifyRaw(u8, name) ? formatById('raw')! : formatById('tiff')!;
   if (identifyRaw(u8, name)) return formatById('raw')!;
-  if (u8[0] === 0x1f && u8[1] === 0x8b) return /\.emz$/i.test(name) ? formatById('emf')! : /\.wmz$/i.test(name) ? formatById('wmf')! : /\.(fits?|fts)\.gz$/i.test(name) ? formatById('fits')! : formatById('svg')!; // gzip: emz, wmz, fits.gz or svgz
+  if (u8[0] === 0x1f && u8[1] === 0x8b) return sniffGzip(u8, name); // emz, wmz, fits.gz or svgz: by what the stream starts with
   if (isPcx(u8)) return formatById('pcx')!;
   const head = new TextDecoder('utf-8', { fatal: false }).decode(u8.subarray(0, Math.min(u8.length, 2048)));
   if (/<svg[\s>]/i.test(head) && !/<script/i.test(head.slice(0, 200))) return formatById('svg')!;
@@ -243,6 +259,39 @@ export const decodeOptions = {
 };
 
 /** Decodes bytes into a Picture. Throws with a readable message when nothing can be shown. */
+/**
+ * What decoding a DICOM file needs: the pixel data's own file (a presentation state names a picture in another file of
+ * the folder), the state, a blended second picture, and the platform decoders (baseline JPEG, JPEG 2000). The open
+ * file and the Window / Level preview both decode through this, so the preview works for every file that opens (W27).
+ */
+export interface PreparedDicom { bytes: Uint8Array; dec: any; presentation?: import('./dicom').PresentationState; superimposed?: import('./raster').Raster; fallback: string }
+export async function prepareDicom(u8: Uint8Array, entry: Entry): Promise<PreparedDicom> {
+  const [{ decodeDicom, dicomTransferSyntax, isJ2kTransferSyntax, isPresentationState, readPresentationState, dicomSopInstanceUid }, { imageDecoders }] = await Promise.all([import('./dicom'), import('./jpx')]);
+  const dec = await imageDecoders().catch(() => null);
+  let bytes = u8, presentation: import('./dicom').PresentationState | undefined, superimposed: import('./raster').Raster | undefined;
+  if (isPresentationState(u8)) { // display instructions for a picture in another file of the same folder
+    presentation = readPresentationState(u8, entry.name);
+    const sibs = (decodeOptions.siblings?.(entry) || []).filter((s) => s !== entry && s.name !== entry.name && dicomLikeName(s.name) && (s.size ?? 0) <= 512e6).slice(0, 2000);
+    let found: Uint8Array | null = null;
+    const hit = await findReferenced(sibs, presentation.references, dicomSopInstanceUid);
+    if (hit) { found = hit.bytes; presentation.name = `${entry.name} on ${hit.entry.name}`; }
+    if (found && presentation.blend) { // the blending state's second picture, decoded with the window the state gives it
+      const second = await findReferenced(sibs, presentation.blend.references, dicomSopInstanceUid);
+      if (second) { try { superimposed = (await decodeDicom(second.bytes, dec, { maxFrames: 1, window: presentation.blend.window })).pages[0]?.frames[0]?.raster; } catch { /* reported below */ } }
+    }
+    if (!found) throw new Error(`${entry.name} is a presentation state${presentation.label ? ` (${presentation.label})` : ''}: display settings for a picture in another DICOM file, which is not in this folder (${presentation.references.length ? `SOP instance ${presentation.references[0]}` : 'no image is referenced'}). Open it from the folder that holds the picture.`);
+    bytes = found;
+  }
+  let fallback = '';
+  if (isJ2kTransferSyntax(dicomTransferSyntax(bytes))) { try { await (await import('./openjpeg16')).loadOpenJpeg(); } catch (e) { fallback = (e as Error).message; } }
+  return { bytes, dec, presentation, superimposed, fallback };
+}
+/** Decodes prepared DICOM input with a window (undefined: the file's or the presentation state's own). */
+export async function decodePreparedDicom(p: PreparedDicom, window?: import('./dicom').DicomWindow | 'full', maxFrames?: number) {
+  const { decodeDicom } = await import('./dicom');
+  return decodeDicom(p.bytes, p.dec, { presentation: p.presentation, superimposed: p.superimposed, drawText: p.presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays, window, maxFrames });
+}
+
 export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Picture> {
   const fmt = sniff(u8, entry.name) || formatFromName(entry.name);
   if (fmt?.sample) throw Object.assign(new Error(`${fmt.label} files are recognized but not opened yet: no file was available to build the reader from. If you have one you may share, Help ▸ Send a Sample File sends it to the developer`), { sample: fmt.id });
@@ -292,26 +341,9 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
   else if (fmt.id === 'psp') { const { decodePsp } = await import('./psp'); decoded = fromOwn(decodePsp(u8), 'psp'); }
   else if (fmt.id === 'jbig') { const { decodeJbig } = await import('./jbig'); decoded = fromOwn(decodeJbig(u8), 'jbig'); }
   else if (fmt.id === 'dicom') {
-    const [{ decodeDicom, dicomTransferSyntax, isJ2kTransferSyntax, isPresentationState, readPresentationState, dicomSopInstanceUid }, { imageDecoders }] = await Promise.all([import('./dicom'), import('./jpx')]);
-    const dec = await imageDecoders().catch(() => null);
-    let bytes = u8, presentation, superimposed: import('./raster').Raster | undefined;
-    if (isPresentationState(u8)) { // display instructions for a picture in another file of the same folder
-      presentation = readPresentationState(u8, entry.name);
-      const sibs = (decodeOptions.siblings?.(entry) || []).filter((s) => s !== entry && s.name !== entry.name && dicomLikeName(s.name) && (s.size ?? 0) <= 512e6).slice(0, 2000);
-      let found: Uint8Array | null = null;
-      const hit = await findReferenced(sibs, presentation.references, dicomSopInstanceUid);
-      if (hit) { found = hit.bytes; presentation.name = `${entry.name} on ${hit.entry.name}`; }
-      if (found && presentation.blend) { // the blending state's second picture, decoded with the window the state gives it
-        const second = await findReferenced(sibs, presentation.blend.references, dicomSopInstanceUid);
-        if (second) { try { superimposed = (await decodeDicom(second.bytes, dec, { maxFrames: 1, window: presentation.blend.window })).pages[0]?.frames[0]?.raster; } catch { /* reported below */ } }
-      }
-      if (!found) throw new Error(`${entry.name} is a presentation state${presentation.label ? ` (${presentation.label})` : ''}: display settings for a picture in another DICOM file, which is not in this folder (${presentation.references.length ? `SOP instance ${presentation.references[0]}` : 'no image is referenced'}). Open it from the folder that holds the picture.`);
-      bytes = found;
-    }
-    let fallback = '';
-    if (isJ2kTransferSyntax(dicomTransferSyntax(bytes))) { try { await (await import('./openjpeg16')).loadOpenJpeg(); } catch (e) { fallback = (e as Error).message; } }
-    decoded = fromOwn(await decodeDicom(bytes, dec, { presentation, superimposed, drawText: presentation ? textRasterizer() : undefined, overlays: decodeOptions.dicomOverlays, window: decodeOptions.perEntry.get(entry)?.dicomWindow }), 'dicom');
-    if (fallback) decoded.warnings.push(fallback);
+    const prep = await prepareDicom(u8, entry);
+    decoded = fromOwn(await decodePreparedDicom(prep, decodeOptions.perEntry.get(entry)?.dicomWindow), 'dicom');
+    if (prep.fallback) decoded.warnings.push(prep.fallback);
   }
   else if (fmt.id === 'fits') { const { decodeFits } = await import('./fits'); decoded = fromOwn(decodeFits(u8, entry.name, decodeOptions.perEntry.get(entry)?.fitsStretch), 'fits'); }
   else if (fmt.id === 'jbig2') {
@@ -547,6 +579,11 @@ async function decodeRawPicture(u8: Uint8Array, name: string, previews: ReturnTy
 
 /** The platform's decoders: ImageDecoder (every frame of an animation) where available, else createImageBitmap. */
 async function fromPlatform(u8: Uint8Array, fmt: FormatInfo, info: ContainerInfo | null) {
+  if (fmt.id === 'svg' && u8[0] === 0x1f && u8[1] === 0x8b) { // .svgz: the platform renders the unpacked text
+    const r = inflate(u8);
+    if (!r.complete) throw new Error(`The compressed SVG could not be unpacked${r.error ? ` (${r.error})` : ''}`);
+    u8 = r.data;
+  }
   const blob = new Blob([u8 as BlobPart], { type: fmt.mime });
   const warnings = [...(info?.warnings || [])];
   const notes = info?.notes || [];

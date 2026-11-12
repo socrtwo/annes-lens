@@ -38,3 +38,22 @@ describe('palette files', () => {
     expect(parsePalette(enc(':root{--a:#102030;--b:#ffffff}'), 'a.css').colors).toEqual([[16, 32, 48], [255, 255, 255]]);
   });
 });
+
+describe('seam insertion (W20)', () => {
+  it('maps seams back to the original columns by undoing removals latest first', async () => {
+    const { seamsToOriginal } = await import('../../src/picture/seam');
+    let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32;
+    for (let trial = 0; trial < 50; trial++) {
+      const w = 12, h = 5, n = 6, cols = Array.from({ length: h }, () => Array.from({ length: w }, (_, x) => x)), taken: Int32Array[] = [], want: number[][] = [];
+      for (let i = 0; i < n; i++) { const s = new Int32Array(h), o: number[] = []; for (let y = 0; y < h; y++) { s[y] = Math.floor(rnd() * cols[y].length); o.push(cols[y][s[y]]); cols[y].splice(s[y], 1); } taken.push(s); want.push(o); }
+      expect(seamsToOriginal(taken).map((s) => [...s])).toEqual(want);
+    }
+  });
+  it('keeps the seam pixel and puts the blended one after it', async () => {
+    const { insertSeams } = await import('../../src/picture/seam');
+    const { makeRaster } = await import('../../src/codecs/raster');
+    const r = makeRaster(3, 1); r.data.set([0, 0, 0, 255, 100, 100, 100, 255, 200, 200, 200, 255]);
+    const o = insertSeams(r, [Int32Array.of(0)]);
+    expect([0, 1, 2, 3].map((x) => o.data[x * 4])).toEqual([0, 50, 100, 200]);
+  });
+});

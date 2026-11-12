@@ -7,7 +7,7 @@
  * and frames (drop shadow, reflection, round corners, instant-print frame, vignette frame), plus a
  * custom convolution. Randomness is seeded so previews and the full-size result match.
  */
-import { makeRaster, type Raster } from '../codecs/raster';
+import { blend4, makeRaster, type Raster } from '../codecs/raster';
 import { gaussianBlur, saturate, colorCorrect, posterize, vignette, applyLut, hsl } from './adjust';
 import { grayscale, negative, resample } from './ops';
 
@@ -30,7 +30,7 @@ function sample(s: Uint8ClampedArray, w: number, h: number, x: number, y: number
   const cx = Math.min(w - 1, Math.max(0, x)), cy = Math.min(h - 1, Math.max(0, y));
   const x0 = Math.floor(cx), y0 = Math.floor(cy), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = cx - x0, fy = cy - y0;
   const a = (y0 * w + x0) * 4, b = (y0 * w + x1) * 4, c = (y1 * w + x0) * 4, d = (y1 * w + x1) * 4;
-  for (let i = 0; i < 4; i++) out[o + i] = (s[a + i] * (1 - fx) + s[b + i] * fx) * (1 - fy) + (s[c + i] * (1 - fx) + s[d + i] * fx) * fy;
+  blend4(s, a, b, c, d, fx, fy, out, o);
 }
 
 /** Builds the output by asking `map` where each destination pixel comes from (source coordinates). */

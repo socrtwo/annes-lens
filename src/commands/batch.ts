@@ -78,6 +78,41 @@ export function inputsOf(app: App): { entries: Entry[]; marked: boolean } {
   return marked.length ? { entries: t.folder.entries.filter((e) => t.marked.has(e)), marked: true } : { entries: [...t.folder.entries], marked: false };
 }
 
+/** What a name pattern can take from the files themselves: the EXIF date, the camera, the size (W22). */
+export interface NameFacts { entry: Entry; width?: number; height?: number; exifDate?: Date; make?: string; model?: string }
+const FACT_TOKENS = /\{(exifdate|exiftime|make|model)\}/, SIZE_TOKENS = /\{(w|h)\}/;
+const factCache = new WeakMap<Entry, { size?: number; mtime?: number; facts: Omit<NameFacts, 'entry'>; sized: boolean }>();
+/** Reads the facts the pattern uses (nothing when it uses none); the size needs a decode, so it is read only for {w} and {h}. Cached per entry. */
+const decodedSize = async (u8: Uint8Array, entry: Entry) => { const pic = await decodePicture(u8, entry); return { width: pic.width, height: pic.height }; };
+export async function nameFacts(entries: Entry[], pattern: string, sizeOf: (u8: Uint8Array, entry: Entry) => Promise<{ width: number; height: number }> = decodedSize): Promise<NameFacts[]> {
+  const wantMeta = FACT_TOKENS.test(pattern), wantSize = SIZE_TOKENS.test(pattern);
+  if (!wantMeta && !wantSize) return entries.map((entry) => ({ entry }));
+  const out: NameFacts[] = [];
+  for (const entry of entries) {
+    let hit = factCache.get(entry);
+    if (hit && (hit.size !== entry.size || hit.mtime !== entry.mtime)) hit = undefined;
+    if (!hit || (wantSize && !hit.sized)) {
+      const facts: Omit<NameFacts, 'entry'> = { ...(hit?.facts || {}) };
+      try {
+        const u8 = new Uint8Array(await entry.read());
+        const ex = readExif(u8);
+        if (ex) { facts.exifDate = (ex.dateTaken && parseExifDate(ex.dateTaken)) || undefined; facts.make = ex.make?.trim() || undefined; facts.model = ex.model?.trim() || undefined; }
+        if (wantSize) { try { const d = await sizeOf(u8, entry); facts.width = d.width; facts.height = d.height; } catch { /* not decodable: no size */ } }
+      } catch { /* unreadable: no facts */ }
+      hit = { size: entry.size, mtime: entry.mtime, facts, sized: wantSize || !!hit?.sized };
+      factCache.set(entry, hit);
+    }
+    out.push({ entry, ...hit.facts });
+  }
+  return out;
+}
+/** A line for the preview when {exifdate} falls back to the file date for some files. */
+export function exifFallbackNote(pattern: string, facts: NameFacts[]): string {
+  if (!/\{exif(date|time)\}/.test(pattern)) return '';
+  const missing = facts.filter((f) => !f.exifDate).length;
+  return missing ? `; ${missing} file${missing === 1 ? ' has' : 's have'} no EXIF date, so {exifdate} uses the file's modified date` : '';
+}
+
 /** Output names for a dry run: the same expansion the run uses. */
 export function planNames(job: BatchJob, infos: { entry: Entry; width?: number; height?: number; exifDate?: Date; make?: string; model?: string }[]): string[] {
   const used = new Set<string>();
@@ -170,7 +205,7 @@ export async function applyAction(r: Raster, a: Action, ctx: { name: string; ind
 /** Runs the job with a progress dialog; `sink` stores each output. Returns what was written. */
 export interface BatchControl { paused?: () => boolean; canceled?: () => boolean; progress?: (i: number, n: number, name: string) => void }
 export async function runBatch(app: App, job: BatchJob, sink: (r: BatchResult) => Promise<{ uri: string | null; name: string }>, opts: { silent?: boolean; control?: BatchControl } = {}): Promise<{ done: { name: string; uri: string | null; source: Entry; note?: string }[]; failed: { name: string; error: string }[]; canceled: boolean }> {
-  const names = planNames(job, job.inputs.map((entry) => ({ entry })));
+  const names = planNames(job, await nameFacts(job.inputs, job.names.pattern));
   const done: { name: string; uri: string | null; source: Entry; note?: string }[] = [], failed: { name: string; error: string }[] = [];
   let canceled = false;
   const bar = h('progress', { max: String(job.inputs.length), value: '0', style: 'width:100%' }) as HTMLProgressElement;
@@ -235,11 +270,15 @@ async function batchDialog(app: App, preset: Partial<{ format: string; quality: 
     },
     names: { pattern: v.pattern || '{name}', start: +v.start || 1, step: 1, pad: +v.pad || 1, case: v.case, find: v.find || undefined, replace: v.replace || '', regex: !!v.regex },
   });
-  const preview = (v: Record<string, any>, ctl: any) => {
-    const job = build(v);
-    previewNames = planNames(job, job.inputs.map((entry) => ({ entry })));
+  let previewSeq = 0;
+  const preview = async (v: Record<string, any>, ctl: any) => {
+    const job = build(v), seq = ++previewSeq;
+    const facts = await nameFacts(job.inputs, job.names.pattern);
+    if (seq !== previewSeq) return; // a newer pattern is being previewed
+    previewNames = planNames(job, facts);
+    const factNote = exifFallbackNote(job.names.pattern, facts);
     const rows = job.inputs.slice(0, 200).map((e, i) => `<tr><td>${esc(e.name)}</td><td>→</td><td>${esc(previewNames[i] || '')}</td></tr>`).join('');
-    ctl.setPreview(`<div class="ql-help">${job.inputs.length} file${job.inputs.length === 1 ? '' : 's'}${marked && v.scope !== 'current' ? ' (the marked thumbnails)' : ''}; ${new Set(previewNames.map((n) => n.toLowerCase())).size === previewNames.length ? 'no name conflicts' : 'conflicting names get " (2)"'}</div><table class="ql-stats qn-info" style="font-size:12px">${rows}${job.inputs.length > 200 ? '<tr><td colspan="3">…</td></tr>' : ''}</table>`);
+    ctl.setPreview(`<div class="ql-help">${job.inputs.length} file${job.inputs.length === 1 ? '' : 's'}${marked && v.scope !== 'current' ? ' (the marked thumbnails)' : ''}; ${new Set(previewNames.map((n) => n.toLowerCase())).size === previewNames.length ? 'no name conflicts' : 'conflicting names get " (2)"'}${esc(factNote)}</div><table class="ql-stats qn-info" style="font-size:12px">${rows}${job.inputs.length > 200 ? '<tr><td colspan="3">…</td></tr>' : ''}</table>`);
   };
   const r = await openDialog({ title: preset.title || 'Batch Conversion and Rename', wide: true, ok: 'Run…', preview: true, previewStyle: 'max-height:40vh;overflow:auto',
     help: 'Every step is optional and runs in order: rotate, auto crop, resize, grayscale, colors, then the output format and name. Outputs go to a folder you choose (or a ZIP download where the browser cannot write folders); the originals are never changed. Undo Last Batch removes the outputs.',
@@ -291,8 +330,9 @@ def([
       const dirUri = dirUriOf(tab.entry, tab.folder);
       const build = (v: Record<string, any>): NameOptions => ({ pattern: v.pattern || '{name}', start: +v.start || 1, step: 1, pad: +v.pad || 1, case: v.case, find: v.find || undefined, replace: v.replace || '', regex: !!v.regex });
       const staying = tab.folder.entries.filter((e) => !entries.includes(e)).map((e) => e.name.toLowerCase()); // files not in the rename keep their names
-      const plan = (o: NameOptions) => { const used = new Set<string>(staying); return entries.map((e, i) => uniqueName(`${expandName(o, { name: base(e.name), ext: extOf(e.name), index: i, date: e.mtime ? new Date(e.mtime) : new Date() })}.${extOf(e.name)}`, used)); };
-      const preview = (v: Record<string, any>, ctl: any) => { const names = plan(build(v)); ctl.setPreview(`<table class="ql-stats qn-info" style="font-size:12px">${entries.slice(0, 300).map((e, i) => `<tr><td>${esc(e.name)}</td><td>→</td><td>${names[i] === e.name ? '<span class="ql-help">(unchanged)</span>' : esc(names[i])}</td></tr>`).join('')}</table>`); };
+      const plan = (o: NameOptions, facts: NameFacts[]) => { const used = new Set<string>(staying); return entries.map((e, i) => { const f = facts[i] || { entry: e }; return uniqueName(`${expandName(o, { name: base(e.name), ext: extOf(e.name), index: i, date: e.mtime ? new Date(e.mtime) : new Date(), exifDate: f.exifDate, make: f.make, model: f.model, width: f.width, height: f.height })}.${extOf(e.name)}`, used); }); };
+      let seq = 0;
+      const preview = async (v: Record<string, any>, ctl: any) => { const o = build(v), my = ++seq, facts = await nameFacts(entries, o.pattern); if (my !== seq) return; const names = plan(o, facts), note = exifFallbackNote(o.pattern, facts); ctl.setPreview(`${note ? `<div class="ql-help">${esc(note.slice(2))}</div>` : ''}<table class="ql-stats qn-info" style="font-size:12px">${entries.slice(0, 300).map((e, i) => `<tr><td>${esc(e.name)}</td><td>→</td><td>${names[i] === e.name ? '<span class="ql-help">(unchanged)</span>' : esc(names[i])}</td></tr>`).join('')}</table>`); };
       const r = await openDialog({ title: 'Batch Rename', wide: true, ok: 'Rename', preview: true, previewStyle: 'max-height:40vh;overflow:auto', help: `${entries.length} file${entries.length === 1 ? '' : 's'}${marked ? ' (the marked thumbnails)' : ''} are renamed in place. {name} {n} {n:4} {date} {time} {yyyy} {mm} {dd} {exifdate}; the extension stays.`,
         fields: [
           { key: 'pattern', label: 'Pattern', type: 'text', value: '{name}', half: true }, { key: 'start', label: 'Counter starts at', type: 'number', min: 0, value: 1, half: true },
@@ -301,7 +341,7 @@ def([
           { key: 'regex', label: 'Find is a regular expression', type: 'checkbox', value: false },
         ], onChange: (v, ctl) => preview(v, ctl), onOpen: (ctl) => preview(ctl.values(), ctl) });
       if (!r) return;
-      const names = plan(build(r));
+      const o = build(r), names = plan(o, await nameFacts(entries, o.pattern));
       const changes = entries.map((e, i) => ({ e, to: names[i] })).filter((c) => c.to !== c.e.name && c.e.uri);
       if (!changes.length) { toast('Nothing to rename.'); return; }
       if (!(await confirmDialog('Batch Rename', `Rename ${changes.length} file${changes.length === 1 ? '' : 's'}?`, 'Rename'))) return;

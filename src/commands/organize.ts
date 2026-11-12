@@ -4,6 +4,7 @@
  * (year, month, day), Stack Bursts and Versions, Light Table (the marked pictures in a new window)
  * and Cull Mode (full screen, one key per decision, auto-advance).
  */
+import { dayStart, dayEnd, dayString } from '../util/days';
 import { def } from './registry';
 import type { App } from '../app';
 import { openDialog, toast } from '../ui/dialog';
@@ -71,12 +72,12 @@ def([
         { key: 'types', label: 'Types (e.g. jpeg png; empty = all)', type: 'text', value: (s.types || []).join(' '), half: true }, { key: 'minRating', label: 'Rating at least', type: 'select', options: ['0', '1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v === '0' ? 'Any' : '★'.repeat(+v) })), value: String(s.minRating || 0), half: true },
         { key: 'label', label: 'Color label', type: 'select', options: ['', 'red', 'yellow', 'green', 'blue', 'purple'].map((v) => ({ value: v, label: v ? v[0].toUpperCase() + v.slice(1) : 'Any' })), value: s.label || '', half: true }, { key: 'flag', label: 'Flag', type: 'select', options: [{ value: '', label: 'Any' }, { value: 'pick', label: 'Picks' }, { value: 'reject', label: 'Rejects' }], value: s.flag || '', half: true },
         { key: 'keyword', label: 'Keyword contains', type: 'text', value: s.keyword || '', half: true }, { key: 'text', label: 'Name or text contains', type: 'text', value: s.text || '', half: true },
-        { key: 'from', label: 'Taken from', type: 'date', value: s.from ? s.from.toISOString().slice(0, 10) : '', half: true }, { key: 'to', label: 'Taken to', type: 'date', value: s.to ? s.to.toISOString().slice(0, 10) : '', half: true },
+        { key: 'from', label: 'Taken from', type: 'date', value: s.from ? dayString(s.from) : '', half: true }, { key: 'to', label: 'Taken to', type: 'date', value: s.to ? dayString(s.to) : '', half: true },
         { key: 'camera', label: 'Camera contains', type: 'text', value: s.camera || '', half: true }, { key: 'orientation', label: 'Orientation', type: 'select', options: [{ value: '', label: 'Any' }, { value: 'landscape', label: 'Landscape' }, { value: 'portrait', label: 'Portrait' }, { value: 'square', label: 'Square' }], value: s.orientation || '', half: true },
         { key: 'hasGps', label: 'Location', type: 'select', options: [{ value: '', label: 'Any' }, { value: 'yes', label: 'Has a location' }, { value: 'no', label: 'No location' }], value: s.hasGps === true ? 'yes' : s.hasGps === false ? 'no' : '', half: true }, { key: 'favorite', label: 'Favorites only', type: 'checkbox', value: !!s.favorite, half: true },
       ], buttons: [{ label: 'Clear filter', onClick: (_v, ctl) => { ctl.close(null); applyFilter(app, null); } }, { label: 'Mark the matches', onClick: (v, ctl) => { ctl.close(v); setTimeout(() => { const t = app.tab; t.marked.clear(); for (const e of t.folder.entries) if (!t.thumbs.filter || t.thumbs.filter(e)) t.marked.add(e); t.thumbs.refilter(); app.refresh(); }, 50); } }] });
       if (!r) return;
-      const spec: FilterSpec = { types: String(r.types || '').split(/[\s,;]+/).filter(Boolean), minRating: +r.minRating || 0, label: r.label, flag: r.flag, keyword: r.keyword, text: r.text, from: r.from ? new Date(r.from) : null, to: r.to ? new Date(new Date(r.to).getTime() + 86400e3 - 1) : null, camera: r.camera, orientation: r.orientation, hasGps: r.hasGps === 'yes' ? true : r.hasGps === 'no' ? false : null, favorite: r.favorite ? true : null };
+      const spec: FilterSpec = { types: String(r.types || '').split(/[\s,;]+/).filter(Boolean), minRating: +r.minRating || 0, label: r.label, flag: r.flag, keyword: r.keyword, text: r.text, from: dayStart(r.from), to: dayEnd(r.to), camera: r.camera, orientation: r.orientation, hasGps: r.hasGps === 'yes' ? true : r.hasGps === 'no' ? false : null, favorite: r.favorite ? true : null };
       const parts = [spec.types!.length ? spec.types!.join('/') : '', spec.minRating ? `≥${'★'.repeat(spec.minRating)}` : '', spec.label, spec.flag, spec.keyword && `kw:${spec.keyword}`, spec.text && `"${spec.text}"`, r.from || r.to ? `${r.from || '…'}–${r.to || '…'}` : '', spec.camera, spec.orientation, spec.hasGps === true ? 'located' : spec.hasGps === false ? 'unlocated' : '', spec.favorite ? '♥' : ''].filter(Boolean);
       if (!parts.length) { applyFilter(app, null); return; }
       applyFilter(app, spec, parts.join(' · '));

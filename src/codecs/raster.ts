@@ -6,6 +6,18 @@ export interface Raster {
   data: Uint8ClampedArray<ArrayBuffer>;
 }
 
+/**
+ * Bilinear blend of four RGBA pixels (at a, b on the upper row, c, d on the lower) weighted by their alpha, so a
+ * transparent pixel's color does not bleed into its neighbours (the average of premultiplied values, unpremultiplied).
+ */
+export function blend4(s: ArrayLike<number>, a: number, b: number, c: number, d: number, fx: number, fy: number, out: Uint8ClampedArray, o: number): void {
+  const wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy;
+  const aa = s[a + 3] * wa, ab = s[b + 3] * wb, ac = s[c + 3] * wc, ad = s[d + 3] * wd, alpha = aa + ab + ac + ad;
+  if (alpha > 0) for (let i = 0; i < 3; i++) out[o + i] = (s[a + i] * aa + s[b + i] * ab + s[c + i] * ac + s[d + i] * ad) / alpha;
+  else for (let i = 0; i < 3; i++) out[o + i] = s[a + i] * wa + s[b + i] * wb + s[c + i] * wc + s[d + i] * wd;
+  out[o + 3] = alpha;
+}
+
 export function makeRaster(width: number, height: number): Raster {
   return { width, height, data: new Uint8ClampedArray(width * height * 4) };
 }

@@ -97,3 +97,26 @@ describe('PNG, APNG, ICO and ICNS writers', () => {
     expect(r.elements[1].png).toBe(true);
   });
 });
+
+describe('APNG delays and the TGA writer (W26)', () => {
+  it('delays over 65.5 s keep their length', async () => {
+    const { apngDelay } = await import('../../src/codecs/pngenc');
+    expect(apngDelay(100)).toEqual([100, 1000]);
+    expect(apngDelay(65535)).toEqual([65535, 1000]);
+    const check = (ms: number) => { const [n, d] = apngDelay(ms); expect(n).toBeLessThanOrEqual(0xffff); expect(Math.abs((n / d) * 1000 - ms)).toBeLessThanOrEqual(ms * 0.001 + 50); };
+    for (const ms of [70000, 120000, 600000, 3600000]) check(ms);
+    expect(apngDelay(0)).toEqual([1, 1000]);
+  });
+  it('TGA, plain and RLE, round-trips a picture with runs and literals; large sizes are refused plainly', async () => {
+    const { encodeTga, decodeTga } = await import('../../src/codecs/tga');
+    const w = 300, h = 7, data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) { const x = i % w; data.set(x < 150 ? [10, 20, 30, 255] : [x & 255, (x * 7) & 255, i & 255, 200], i * 4); }
+    for (const rle of [false, true]) {
+      const bytes = encodeTga({ width: w, height: h, data } as any, { rle });
+      const r: any = decodeTga(bytes);
+      const back = (r.pages ? r.pages[0].frames[0].raster : r).data;
+      expect([...back]).toEqual([...data]);
+    }
+    expect(() => encodeTga({ width: 70000, height: 1, data: new Uint8ClampedArray(70000 * 4) } as any)).toThrow(/65535/);
+  });
+});

@@ -15,6 +15,7 @@ import { patchXmp } from '../picture/metadata';
 import type { XmpProps } from '../meta/xmp';
 import { ENCODERS, decodePicture, encodeCanvas, type EncodeFormat } from '../codecs/registry';
 import { fmtSize } from '../ui/shell';
+import { encodeTiff } from '../codecs/tiffwrite';
 
 const list = (s: string) => s.split(/[;,\n]/).map((x) => x.trim()).filter(Boolean);
 const ANCHORS = [['tl', 'Top left'], ['tc', 'Top center'], ['tr', 'Top right'], ['ml', 'Middle left'], ['mc', 'Center'], ['mr', 'Middle right'], ['bl', 'Bottom left'], ['bc', 'Bottom center'], ['br', 'Bottom right']].map(([value, label]) => ({ value, label }));
@@ -147,6 +148,16 @@ async function runRecipe(app: App, recipe: Recipe, queueIt: boolean): Promise<vo
   if (queueIt) await enqueue(app, label, job); else await runNow(app, label, job);
 }
 
+/** One split page: PNG and JPEG through the platform, TIFF through the app's own writer (the platform has no TIFF encoder; W25). */
+export async function encodePage(c: HTMLCanvasElement, format: string): Promise<Uint8Array> {
+  if (format === 'tiff') {
+    const id = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height);
+    let alpha = false; for (let i = 3; i < id.data.length; i += 4) if (id.data[i] < 255) { alpha = true; break; }
+    return encodeTiff([{ raster: { width: c.width, height: c.height, data: id.data as Uint8ClampedArray<ArrayBuffer> }, alpha }]);
+  }
+  return new Uint8Array(await (await encodeCanvas(c, format as EncodeFormat, 0.92)).arrayBuffer());
+}
+
 def([
   {
     id: 'batch.actions', icon: 'format_list_numbered', popular: true, noRecord: true, isEnabled: (app) => app.folder.length > 0, tip: 'An ordered list of steps (resize, crop, rotate, canvas, color, sharpen, watermark, text, metadata…) run on many pictures; save it as a recipe',
@@ -226,7 +237,7 @@ def([
       if (!r) return;
       if (r.mode === 'join') { await app.exec('create.multipage'); return; }
       const out = await chooseSink(app, 'Output folder for the pages'); if (!out) return;
-      const done: { name: string; uri: string | null; source: typeof entries[number] }[] = []; let failed = 0, i = 0;
+      const done: { name: string; uri: string | null; source: typeof entries[number] }[] = []; let failed = 0, i = 0, firstError = '';
       for (const e of entries) {
         i++; toast(`${i} / ${entries.length}: ${e.name}`, { ms: 700 });
         try {
@@ -234,13 +245,13 @@ def([
           try {
             const frames = pic.multipage ? pic.pages.map((p) => p.frames[0]) : pic.current.frames;
             const base = e.name.replace(/\.[^.]+$/, '');
-            for (let k = 0; k < frames.length; k++) { const f = frames[k]; const c = document.createElement('canvas'); c.width = f.width; c.height = f.height; c.getContext('2d')!.drawImage(f.image as CanvasImageSource, 0, 0); const blob = await encodeCanvas(c, r.format as EncodeFormat, 0.92); const data = new Uint8Array(await blob.arrayBuffer()); const w = await out.sink({ name: `${base}-${String(k + 1).padStart(3, '0')}.${ENCODERS[r.format as EncodeFormat].ext}`, data, source: e }); done.push({ name: w.name, uri: w.uri, source: e }); }
+            for (let k = 0; k < frames.length; k++) { const f = frames[k]; const c = document.createElement('canvas'); c.width = f.width; c.height = f.height; c.getContext('2d')!.drawImage(f.image as CanvasImageSource, 0, 0); const data = await encodePage(c, r.format); const w = await out.sink({ name: `${base}-${String(k + 1).padStart(3, '0')}.${r.format === 'tiff' ? 'tif' : ENCODERS[r.format as EncodeFormat].ext}`, data, source: e }); done.push({ name: w.name, uri: w.uri, source: e }); }
           } finally { pic.release(); }
-        } catch { failed++; }
+        } catch (err: any) { failed++; if (!firstError) firstError = `${e.name}: ${err?.message || err}`; }
       }
       await out.finish();
       journalOutputs(app, `Split pages: ${done.length} to ${out.label}`, done, out.dirUri);
-      toast(`${done.length} page${done.length === 1 ? '' : 's'} written to ${out.label}${failed ? `; ${failed} file${failed === 1 ? '' : 's'} failed` : ''} (${fmtSize(0)})`.replace(' (0 B)', ''));
+      toast(`${done.length} page${done.length === 1 ? '' : 's'} written to ${out.label}${failed ? `; ${failed} file${failed === 1 ? '' : 's'} failed (${firstError})` : ''}`, { ms: failed ? 8000 : 4000 });
     },
   },
 ]);

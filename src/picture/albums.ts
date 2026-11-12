@@ -4,6 +4,7 @@
  * Android, a File System Access handle in browsers (kept in IndexedDB, so the browser may ask for
  * permission again after a restart). Pictures without an address (dropped or pasted) cannot be kept.
  */
+import { dayString } from '../util/days';
 import type { Entry } from './folder';
 import { entryFromUri, entryFromHandle } from './folder';
 import type { FilterSpec } from './folderInfo';
@@ -65,7 +66,7 @@ export function describeSpec(s: FilterSpec): string {
   if (s.minRating) p.push(`★${s.minRating}+`); if (s.label) p.push(`${s.label} label`); if (s.keyword) p.push(`keyword "${s.keyword}"`); if (s.text) p.push(`"${s.text}"`);
   if (s.types?.length) p.push(s.types.join('/')); if (s.camera) p.push(s.camera); if (s.flag) p.push(s.flag); if (s.favorite) p.push('favorites');
   if (s.hasGps === true) p.push('with location'); if (s.hasGps === false) p.push('without location'); if (s.orientation) p.push(s.orientation);
-  const y = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
+  const y = (d?: Date | null) => (d ? dayString(d) : '');
   if (s.from || s.to) p.push(`${y(s.from) || '…'} to ${y(s.to) || '…'}`);
   return p.join(' · ') || 'everything';
 }
