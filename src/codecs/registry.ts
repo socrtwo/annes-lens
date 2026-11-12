@@ -411,8 +411,14 @@ export async function decodePicture(u8: Uint8Array, entry: Entry): Promise<Pictu
   else if (fmt.id === 'bmp') {
     try { decoded = await fromPlatform(u8, fmt, null); } catch { decoded = fromOwn(decodeBmp(u8), 'bmp'); }
   } else {
-    const info: ContainerInfo | null = fmt.id === 'jpeg' ? safe(() => jpegInfo(u8)) : fmt.id === 'png' || fmt.id === 'apng' ? safe(() => pngInfo(u8)) : fmt.id === 'webp' ? safe(() => webpInfo(u8)) : null;
-    try { decoded = await fromPlatform(u8, fmt, info); }
+    // JPEG XL has no container info to say whether it is animated: the platform decodes it only through ImageDecoder,
+    // which yields every frame (a still has one); a browser that renders JPEG XL without it would show an
+    // animation's first frame only, so jxl-oxide decodes it there.
+    const info: ContainerInfo | null = fmt.id === 'jpeg' ? safe(() => jpegInfo(u8)) : fmt.id === 'png' || fmt.id === 'apng' ? safe(() => pngInfo(u8)) : fmt.id === 'webp' ? safe(() => webpInfo(u8)) : fmt.id === 'jxl' ? { animated: true, notes: [], info: {}, warnings: [] } : null;
+    try {
+      if (fmt.id === 'jxl') { const ID = (globalThis as any).ImageDecoder; if (!ID || !(await ID.isTypeSupported(fmt.mime).catch(() => false))) throw new Error('JPEG XL is not decoded by this platform'); }
+      decoded = await fromPlatform(u8, fmt, info);
+    }
     catch (e: any) {
       // The platform refused (damaged file): the app's tolerant readers show what can be read.
       if (fmt.id === 'png' || fmt.id === 'apng') { const r = decodePngTolerant(u8); decoded = fromOwn(r, 'png (tolerant)'); decoded.warnings.unshift(`The platform could not decode the file (${e?.message || e}); shown by the app's tolerant reader`); }
