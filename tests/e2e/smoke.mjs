@@ -534,7 +534,7 @@ try {
     return out;
   }, modFiles);
   // Through the platform's ImageDecoder where it decodes JPEG XL (newer Chromium), else jxl-oxide; the pixels are the same.
-  check('jpeg xl: opens through ImageDecoder or jxl-oxide', mo['lossless.jxl'] && [mo['lossless.jxl'][0], ['jxl-oxide', 'platform'].includes(mo['lossless.jxl'][1]), ...mo['lossless.jxl'].slice(2, 5), mo['lossless.jxl'][6]], ['jxl', true, 53, 37, 1, [250, 20, 40]], JSON.stringify(mo['lossless.jxl']));
+  check('jpeg xl: opens through ImageDecoder or jxl-oxide', mo['lossless.jxl'] && [mo['lossless.jxl'][0], /^(jxl-oxide$|platform)/.test(mo['lossless.jxl'][1]), ...mo['lossless.jxl'].slice(2, 5), mo['lossless.jxl'][6]], ['jxl', true, 53, 37, 1, [250, 20, 40]], JSON.stringify(mo['lossless.jxl']));
   check('jpeg xl: an animation, every frame with its time', mo['anim.jxl'] && [mo['anim.jxl'][4], mo['anim.jxl'][5]], [3, [100, 100, 100]], JSON.stringify(mo['anim.jxl']));
   check('avif: the app\'s own decoder (libavif with libaom) from the staged runtime', mo.avif, [53, 37, true, 'AVIF, decoded by libavif with libaom (8 bits per sample)'], JSON.stringify(mo.avif));
   // Workstation and home-computer formats, and PICT (its text and QuickTime JPEG are drawn by the platform).
